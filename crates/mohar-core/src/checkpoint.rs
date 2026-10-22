@@ -133,3 +133,79 @@ pub fn verify_checkpoints(
     }
     Ok(())
 }
+
+/// Checks checkpoints while receipts stream past, so the receipts never have to be held together.
+///
+/// Only the checkpoints are kept, and there is one per thousand receipts.
+pub(crate) struct CheckpointWatcher {
+    /// `(position of the vouched-for receipt, checkpoint index, head)`, sorted by position.
+    pending: Vec<(u64, usize, String)>,
+    cursor: usize,
+    first_break: Option<(usize, CheckpointBreak)>,
+}
+
+impl CheckpointWatcher {
+    /// Check every signature up front, in order, and queue the checkpoints for the stream.
+    pub(crate) fn new(
+        checkpoints: &[Checkpoint],
+        key: &VerifyingKey,
+    ) -> Result<Self, CheckpointBreak> {
+        let mut pending = Vec::new();
+        for (checkpoint, c) in checkpoints.iter().enumerate() {
+            if c.v != VERSION || !signature_ok(c, key) {
+                return Err(CheckpointBreak::BadSignature { checkpoint });
+            }
+            if c.count > 0 {
+                pending.push((c.count - 1, checkpoint, c.head.clone()));
+            }
+        }
+        pending.sort_by_key(|(seq, checkpoint, _)| (*seq, *checkpoint));
+        Ok(Self {
+            pending,
+            cursor: 0,
+            first_break: None,
+        })
+    }
+
+    /// The receipt at position `seq` has just verified and hashes to `hash`.
+    pub(crate) fn observe(&mut self, seq: u64, hash: &str) {
+        while let Some((at, checkpoint, head)) = self.pending.get(self.cursor) {
+            if *at != seq {
+                break;
+            }
+            let (checkpoint, mismatch) = (*checkpoint, head != hash);
+            self.cursor += 1;
+            if mismatch {
+                self.note(
+                    checkpoint,
+                    CheckpointBreak::HeadMismatch { checkpoint, seq },
+                );
+            }
+        }
+    }
+
+    fn note(&mut self, checkpoint: usize, b: CheckpointBreak) {
+        if self.first_break.is_none_or(|(c, _)| checkpoint < c) {
+            self.first_break = Some((checkpoint, b));
+        }
+    }
+
+    /// The stream ended after `found` receipts; whatever is still queued vouched for more than that.
+    pub(crate) fn finish(mut self, found: u64) -> Result<(), CheckpointBreak> {
+        let rest: Vec<(u64, usize)> = self.pending[self.cursor..]
+            .iter()
+            .map(|(at, checkpoint, _)| (*at, *checkpoint))
+            .collect();
+        for (at, checkpoint) in rest {
+            self.note(
+                checkpoint,
+                CheckpointBreak::LogTooShort {
+                    checkpoint,
+                    expected: at + 1,
+                    found,
+                },
+            );
+        }
+        self.first_break.map_or(Ok(()), |(_, b)| Err(b))
+    }
+}
