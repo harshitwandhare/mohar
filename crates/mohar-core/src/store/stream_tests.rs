@@ -3,7 +3,7 @@
 #![allow(clippy::expect_used)]
 
 use super::*;
-use crate::{Action, Decision, genesis};
+use crate::{Action, BreakKind, Decision, genesis};
 
 fn temp_dir(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("mohar-stream-{name}-{}", std::process::id()));
@@ -76,11 +76,10 @@ fn twenty_thousand_receipts_verify_by_streaming() {
     verify_big(20_000, "20k");
 }
 
-/// The issue asks for a million receipts in under ten seconds in release mode. Ed25519 verification
-/// is about 45 microseconds a receipt on the 6-core, 12-thread laptop this was written on, so it
-/// takes about 15 seconds there, spread over every core; machines with more cores meet the ten.
-/// The budget below is a regression guard with headroom for slower machines, not the target.
-const BUDGET: std::time::Duration = std::time::Duration::from_secs(30);
+/// The issue asks for a million receipts in under ten seconds in release mode. It takes about eight
+/// on the 6-core, 12-thread laptop this was written on, with parsing, hashing and signature checks
+/// all spread over every core. The budget below is the target with a little room for slower machines.
+const BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// A million receipts, verified with memory that doesn't grow. Run with `cargo test --release --locked -p mohar-core -- --ignored --nocapture one_million`.
 /// A debug build is several times slower and will miss the budget.
@@ -102,6 +101,52 @@ fn peak_resident_kb() -> Option<u64> {
     let status = fs::read_to_string("/proc/self/status").ok()?;
     let line = status.lines().find(|l| l.starts_with("VmHWM:"))?;
     line.split_whitespace().nth(1)?.parse().ok()
+}
+
+/// Change one receipt in the middle of a log that spans many worker jobs, and check that the
+/// verifier names exactly that receipt and the right reason.
+fn tampered(name: &str, from: &str, to: &str) -> Result<Stats, VerifyFileError> {
+    let dir = temp_dir(name);
+    let key = SigningKey::generate().expect("keygen");
+    write_log(&dir, &key, 6_000);
+    let text = fs::read_to_string(dir.join(LOG_FILE)).expect("read");
+    assert_eq!(text.matches(from).count(), 1, "the edit must hit one place");
+    fs::write(dir.join(LOG_FILE), text.replacen(from, to, 1)).expect("write");
+    verify_in(&dir, &key.verifying_key())
+}
+
+#[test]
+fn an_edited_receipt_in_the_middle_of_a_large_log_is_named() {
+    match tampered("edit", "docs/4321.md", "docs/4x21.md") {
+        Err(OpenError::Chain(b)) => assert_eq!((b.index, b.kind), (4_321, BreakKind::BadSignature)),
+        other => panic!("expected a chain break, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_cut_link_in_the_middle_of_a_large_log_is_named() {
+    // Two receipts swapped places keep their own signatures but break the sequence and the link.
+    let dir = temp_dir("swap");
+    let key = SigningKey::generate().expect("keygen");
+    write_log(&dir, &key, 6_000);
+    let text = fs::read_to_string(dir.join(LOG_FILE)).expect("read");
+    let mut lines: Vec<&str> = text.lines().collect();
+    lines.swap(3_000, 3_001);
+    fs::write(dir.join(LOG_FILE), lines.join("\n") + "\n").expect("write");
+    match verify_in(&dir, &key.verifying_key()) {
+        Err(OpenError::Chain(b)) => {
+            assert_eq!((b.index, b.kind), (3_000, BreakKind::WrongSequence))
+        }
+        other => panic!("expected a chain break, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_cut_line_in_the_middle_of_a_large_log_is_named_by_line_number() {
+    match tampered("cut", r#""seq":5001,"#, r#""seq":5001"#) {
+        Err(OpenError::Unreadable { line }) => assert_eq!(line, 5_002),
+        other => panic!("expected an unreadable line, got {other:?}"),
+    }
 }
 
 #[test]

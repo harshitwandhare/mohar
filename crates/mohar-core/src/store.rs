@@ -10,15 +10,17 @@
 //! Opening a log verifies the whole chain first, one line at a time, so memory use doesn't grow with the
 //! log. A log that doesn't verify is never extended.
 
+use std::collections::VecDeque;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, mpsc};
 
 use crate::Prechecked;
 use crate::checkpoint::{self, Checkpoint, CheckpointBreak, CheckpointWatcher};
 use crate::{
-    ChainBreak, ChainVerifier, Entry, Error, Receipt, SigningKey, VerifyingKey, public_key_string,
-    receipt_hash, seal,
+    BreakKind, ChainBreak, ChainVerifier, Entry, Error, Receipt, SigningKey, VerifyingKey,
+    public_key_string, receipt_hash, seal,
 };
 
 const KEY_FILE: &str = "key.ed25519";
@@ -257,34 +259,133 @@ fn each_receipt(
     each_batch(path, |batch| batch.drain(..).try_for_each(&mut f))
 }
 
-/// Work out the position-independent part of each receipt, spread over the available cores.
-fn precheck(batch: &[Receipt], key: &VerifyingKey) -> Vec<Prechecked> {
+/// Lines handed to a worker at once.
+const JOB_LINES: usize = 256;
+
+/// What became of one line of the log.
+#[allow(clippy::large_enum_variant)] // handed on straight away, never stored; boxing would cost an allocation per receipt
+enum Outcome {
+    /// A receipt, with its signature and hash already worked out.
+    Line(Receipt, Prechecked),
+    /// The line (1-based) isn't a complete receipt.
+    Unreadable(usize),
+    /// A worker died before reporting on the receipts at this point, which fails them.
+    Lost,
+}
+
+type Reply = Vec<Result<(Receipt, Prechecked), usize>>;
+
+struct Job {
+    lines: Vec<(usize, String)>,
+    reply: mpsc::Sender<Reply>,
+}
+
+fn work(job: Job, key: &VerifyingKey) {
+    let done = job
+        .lines
+        .into_iter()
+        .map(
+            |(number, line)| match serde_json::from_str::<Receipt>(&line) {
+                Ok(r) => {
+                    let checked = Prechecked::of(&r, key);
+                    Ok((r, checked))
+                }
+                Err(_) => Err(number),
+            },
+        )
+        .collect();
+    // The reader has gone if this fails, and then nobody needs the answer.
+    let _ = job.reply.send(done);
+}
+
+/// Parse and pre-check every line of the log on a pool of worker threads that lives for the whole
+/// walk, handing the results to `f` strictly in file order. At most a few jobs per worker are in
+/// flight, so memory doesn't depend on the length of the log. `f` stops the walk by returning an error.
+fn verify_lines(
+    path: &Path,
+    key: &VerifyingKey,
+    mut f: impl FnMut(Outcome) -> Result<(), OpenError>,
+) -> Result<(), OpenError> {
+    let mut reader = BufReader::new(File::open(path).map_err(io(path))?);
     let threads = std::thread::available_parallelism().map_or(1, |n| n.get());
-    if threads == 1 || batch.len() < 64 {
-        return batch.iter().map(|r| Prechecked::of(r, key)).collect();
-    }
-    std::thread::scope(|s| {
-        let workers: Vec<_> = batch
-            .chunks(batch.len().div_ceil(threads))
-            .map(|chunk| {
-                let work = s.spawn(move || {
-                    chunk
-                        .iter()
-                        .map(|r| Prechecked::of(r, key))
-                        .collect::<Vec<_>>()
-                });
-                (chunk.len(), work)
-            })
-            .collect();
-        workers
-            .into_iter()
-            .flat_map(|(len, work)| {
-                // A worker that died leaves its receipts unchecked, which fails them.
-                work.join()
-                    .unwrap_or_else(|_| (0..len).map(|_| Prechecked::failed()).collect())
-            })
-            .collect()
+    let (jobs, queue) = mpsc::channel::<Job>();
+    let queue = Mutex::new(queue);
+    let queue = &queue;
+    std::thread::scope(move |s| {
+        for _ in 0..threads {
+            s.spawn(move || {
+                loop {
+                    let next = queue.lock().ok().and_then(|q| q.recv().ok());
+                    match next {
+                        Some(job) => work(job, key),
+                        None => break,
+                    }
+                }
+            });
+        }
+        let result = feed(&mut reader, path, &jobs, threads * 4, &mut f);
+        // Workers leave once the queue is closed.
+        drop(jobs);
+        result
     })
+}
+
+/// Read lines, hand them to workers in jobs, and settle finished jobs in order.
+fn feed(
+    reader: &mut BufReader<File>,
+    path: &Path,
+    jobs: &mpsc::Sender<Job>,
+    window: usize,
+    f: &mut impl FnMut(Outcome) -> Result<(), OpenError>,
+) -> Result<(), OpenError> {
+    let mut pending: VecDeque<mpsc::Receiver<Reply>> = VecDeque::new();
+    let mut settle = |pending: &mut VecDeque<mpsc::Receiver<Reply>>| -> Result<(), OpenError> {
+        let Some(rx) = pending.pop_front() else {
+            return Ok(());
+        };
+        match rx.recv() {
+            Ok(done) => done.into_iter().try_for_each(|item| match item {
+                Ok((r, c)) => f(Outcome::Line(r, c)),
+                Err(line) => f(Outcome::Unreadable(line)),
+            }),
+            Err(_) => f(Outcome::Lost),
+        }
+    };
+    let mut submit = |lines: Vec<(usize, String)>,
+                      pending: &mut VecDeque<mpsc::Receiver<Reply>>|
+     -> Result<(), OpenError> {
+        let (reply, rx) = mpsc::channel();
+        pending.push_back(rx);
+        // Workers only stop once `jobs` is dropped, so a send doesn't fail while we feed them.
+        let _ = jobs.send(Job { lines, reply });
+        while pending.len() > window {
+            settle(pending)?;
+        }
+        Ok(())
+    };
+    let mut lines = Vec::with_capacity(JOB_LINES);
+    let mut number = 0;
+    loop {
+        let mut line = String::new();
+        if reader.read_line(&mut line).map_err(io(path))? == 0 {
+            break;
+        }
+        number += 1;
+        if line.trim().is_empty() {
+            continue;
+        }
+        lines.push((number, line));
+        if lines.len() == JOB_LINES {
+            submit(std::mem::take(&mut lines), &mut pending)?;
+        }
+    }
+    if !lines.is_empty() {
+        submit(lines, &mut pending)?;
+    }
+    while !pending.is_empty() {
+        settle(&mut pending)?;
+    }
+    Ok(())
 }
 
 /// Call `f` on each receipt in a log file, oldest first, without holding the others in memory.
@@ -329,14 +430,20 @@ fn verify_stream(
     };
     let mut watcher = CheckpointWatcher::new(&checkpoints, key).map_err(OpenError::Checkpoint)?;
     let mut chain = ChainVerifier::new(key);
-    each_batch(path, |batch| {
-        let checked = precheck(batch, key);
-        for (r, c) in batch.iter().zip(checked) {
+    verify_lines(path, key, |outcome| match outcome {
+        Outcome::Line(r, checked) => {
             let seq = chain.count();
-            chain.push_prechecked(r, c).map_err(OpenError::Chain)?;
+            chain
+                .push_prechecked(&r, checked)
+                .map_err(OpenError::Chain)?;
             watcher.observe(seq, chain.head());
+            Ok(())
         }
-        Ok(())
+        Outcome::Unreadable(line) => Err(OpenError::Unreadable { line }),
+        Outcome::Lost => Err(OpenError::Chain(ChainBreak {
+            index: chain.count() as usize,
+            kind: BreakKind::BadSignature,
+        })),
     })?;
     let receipts = chain.count();
     watcher.finish(receipts).map_err(OpenError::Checkpoint)?;

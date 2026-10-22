@@ -180,14 +180,92 @@ pub fn canonical_bytes(r: &Receipt) -> Result<Vec<u8>, Error> {
 }
 
 fn canonical(r: &Receipt) -> Result<Vec<u8>, Error> {
-    serde_jcs::to_vec(r).map_err(|e| Error::Canonical(e.to_string()))
+    canonical_with(r, true)
 }
 
-/// The bytes that get signed: the canonical receipt with `sig` empty, which serde leaves out.
+/// The bytes that get signed: the canonical receipt with `sig` left out.
 fn signing_bytes(r: &Receipt) -> Result<Vec<u8>, Error> {
-    let mut unsigned = r.clone();
-    unsigned.sig.clear();
-    canonical(&unsigned)
+    canonical_with(r, false)
+}
+
+/// Largest integer RFC 8785 writes as plain digits; beyond it the number formatting is subtle, so
+/// the general serializer handles those receipts.
+const MAX_PLAIN_INT: u64 = 1 << 53;
+
+fn canonical_with(r: &Receipt, with_sig: bool) -> Result<Vec<u8>, Error> {
+    if r.seq > MAX_PLAIN_INT {
+        let mut copy = r.clone();
+        if !with_sig {
+            copy.sig.clear();
+        }
+        return serde_jcs::to_vec(&copy).map_err(|e| Error::Canonical(e.to_string()));
+    }
+    Ok(fast_canonical(r, with_sig))
+}
+
+/// RFC 8785 for the one shape a receipt has. Every key is ASCII and the keys are written in sorted
+/// order, so this is a fixed template; strings are escaped as RFC 8785 requires. Tests compare it with
+/// `serde_jcs` on arbitrary receipts.
+fn fast_canonical(r: &Receipt, with_sig: bool) -> Vec<u8> {
+    use std::io::Write;
+    let mut o = Vec::with_capacity(320 + r.sig.len());
+    let s = |o: &mut Vec<u8>, key: &str, val: &str| {
+        o.extend_from_slice(key.as_bytes());
+        json_string(o, val);
+    };
+    o.extend_from_slice(br#"{"action":{"#);
+    s(&mut o, r#""args_sha256":"#, &r.action.args_sha256);
+    s(&mut o, r#","capability":"#, &r.action.capability);
+    s(&mut o, r#","target":"#, &r.action.target);
+    s(&mut o, r#","tool":"#, &r.action.tool);
+    o.extend_from_slice(br#"},"agent":{"#);
+    s(&mut o, r#""id":"#, &r.agent.id);
+    s(&mut o, r#","key":"#, &r.agent.key);
+    o.extend_from_slice(br#"},"decision":{"#);
+    s(&mut o, r#""by":"#, &r.decision.by);
+    // Writing to a Vec cannot fail.
+    let _ = write!(o, r#","level":{}"#, r.decision.level);
+    s(&mut o, r#","result":"#, &r.decision.result);
+    o.extend_from_slice(b"},");
+    s(&mut o, r#""prev":"#, &r.prev);
+    let _ = write!(o, r#","seq":{}"#, r.seq);
+    if with_sig && !r.sig.is_empty() {
+        s(&mut o, r#","sig":"#, &r.sig);
+    }
+    s(&mut o, r#","ts":"#, &r.ts);
+    let _ = write!(o, r#","v":{}}}"#, r.v);
+    o
+}
+
+fn json_string(o: &mut Vec<u8>, s: &str) {
+    o.push(b'"');
+    let bytes = s.as_bytes();
+    let mut start = 0;
+    for (i, &b) in bytes.iter().enumerate() {
+        let esc: &[u8] = match b {
+            b'"' => br#"\""#,
+            b'\\' => br"\\",
+            0x08 => br"\b",
+            0x09 => br"\t",
+            0x0a => br"\n",
+            0x0c => br"\f",
+            0x0d => br"\r",
+            0..=0x1f => {
+                o.extend_from_slice(&bytes[start..i]);
+                o.extend_from_slice(br"\u00");
+                o.push(b"0123456789abcdef"[(b >> 4) as usize]);
+                o.push(b"0123456789abcdef"[(b & 0xf) as usize]);
+                start = i + 1;
+                continue;
+            }
+            _ => continue,
+        };
+        o.extend_from_slice(&bytes[start..i]);
+        o.extend_from_slice(esc);
+        start = i + 1;
+    }
+    o.extend_from_slice(&bytes[start..]);
+    o.push(b'"');
 }
 
 /// The hash the next receipt's `prev` must equal: over the full receipt, signature included.
@@ -308,14 +386,6 @@ impl Prechecked {
             hash: receipt_hash(r).ok(),
         }
     }
-
-    /// The result for a receipt that couldn't be checked at all: it fails closed.
-    pub(crate) fn failed() -> Self {
-        Self {
-            signature_ok: false,
-            hash: None,
-        }
-    }
 }
 
 /// Checks a chain one receipt at a time, holding only what the next receipt must match.
@@ -396,8 +466,54 @@ pub fn verify(receipts: &[Receipt], key: &VerifyingKey) -> Result<(), ChainBreak
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
-    use super::{hex, unhex};
+    use super::{Action, Agent, Decision, Receipt, canonical, hex, signing_bytes, unhex};
+    use proptest::prelude::*;
+
+    fn receipt(s: [String; 8], (v, seq, level): (u32, u64, u8), sig: String) -> Receipt {
+        let [prev, ts, id, key, capability, tool, target, by] = s;
+        Receipt {
+            v,
+            seq,
+            prev,
+            ts,
+            agent: Agent { id, key },
+            action: Action {
+                capability,
+                tool,
+                target,
+                args_sha256: by.clone(),
+            },
+            decision: Decision {
+                result: by.clone(),
+                level,
+                by,
+            },
+            sig,
+        }
+    }
+
+    proptest! {
+        /// The template canonicaliser writes exactly what the general RFC 8785 serializer does, for
+        /// any strings (control characters, quotes, backslashes, non-ASCII) and any integers.
+        #[test]
+        fn fast_canonical_matches_serde_jcs(
+            s in proptest::array::uniform8(any::<String>()),
+            n in (any::<u32>(), any::<u64>(), any::<u8>()),
+            sig in prop_oneof![Just(String::new()), any::<String>()],
+        ) {
+            let r = receipt(s, n, sig);
+            let general = serde_jcs::to_vec(&r).expect("jcs");
+            prop_assert_eq!(canonical(&r).expect("fast"), general);
+            let mut unsigned = r.clone();
+            unsigned.sig.clear();
+            prop_assert_eq!(
+                signing_bytes(&r).expect("fast"),
+                serde_jcs::to_vec(&unsigned).expect("jcs")
+            );
+        }
+    }
 
     #[test]
     fn hex_round_trips_and_rejects_bad_input() {
