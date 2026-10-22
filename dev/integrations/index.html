@@ -586,6 +586,45 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Coding agent hosts">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fail-closed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fail closed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-check-for-hosts-without-a-hook" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A check for hosts without a hook
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#order-of-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Order of work
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1084,6 +1123,45 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Coding agent hosts">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fail-closed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fail closed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-check-for-hosts-without-a-hook" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A check for hosts without a hook
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#order-of-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Order of work
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1199,6 +1277,35 @@ Phase 6.</p>
 </tr>
 </tbody>
 </table>
+<p>| <strong>Google Antigravity CLI</strong> (<code>agy</code>, which replaced Gemini CLI for consumers in 2026) | <code>PreToolUse</code> hook that returns allow, ask or deny and can rewrite arguments. | Blocking; fail-open behaviour not yet confirmed. | The same <code>mohar-hook</code> binary with a host profile. |
+| <strong>GitHub Copilot</strong> (coding agent, CLI, VS Code agent mode) | Hooks under <code>.github/hooks</code>; it also reads Claude Code's settings file. | Blocking where configured. | Host profile for <code>mohar-hook</code>; organisation policy for distribution. |
+| <strong>Cursor, Devin Desktop (formerly Windsurf), Kiro, Cline, OpenHands</strong> | Each has a documented pre-tool hook that can deny or ask. Most fail open on a crash or timeout unless told not to. | Blocking when configured to fail closed. | Generated configs for <code>mohar-hook</code>, each with fail-closed set. |
+| <strong>Goose, Aider</strong> | No documented pre-tool hook. | None at the tool call. | The MCP gateway for tools they reach through MCP, and the CI check below for everything else. |</p>
+<p>All host facts above were read from each product's current documentation in October 2026; hook
+semantics change between versions, so every receipt records the host's name and version.</p>
+<h3 id="fail-closed">Fail closed<a class="headerlink" href="#fail-closed" title="Permanent link">&para;</a></h3>
+<p>A hook that crashes or times out lets the tool call through on most hosts. Every Mohar host profile sets
+the host's fail-closed option where one exists (Claude Code's <code>onFailure: "block"</code>, for example), and the
+daemon answers within a fixed budget so a slow decision is a deny, not a pass. For teams, the hooks and the
+Mohar settings are delivered through each host's managed configuration (Claude Code managed settings with
+managed hooks only, Codex <code>requirements.toml</code>), and the gates deny agent writes to the files that hold
+them.</p>
+<h3 id="a-check-for-hosts-without-a-hook">A check for hosts without a hook<a class="headerlink" href="#a-check-for-hosts-without-a-hook" title="Permanent link">&para;</a></h3>
+<p>A GitHub Action (and the same command for other CI) verifies, on every pull request, that each commit an
+agent made carries receipts that verify against the repository's Mohar key, and fails the check when they
+don't. That covers agents with no usable hook after the fact: their work can't merge without a record.</p>
+<h3 id="order-of-work">Order of work<a class="headerlink" href="#order-of-work" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Claude Code plugin (hooks, <code>http</code> handler straight to the daemon, managed-settings bundle).</li>
+<li>MCP gateway, the floor for every MCP client.</li>
+<li>Codex.</li>
+<li>Copilot and VS Code.</li>
+<li>Cursor.</li>
+<li>Antigravity CLI.</li>
+<li>ADK and agent-SDK libraries.</li>
+<li>Config generators for Devin Desktop, Kiro, Cline and OpenHands on top of <code>mohar-hook</code>.</li>
+<li>The CI receipt check.</li>
+</ol>
 <h2 id="agent-frameworks">Agent frameworks<a class="headerlink" href="#agent-frameworks" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
