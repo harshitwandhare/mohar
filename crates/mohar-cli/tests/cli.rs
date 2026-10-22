@@ -63,7 +63,9 @@ fn init_append_log_verify() {
 
     let v = mohar(&dir, &["verify"]);
     assert!(v.status.success());
-    assert!(String::from_utf8_lossy(&v.stdout).contains("ok: 3 receipts verified"));
+    assert!(
+        String::from_utf8_lossy(&v.stdout).contains("ok: 3 receipts and 0 checkpoints verified")
+    );
 }
 
 #[test]
@@ -104,4 +106,30 @@ fn append_refuses_a_tampered_log() {
     let out = append(&dir, "b");
     assert_eq!(out.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&out.stderr).contains("chain does not verify"));
+}
+
+#[test]
+fn verify_catches_receipts_removed_after_a_checkpoint() {
+    let dir = temp_dir("cut");
+    assert!(mohar(&dir, &["init"]).status.success());
+    for t in ["a", "b", "c"] {
+        assert!(append(&dir, t).status.success());
+    }
+    assert!(mohar(&dir, &["checkpoint"]).status.success());
+    let path = dir.join("receipts.jsonl");
+    let text = fs::read_to_string(&path).expect("read");
+    let kept: Vec<&str> = text.lines().take(2).collect();
+    fs::write(
+        &path,
+        kept.join(
+            "
+",
+        ) + "
+",
+    )
+    .expect("write");
+
+    let v = mohar(&dir, &["verify"]);
+    assert_eq!(v.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&v.stdout).contains("should hold 3 receipts, holds 2"));
 }

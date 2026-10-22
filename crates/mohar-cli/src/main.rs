@@ -5,7 +5,8 @@ use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::{Parser, Subcommand};
-use mohar_core::store::{FileLog, read_receipts};
+use mohar_core::checkpoint::verify_checkpoints;
+use mohar_core::store::{FileLog, read_checkpoints, read_receipts};
 use mohar_core::{Action, Decision, Entry, parse_public_key, verify};
 
 #[derive(Parser)]
@@ -59,7 +60,9 @@ enum Command {
         #[arg(long)]
         last: Option<usize>,
     },
-    /// Check the whole chain against the log's public key. Exits 1 on the first break.
+    /// Sign a checkpoint for the log as it stands.
+    Checkpoint,
+    /// Check the whole chain and every checkpoint against the log's public key. Exits 1 on the first break.
     Verify {
         /// Public key file to check against instead of the one in the log directory.
         #[arg(long)]
@@ -109,6 +112,11 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
                 .map_err(|e| e.to_string())?;
             println!("{}", r.seq);
         }
+        Command::Checkpoint => {
+            let mut log = FileLog::open(&cli.dir).map_err(|e| e.to_string())?;
+            let c = log.checkpoint(&now_rfc3339()).map_err(|e| e.to_string())?;
+            println!("checkpoint at {} receipts", c.count);
+        }
         Command::Log { last } => {
             let receipts =
                 read_receipts(&cli.dir.join("receipts.jsonl")).map_err(|e| e.to_string())?;
@@ -139,13 +147,31 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
                     return Ok(ExitCode::from(1));
                 }
             };
-            match verify(&receipts, &key) {
-                Ok(()) => println!("ok: {} receipts verified", receipts.len()),
-                Err(b) => {
-                    println!("broken: receipt {}: {:?}", b.index, b.kind);
-                    return Ok(ExitCode::from(1));
-                }
+            if let Err(b) = verify(&receipts, &key) {
+                println!("broken: receipt {}: {:?}", b.index, b.kind);
+                return Ok(ExitCode::from(1));
             }
+            let ckpt_path = cli.dir.join("checkpoints.jsonl");
+            let checkpoints = if ckpt_path.exists() {
+                match read_checkpoints(&ckpt_path) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        println!("broken: {e}");
+                        return Ok(ExitCode::from(1));
+                    }
+                }
+            } else {
+                Vec::new()
+            };
+            if let Err(b) = verify_checkpoints(&checkpoints, &receipts, &key) {
+                println!("broken: {b}");
+                return Ok(ExitCode::from(1));
+            }
+            println!(
+                "ok: {} receipts and {} checkpoints verified",
+                receipts.len(),
+                checkpoints.len()
+            );
         }
     }
     Ok(ExitCode::SUCCESS)

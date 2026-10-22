@@ -54,11 +54,12 @@ The first piece that runs is the receipt log and its CLI. From a clone, with Rus
 ```bash
 cargo run -p mohar-cli -- init
 cargo run -p mohar-cli -- append --agent agent:me/1 --capability fs.edit.docs --tool Edit --target docs/a.md --args-sha256 c41b77d0 --result allow
+cargo run -p mohar-cli -- checkpoint
 cargo run -p mohar-cli -- log
 cargo run -p mohar-cli -- verify
 ```
 
-Edit any line in `.mohar/receipts.jsonl` and `verify` names the receipt that broke.
+Edit any line in `.mohar/receipts.jsonl` and `verify` names the receipt that broke. Delete lines from the end after a checkpoint and `verify` reports how many receipts are missing.
 
 ## Roadmap
 

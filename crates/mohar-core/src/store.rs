@@ -12,6 +12,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
+use crate::checkpoint::{self, Checkpoint, CheckpointBreak, verify_checkpoints};
 use crate::{
     ChainBreak, Entry, Error, Receipt, SigningKey, genesis, public_key_string, receipt_hash, seal,
     verify,
@@ -20,6 +21,10 @@ use crate::{
 const KEY_FILE: &str = "key.ed25519";
 const PUBLIC_FILE: &str = "public.key";
 const LOG_FILE: &str = "receipts.jsonl";
+const CHECKPOINT_FILE: &str = "checkpoints.jsonl";
+
+/// A checkpoint is signed automatically after every this many receipts.
+pub const CHECKPOINT_EVERY: u64 = 1000;
 
 /// Why a log directory couldn't be created or opened.
 #[derive(Debug, thiserror::Error)]
@@ -47,6 +52,15 @@ pub enum OpenError {
     /// The receipts parse but the chain doesn't verify.
     #[error("chain does not verify: {0}")]
     Chain(ChainBreak),
+    /// The log no longer holds what a signed checkpoint vouched for.
+    #[error("checkpoints do not match: {0}")]
+    Checkpoint(CheckpointBreak),
+    /// A line of checkpoints.jsonl isn't a complete checkpoint.
+    #[error("checkpoints.jsonl line {line} is not a complete checkpoint")]
+    UnreadableCheckpoint {
+        /// 1-based line number.
+        line: usize,
+    },
     /// A receipt couldn't be built or signed.
     #[error(transparent)]
     Receipt(#[from] Error),
@@ -64,6 +78,7 @@ pub struct FileLog {
     key: SigningKey,
     file: File,
     path: PathBuf,
+    checkpoint_path: PathBuf,
     last_hash: String,
     len: u64,
 }
@@ -103,6 +118,14 @@ impl FileLog {
         let path = dir.join(LOG_FILE);
         let receipts = read_receipts(&path)?;
         verify(&receipts, &key.verifying_key()).map_err(OpenError::Chain)?;
+        let checkpoint_path = dir.join(CHECKPOINT_FILE);
+        let checkpoints = if checkpoint_path.exists() {
+            read_checkpoints(&checkpoint_path)?
+        } else {
+            Vec::new()
+        };
+        verify_checkpoints(&checkpoints, &receipts, &key.verifying_key())
+            .map_err(OpenError::Checkpoint)?;
         let last_hash = match receipts.last() {
             Some(r) => receipt_hash(r)?,
             None => genesis(),
@@ -115,6 +138,7 @@ impl FileLog {
             key,
             file,
             path,
+            checkpoint_path,
             last_hash,
             len: receipts.len() as u64,
         })
@@ -129,7 +153,25 @@ impl FileLog {
         self.file.sync_data().map_err(io(&self.path))?;
         self.last_hash = receipt_hash(&r)?;
         self.len += 1;
+        if self.len.is_multiple_of(CHECKPOINT_EVERY) {
+            self.checkpoint(&r.ts)?;
+        }
         Ok(r)
+    }
+
+    /// Sign and durably write a checkpoint for the log as it stands.
+    pub fn checkpoint(&mut self, ts: &str) -> Result<Checkpoint, OpenError> {
+        let c = checkpoint::sign(&self.key, self.len, self.last_hash.clone(), ts.to_string())?;
+        let mut line = serde_json::to_vec(&c).map_err(|e| Error::Canonical(e.to_string()))?;
+        line.push(b'\n');
+        let mut f = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.checkpoint_path)
+            .map_err(io(&self.checkpoint_path))?;
+        f.write_all(&line).map_err(io(&self.checkpoint_path))?;
+        f.sync_data().map_err(io(&self.checkpoint_path))?;
+        Ok(c)
     }
 
     /// Number of receipts in the log.
@@ -153,6 +195,23 @@ pub fn read_receipts(path: &Path) -> Result<Vec<Receipt>, OpenError> {
             continue;
         }
         out.push(serde_json::from_str(&line).map_err(|_| OpenError::Unreadable { line: i + 1 })?);
+    }
+    Ok(out)
+}
+
+/// Read every checkpoint in a checkpoints file.
+pub fn read_checkpoints(path: &Path) -> Result<Vec<Checkpoint>, OpenError> {
+    let file = File::open(path).map_err(io(path))?;
+    let mut out = Vec::new();
+    for (i, line) in BufReader::new(file).lines().enumerate() {
+        let line = line.map_err(io(path))?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        out.push(
+            serde_json::from_str(&line)
+                .map_err(|_| OpenError::UnreadableCheckpoint { line: i + 1 })?,
+        );
     }
     Ok(out)
 }
