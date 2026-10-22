@@ -22,6 +22,8 @@ receipt format; each such change is called out.
   one receipt at a time, `store::verify_file` and `store::verify_log` use it, and signatures are checked
   on all available cores. `mohar verify` and `mohar log` stream too; `log --last N` keeps only N
   receipts. `verify` and `verify_checkpoints` work as before (#59).
+- The website scales its type and spacing down to phones, has one header with a menu on every page,
+  and uses one button system. A test fails if any page scrolls sideways at 320px (#78).
 
 ### Security
 

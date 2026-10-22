@@ -15,7 +15,23 @@ const docs = [
 // Anchors come from the heading's plain text; anything that isn't a letter or digit becomes a dash.
 const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-function page({ title, blurb, body, toc, md }) {
+const navLinks = cur => [
+  ['https://harshitwandhare.github.io/mohar/', 'Docs'],
+  ['design.html', 'Design'],
+  ['roadmap.html', 'Roadmap'],
+  ['integrations.html', 'Integrations'],
+  ['compliance.html', 'Compliance'],
+].map(([h, t]) => `<a href="${h}"${h === cur ? ' aria-current="page"' : ''}>${t}</a>`).join('') +
+  '<a class="action" href="https://github.com/harshitwandhare/mohar">GitHub</a>';
+
+// Same header as the hand-written pages; under 900px the links fold into the menu.
+const header = cur => `<header class="bar">
+  <a class="wordmark" href="./" translate="no"><img src="logo.svg" alt="" width="28" height="28">Mohar</a>
+  <nav aria-label="Primary">${navLinks(cur)}</nav>
+  <details class="menu"><summary>Menu</summary><nav aria-label="Menu">${navLinks(cur)}</nav></details>
+</header>`;
+
+function page({ title, blurb, body, toc, md, page }) {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -33,22 +49,12 @@ function page({ title, blurb, body, toc, md }) {
 </head>
 <body class="doc">
 <a class="skip" href="#main">Skip to content</a>
-<header class="bar">
-  <a class="wordmark" href="./" translate="no"><img src="logo.svg" alt="" width="34" height="34">Mohar</a>
-  <nav aria-label="Primary">
-    <a href="design.html">Design</a>
-    <a href="roadmap.html">Roadmap</a>
-    <a href="integrations.html">Integrations</a>
-    <a href="compliance.html">Compliance</a>
-    <a href="${md}">Markdown</a>
-    <a class="action" href="https://github.com/harshitwandhare/mohar">GitHub</a>
-  </nav>
-</header>
+${header(page)}
 <div class="doc-layout">
   <nav class="toc" aria-label="On this page">${toc}</nav>
-  <main id="main" class="prose">${body}</main>
+  <main id="main" class="prose">${body}<p class="page-meta">Generated from <a href="https://github.com/harshitwandhare/mohar/blob/main/${md}">${md}</a>. Read it <a href="${md}">as Markdown</a>.</p></main>
 </div>
-<footer class="close"><p>Generated from <a href="https://github.com/harshitwandhare/mohar/blob/main/${md}">${md}</a> in the repository. Apache-2.0.</p></footer>
+<footer class="close"><p>Apache-2.0. <a href="./">Home</a> · <a href="https://harshitwandhare.github.io/mohar/">Docs</a> · <a href="engineering-bar.html">Engineering bar</a> · <a href="business-model.html">Sustainability</a> · <a href="name.html">About the name</a></p></footer>
 </body>
 </html>
 `;
