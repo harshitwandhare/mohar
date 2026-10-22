@@ -1,0 +1,83 @@
+// Renders docs/*.md into site pages and publishes the raw markdown beside them for agents.
+// Runs on every deploy, so the site can't drift from the design document in the repo.
+import { readFile, writeFile, mkdir, copyFile } from 'node:fs/promises';
+import { marked } from 'marked';
+
+const docs = [
+  { src: 'docs/design.md', page: 'design.html', title: 'Design', blurb: 'How Mohar decides what an agent may do, how trust is earned and lost, and what each receipt proves.' },
+  { src: 'docs/ROADMAP.md', page: 'roadmap.html', title: 'Roadmap', blurb: 'What gets built, in what order.' },
+];
+
+const slug = s => s.toLowerCase().replace(/<[^>]+>/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+function page({ title, blurb, body, toc, md }) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${title} · Mohar</title>
+<meta name="description" content="${blurb}">
+<meta name="theme-color" content="#16130f">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Tiro+Devanagari+Marathi&family=Schibsted+Grotesk:wght@400;500;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="alternate" type="text/markdown" href="${md}">
+</head>
+<body class="doc">
+<a class="skip" href="#main">Skip to content</a>
+<header class="bar">
+  <a class="wordmark" href="./" translate="no"><img src="logo.svg" alt="" width="34" height="34">Mohar</a>
+  <nav aria-label="Primary">
+    <a href="design.html">Design</a>
+    <a href="roadmap.html">Roadmap</a>
+    <a href="${md}">Markdown</a>
+    <a class="action" href="https://github.com/harshitwandhare/mohar">GitHub</a>
+  </nav>
+</header>
+<div class="doc-layout">
+  <nav class="toc" aria-label="On this page">${toc}</nav>
+  <main id="main" class="prose">${body}</main>
+</div>
+<footer class="close"><p>Generated from <a href="https://github.com/harshitwandhare/mohar/blob/main/${md.replace(/^docs\//, 'docs/')}">${md}</a> in the repository. Apache-2.0.</p></footer>
+</body>
+</html>
+`;
+}
+
+await mkdir('site/docs', { recursive: true });
+const index = [];
+for (const d of docs) {
+  const md = await readFile(d.src, 'utf8');
+  const heads = [];
+  const renderer = new marked.Renderer();
+  renderer.heading = ({ tokens, depth }) => {
+    const text = marked.Parser.parseInline(tokens);
+    const id = slug(text);
+    if (depth === 2) heads.push({ id, text });
+    return `<h${depth} id="${id}">${text}</h${depth}>`;
+  };
+  // Links between docs point at the rendered pages.
+  const body = marked.parse(md, { renderer }).replaceAll('href="ROADMAP.md"', 'href="roadmap.html"').replaceAll('href="design.md"', 'href="design.html"');
+  const toc = heads.map(h => `<a href="#${h.id}">${h.text}</a>`).join('');
+  const raw = `docs/${d.src.split('/').pop()}`;
+  await copyFile(d.src, `site/${raw}`);
+  await writeFile(`site/${d.page}`, page({ ...d, body, toc, md: raw }));
+  index.push(`- [${d.title}](https://mohar-liard.vercel.app/${raw}): ${d.blurb}`);
+}
+
+await writeFile('site/llms.txt', `# Mohar
+
+> Open-source trust layer for AI agents. Authority is earned per capability from verified outcomes and lost immediately on failure. Every decision produces a signed, hash-chained receipt. Early stage: the design is specified, implementation is in progress.
+
+## Docs
+
+${index.join('\n')}
+
+## Repository
+
+- [Source and issues](https://github.com/harshitwandhare/mohar): start with AGENTS.md if you are a coding agent.
+`);
+console.log('built', docs.map(d => d.page).join(', '));

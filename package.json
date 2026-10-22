@@ -3,9 +3,12 @@
   "private": true,
   "scripts": {
     "serve": "node e2e/serve.mjs",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "build": "node scripts/build-docs.mjs",
+    "pretest:e2e": "node scripts/build-docs.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "1.64.1"
+    "@playwright/test": "1.64.1",
+    "marked": "18.1.0"
   }
 }

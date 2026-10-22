@@ -58,3 +58,21 @@ test('every archival picture has alt text and a credit in the footer', async ({ 
   const credits = page.locator('.credits');
   for (const word of ['Raigad', 'Jnanesvari', 'Shaniwar Wada']) await expect(credits).toContainText(word);
 });
+
+test('design page is built from docs/design.md, with a working contents list', async ({ page, request }) => {
+  await page.goto('/design.html');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Mohar design');
+  await page.getByRole('navigation', { name: 'On this page' }).getByRole('link', { name: '7. Receipts' }).click();
+  await expect(page).toHaveURL(/#7-receipts$/);
+  const md = await request.get('/docs/design.md');
+  expect(md.ok()).toBeTruthy();
+  expect(await md.text()).toContain('## 4. Trust levels and the rules that move them');
+});
+
+test('llms.txt points agents at the markdown docs', async ({ request }) => {
+  const res = await request.get('/llms.txt');
+  expect(res.ok()).toBeTruthy();
+  const body = await res.text();
+  expect(body).toMatch(/^# Mohar/);
+  expect(body).toContain('/docs/design.md');
+});

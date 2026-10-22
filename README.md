@@ -49,7 +49,7 @@ Microsoft's Agent Governance Toolkit, and Paperclip. Mohar is built to sit besid
 
 ## Roadmap
 
-See [docs/ROADMAP.md](docs/ROADMAP.md).
+See [docs/ROADMAP.md](docs/ROADMAP.md). The full design, with the trust rules, receipt format and threat model, is in [docs/design.md](docs/design.md).
 
 ## Contributing
 

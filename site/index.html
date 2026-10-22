@@ -20,7 +20,8 @@
   <nav aria-label="Primary">
     <a href="#try">Try it</a>
     <a href="#how">How it works</a>
-    <a href="#seal">The seal</a>
+    <a href="design.html">Design</a>
+    <a href="roadmap.html">Roadmap</a>
     <a class="action" href="https://github.com/harshitwandhare/mohar">GitHub</a>
   </nav>
 </header>
@@ -36,6 +37,15 @@
       <img fetchpriority="high" src="assets/seal-still.jpg" alt="A carved brass seal stamp with a lotus-bud handle beside vermilion मोहर impressions on an old Marathi manuscript" width="900" height="900">
     </div>
     <p class="hint">Tilt the stamp with your pointer. Click it, or run the agent below, and it presses a receipt.</p>
+  </section>
+
+  <section class="numbers reveal" aria-labelledby="num-h">
+    <h2 id="num-h">Approval prompts stopped working</h2>
+    <div class="figures">
+      <p><span class="fig">93%</span>of Claude Code's manual permission prompts are accepted, by Anthropic's own count. <a href="https://www.anthropic.com/engineering/claude-code-auto-mode">Anthropic, March 2026</a></p>
+      <p><span class="fig">16 min</span>median time to the first critical failure when Zscaler's red team attacked enterprise AI systems. Every system tested had critical flaws. <a href="https://www.zscaler.com/press/zscaler-2026-ai-threat-report-83-year-over-year-surge-ai-activity-creates-growing-oversight">Zscaler ThreatLabz, January 2026</a></p>
+    </div>
+    <p class="note">People approve almost everything, and the systems they approve break fast. Mohar asks less often, and only about actions an agent hasn't earned.</p>
   </section>
 
   <section class="try reveal" id="try" aria-labelledby="try-h">
@@ -61,6 +71,67 @@
       <div><dt>Score each capability</dt><dd>Editing docs and running migrations are tracked apart. Hard gates sit outside the score, so an average can't hide a failure.</dd></div>
       <div><dt>Decide</dt><dd>Inside earned limits the action runs. Outside them it goes to the right person, with the agent's history attached.</dd></div>
     </dl>
+  </section>
+
+  <section class="flow reveal" id="flow" aria-labelledby="flow-h">
+    <h2 id="flow-h">One decision, start to finish</h2>
+    <figure class="diagram" data-ui>
+      <svg viewBox="0 0 1000 300" role="img" aria-labelledby="flow-t">
+        <title id="flow-t">An agent's tool call passes through Mohar's adapter, policy gates and trust engine, then runs, goes to a person, or is denied. Every path writes a signed receipt.</title>
+        <g class="box"><rect x="10" y="110" width="150" height="80"/><text x="85" y="145">Agent</text><text class="s" x="85" y="168">tool call</text></g>
+        <g class="box"><rect x="210" y="110" width="150" height="80"/><text x="285" y="145">Adapter</text><text class="s" x="285" y="168">hook, MCP, plugin</text></g>
+        <g class="box"><rect x="410" y="110" width="150" height="80"/><text x="485" y="145">Gates</text><text class="s" x="485" y="168">hard rules first</text></g>
+        <g class="box"><rect x="610" y="110" width="150" height="80"/><text x="685" y="145">Trust</text><text class="s" x="685" y="168">per capability</text></g>
+        <g class="box ok"><rect x="830" y="20" width="160" height="62"/><text x="910" y="57">Runs</text></g>
+        <g class="box ask"><rect x="830" y="119" width="160" height="62"/><text x="910" y="156">Goes to a person</text></g>
+        <g class="box no"><rect x="830" y="218" width="160" height="62"/><text x="910" y="255">Denied</text></g>
+        <g class="arrows"><path d="M160 150 H210 M360 150 H410 M560 150 H610 M760 150 H830 M760 150 C795 150 795 51 830 51 M760 150 C795 150 795 249 830 249"/></g>
+      </svg>
+      <figcaption>Every path writes a receipt. A failed or undecided gate denies before any score is read. When the outcome arrives, a verifier (tests, diff, replay or a person) records pass or fail, and that is the only evidence trust is built from.</figcaption>
+    </figure>
+  </section>
+
+  <section class="receipt reveal" id="receipt" aria-labelledby="rec-h">
+    <h2 id="rec-h">What a receipt proves</h2>
+    <div class="receipt-grid">
+<pre><code>{
+  "v": 1,
+  "seq": 4182,
+  "prev": "sha256:9f2c…e01a",
+  "ts": "2026-11-03T14:22:07.311Z",
+  "agent": { "id": "agent:claude-code/laptop/7c1e",
+             "key": "ed25519:Mx3f…Q" },
+  "authority": [{ "principal": "human:harshit",
+                  "granted": ["fs.edit.*"] }],
+  "action": { "capability": "fs.edit.tests",
+              "args_sha256": "c41b…77d0" },
+  "decision": { "result": "allow", "level": 1,
+                "wilson_lower": 0.83, "n": 14 },
+  "verification": { "kind": "tests", "result": "pass" },
+  "sig": "ed25519:8sQ1…wA"
+}</code></pre>
+      <dl class="fields">
+        <div><dt>prev</dt><dd>The hash of the receipt before this one. Change or delete any receipt and every later one stops matching.</dd></div>
+        <div><dt>authority</dt><dd>The chain of people and agents that handed this agent its rights. Each link can only narrow what it received.</dd></div>
+        <div><dt>args_sha256</dt><dd>The exact action. A person's approval is bound to this hash, so a different action can't run under it.</dd></div>
+        <div><dt>decision</dt><dd>Why it ran: the level on this capability, and the evidence behind it.</dd></div>
+        <div><dt>sig</dt><dd>Ed25519 over the RFC 8785 canonical bytes, made by a daemon key the agent never sees.</dd></div>
+      </dl>
+    </div>
+    <p class="note">An example of the planned format. The full field list is in the <a href="design.html#7-receipts">design</a>.</p>
+  </section>
+
+  <section class="rules-detail reveal" aria-labelledby="lvl-h">
+    <h2 id="lvl-h">How trust moves</h2>
+    <table>
+      <thead><tr><th>Level</th><th>What happens</th><th>To get here</th></tr></thead>
+      <tbody>
+        <tr><td>Ask first</td><td>Every action goes to a person.</td><td>The start, and where any gate violation or high-risk failure sends an agent.</td></tr>
+        <tr><td>Supervised</td><td>Low-risk reversible actions run; 20% are sampled for review.</td><td>10 verified outcomes, a lower 95% Wilson bound of 0.80, and 7 days at the level below.</td></tr>
+        <tr><td>Trusted</td><td>Actions run inside the capability's gates; 5% are sampled.</td><td>30 verified outcomes and a lower bound of 0.95. Never for high-risk irreversible capabilities.</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Five successes out of five give a lower bound of about 0.57, so a lucky streak promotes nobody. Evidence fades with a 30-day half-life. Demotion is immediate; promotion always waits. These are starting values for the benchmark to test. <a href="design.html">Read the full design</a></p>
   </section>
 
   <figure class="band reveal">
