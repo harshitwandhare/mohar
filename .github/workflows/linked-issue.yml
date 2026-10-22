@@ -1,0 +1,26 @@
+name: Linked issue
+
+# Every change starts from an issue. Fails a pull request whose description doesn't close one.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Pull request links an issue
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Look for "Closes #N"
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if printf '%s' "$BODY" | grep -Eiq '(close[sd]?|fix(e[sd])?|resolve[sd]?) +#[0-9]+'; then
+            echo "linked issue found"
+          else
+            echo "::error::Add 'Closes #<issue>' to the pull request description. Every change starts from an issue."
+            exit 1
+          fi
