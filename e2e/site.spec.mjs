@@ -50,13 +50,20 @@ test('without WebGL or with reduced motion the still seal shows', async ({ brows
   await page.close();
 });
 
-test('every archival picture has alt text and a credit in the footer', async ({ page }) => {
-  await page.goto('/');
+test('the story of the name lives on its own page, with every picture credited', async ({ page }) => {
+  await page.goto('/name.html');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Why Mohar');
   for (const img of await page.locator('main img').all()) {
     expect((await img.getAttribute('alt'))?.length).toBeGreaterThan(10);
   }
   const credits = page.locator('.credits');
   for (const word of ['Raigad', 'Jnanesvari', 'Shaniwar Wada']) await expect(credits).toContainText(word);
+});
+
+test('the main page stays about the product', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('.seal-story, .band')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'About the name' })).toHaveAttribute('href', 'name.html');
 });
 
 test('design page is built from docs/design.md, with a working contents list', async ({ page, request }) => {
