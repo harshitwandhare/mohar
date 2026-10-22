@@ -9,6 +9,7 @@ use ed25519_dalek::{Signature, Signer, Verifier};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+pub mod checkpoint;
 pub mod store;
 
 pub use ed25519_dalek::VerifyingKey;
