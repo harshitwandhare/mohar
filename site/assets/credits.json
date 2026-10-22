@@ -92,5 +92,39 @@
   "credit": "\"Shaniwar Wada Main Gate 01\" by Pravega, CC0, via Wikimedia Commons",
   "notes": [],
   "saved": "2026-10-22T03:03:16.229Z"
+ },
+ {
+  "media": "image",
+  "date": null,
+  "license": "CC0",
+  "licenseCode": "cc0",
+  "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "creditRequired": false,
+  "via": "Poly Haven",
+  "notes": [
+   "Diffuse, normal (GL) and roughness maps at 1k: rosewood_veneer1_{diff,nor_gl,rough}_1k.jpg."
+  ],
+  "file": "assets/pbr/rosewood_veneer1_diff_1k.jpg",
+  "ref": "polyhaven:rosewood_veneer1",
+  "title": "Rosewood Veneer1",
+  "creator": "Jenelle van Heerden",
+  "page": "https://polyhaven.com/a/rosewood_veneer1",
+  "credit": "\"Rosewood Veneer1\" by Jenelle van Heerden, CC0, via Poly Haven"
+ },
+ {
+  "media": "image",
+  "date": null,
+  "license": "CC0",
+  "licenseCode": "cc0",
+  "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "creditRequired": false,
+  "via": "Poly Haven",
+  "notes": [],
+  "file": "assets/pbr/brown_photostudio_02_1k.hdr",
+  "ref": "polyhaven:brown_photostudio_02",
+  "title": "Brown Photostudio 02",
+  "creator": "Sergej Majboroda",
+  "page": "https://polyhaven.com/a/brown_photostudio_02",
+  "credit": "\"Brown Photostudio 02\" by Sergej Majboroda, CC0, via Poly Haven"
  }
 ]

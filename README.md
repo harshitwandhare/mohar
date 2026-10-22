@@ -1,4 +1,4 @@
-<p align="center"><img src="site/logo.svg" alt="Mohar" width="120"></p>
+<p align="center"><img src="site/assets/brand/mohar-seal-512.png" alt="The Mohar seal: मो in Modi script on a gold octagonal medallion" width="160"></p>
 
 <h1 align="center">Mohar</h1>
 

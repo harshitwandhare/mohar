@@ -8,8 +8,8 @@ copyright: Apache-2.0. "Mohar" is the project's name and is not licensed for use
 
 theme:
   name: material
-  logo: assets/logo.svg
-  favicon: assets/logo.svg
+  logo: assets/mohar-seal-512.png
+  favicon: assets/favicon-64.png
   palette:
     - media: "(prefers-color-scheme: dark)"
       scheme: slate

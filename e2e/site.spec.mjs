@@ -90,8 +90,14 @@ test('no page is wider than a 320px phone, and each has the same header', async 
   await page.setViewportSize({ width: 320, height: 720 });
   for (const path of pages) {
     await page.goto(path);
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-    expect(overflow, `${path} scrolls sideways`).toBe(0);
+    // On failure, name what sticks out, so the fix doesn't have to be guessed.
+    const wide = await page.evaluate(() => {
+      const W = document.documentElement.clientWidth;
+      if (document.documentElement.scrollWidth <= W) return [];
+      return [...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > W + 0.5 && !e.closest('pre'))
+        .slice(0, 6).map(e => `${e.tagName.toLowerCase()}.${e.className} ends at ${Math.round(e.getBoundingClientRect().right)}px: ${e.textContent.trim().slice(0, 30)}`);
+    });
+    expect(wide, `${path} scrolls sideways`).toEqual([]);
     const menu = page.locator('.menu');
     await expect(menu, `${path} has no menu`).toBeVisible();
     await menu.locator('summary').click();
@@ -107,4 +113,33 @@ test('body text stays readable but not oversized on a phone', async ({ page }) =
   const size = await page.evaluate(() => parseFloat(getComputedStyle(document.body).fontSize));
   expect(size).toBeGreaterThanOrEqual(16);
   expect(size).toBeLessThanOrEqual(17);
+});
+
+test('no text spills out of its box at phone, tablet or desktop width', async ({ page }) => {
+  for (const width of [320, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const path of pages) {
+      await page.goto(path);
+      const spills = await page.evaluate(() => {
+        const out = [];
+        for (const e of document.querySelectorAll('main *, footer *')) {
+          // Code blocks, tables and the contents chip row scroll on purpose.
+          if (e.children.length || !e.textContent.trim() || e.closest('pre, table, .toc, svg')) continue;
+          if (e.clientWidth && e.scrollWidth > e.clientWidth + 1) out.push(`${e.tagName} "${e.textContent.trim().slice(0, 30)}"`);
+        }
+        return out;
+      });
+      expect(spills, `${path} at ${width}px`).toEqual([]);
+    }
+  }
+});
+
+test('the trust meter fills as passes are verified, under the production CSP', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Next task' }).click();
+  const fill = page.locator('.cap').filter({ hasText: 'Edit docs' }).locator('.meter span');
+  const ratio = async () => (await fill.boundingBox()).width / (await fill.locator('..').boundingBox()).width;
+  // One pass of the eight needed to reach the top: an eighth of the meter, not empty and not full.
+  await expect.poll(ratio).toBeGreaterThan(0.1);
+  await expect.poll(ratio).toBeLessThan(0.15);
 });

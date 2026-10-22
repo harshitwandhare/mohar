@@ -2,7 +2,9 @@
 // pointer; a click (or a receipt from the simulator) presses a vermilion impression onto the manuscript.
 // Without WebGL 2, or with reduced motion, the still image in the markup stays.
 import * as THREE from 'three';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
 const host = document.getElementById('seal3d');
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -79,22 +81,39 @@ export function sealFace(size, ink, ground, mirror) {
 async function start() {
   await document.fonts.load('700 40px "Tiro Devanagari Marathi"').catch(() => {});
 
+  // Load the model and the studio first; if either fails, the still image stays.
+  const draco = new DRACOLoader().setDecoderPath('vendor/draco/');
+  let gltf, hdr;
+  try {
+    [gltf, hdr] = await Promise.all([
+      new GLTFLoader().setDRACOLoader(draco).loadAsync('assets/stamp.glb'),
+      // A photographed studio (Poly Haven, CC0) gives the metal and lacquer real softboxes to reflect.
+      new HDRLoader().loadAsync('assets/pbr/brown_photostudio_02_1k.hdr'),
+    ]);
+  } catch {
+    return;
+  } finally {
+    draco.dispose();
+  }
+
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMapping = THREE.AgXToneMapping;
+  renderer.toneMappingExposure = 1.15;
   host.append(renderer.domElement);
   host.classList.add('live');
 
   const scene = new THREE.Scene();
   const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  scene.environmentIntensity = 0.35;
+  scene.environment = pmrem.fromEquirectangular(hdr).texture;
+  hdr.dispose();
+  scene.environmentIntensity = 0.75;
 
   const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
-  camera.position.set(0, 6.6, 9.2);
-  camera.lookAt(0, 2.0, 0);
+  camera.position.set(0, 7.6, 12.8);
+  camera.lookAt(0, 2.8, 0);
 
   // One warm lamp: a pool of light on the page that falls off into the dark ground around it.
   const lamp = new THREE.SpotLight(0xffe2b8, 420, 40, Math.PI / 6, 0.9, 2);
@@ -104,137 +123,67 @@ async function start() {
   lamp.shadow.mapSize.set(2048, 2048);
   lamp.shadow.radius = 8;
   lamp.shadow.bias = -0.0004;
-  scene.add(lamp, lamp.target, new THREE.AmbientLight(0xffffff, 0.04));
+  // A cool rim from behind separates the stamp from the dark ground.
+  const rim = new THREE.DirectionalLight(0xd8e4ff, 1.4);
+  rim.position.set(4, 6, -8);
+  scene.add(lamp, lamp.target, rim, new THREE.AmbientLight(0xffffff, 0.04));
 
+  const aniso = renderer.capabilities.getMaxAnisotropy();
   // Paper: an 1843 Marathi manuscript page (credited on the page).
   const loader = new THREE.TextureLoader();
   const paperTex = loader.load('assets/1765-saka-1843-ce-jnanesvari-jnandeva-dnyaneshwar.jpg');
   paperTex.colorSpace = THREE.SRGBColorSpace;
-  paperTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  paperTex.anisotropy = aniso;
   const paper = new THREE.Mesh(new THREE.PlaneGeometry(22, 27), new THREE.MeshStandardMaterial({ map: paperTex, roughness: 0.95 }));
   paper.rotation.x = -Math.PI / 2;
   paper.position.z = -1;
   paper.receiveShadow = true;
   scene.add(paper);
 
-  // Brass matrix: octagonal die with the engraving as a bump map, turned brass handle above it.
-  const brass = new THREE.MeshStandardMaterial({ color: 0x9c7840, metalness: 1, roughness: 0.42 });
+  // The stamp is modelled and carved in Blender (tools/stamp/build_stamp.py): an octagonal brass die
+  // with incised lotus engraving, a turned brass plinth and ferrule, and a sheesham handle with two
+  // bands of vine relief. Ambient occlusion is baked into its vertex colours.
+  // Fine lathe rings in the roughness, so the brass reads as turned metal, not plastic.
+  const rings = document.createElement('canvas');
+  rings.width = 4; rings.height = 512;
+  const rg = rings.getContext('2d');
+  for (let y = 0; y < 512; y++) { const v = 150 + Math.random() * 60; rg.fillStyle = `rgb(${v},${v},${v})`; rg.fillRect(0, y, 4, 1); }
+  const ringTex = new THREE.CanvasTexture(rings);
+  ringTex.wrapS = ringTex.wrapT = THREE.RepeatWrapping;
+  ringTex.repeat.set(1, 3);
+  const brass = new THREE.MeshPhysicalMaterial({ color: 0xb48c52, metalness: 1, roughness: 0.42, roughnessMap: ringTex, vertexColors: true });
+  // The printing face is drawn here, so its engraving always matches the impression.
   const face = new THREE.CanvasTexture(sealFace(1024, '#fff', '#000', true));
-  const faceMat = brass.clone();
-  faceMat.bumpMap = face;
-  faceMat.bumpScale = 6;
-  faceMat.roughness = 0.55;
+  const faceMat = new THREE.MeshPhysicalMaterial({ color: 0xb48c52, metalness: 1, roughness: 0.55, bumpMap: face, bumpScale: 6 });
 
-  // The stamp tool, modelled on 17th-century Deccani gilt-brass finials: an octagonal die, a lotus
-  // petal collar, a pierced ogee-lattice shaft between beaded rings, and a scaled lotus bud on top.
-  // All carving is drawn here as textures; nothing is copied from a photograph.
-  const stamp = new THREE.Group();
-  // Corners at pi/8 + k*pi/4, the same angles sealFace draws, so the engraved border sits on the edges.
-  const die = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.45, 8, 1, false, Math.PI / 8), [brass, brass, faceMat]);
-  die.position.y = 0.225;
-  // The face is the bottom cap; give it planar UVs so the octagon texture sits on it.
-  const pos = die.geometry.attributes.position, uv = die.geometry.attributes.uv;
-  for (let i = 0; i < pos.count; i++) {
-    if (pos.getY(i) < 0) uv.setXY(i, 0.5 + pos.getX(i) / 3.2, 0.5 + pos.getZ(i) / 3.2);
-  }
-  stamp.add(die);
-
-  // A carved texture drawn into a canvas, used as a bump map and to darken the recesses.
-  function carved(draw, w = 1024, h = 1024, rx = 1, ry = 1) {
-    const c = document.createElement('canvas');
-    c.width = w; c.height = h;
-    const g = c.getContext('2d');
-    g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
-    draw(g, w, h);
-    const t = new THREE.CanvasTexture(c);
+  // Photographed rosewood (Poly Haven, CC0): sheesham is Indian rosewood. Grain runs along the handle.
+  const pbr = (name, srgb) => {
+    const t = loader.load('assets/pbr/rosewood_veneer1_' + name + '_1k.jpg');
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(rx, ry);
+    t.repeat.set(2, 0.5);
+    t.anisotropy = aniso;
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
     return t;
-  }
-  function carvedBrass(tex, bump) {
-    const m = brass.clone();
-    m.bumpMap = tex; m.bumpScale = bump;
-    m.aoMap = tex; m.aoMapIntensity = 0.9;
-    return m;
-  }
-  // Ogee lattice: rows of almond cells, each cell sunk, the net between them left standing.
-  const lattice = carved((g, w, h) => {
-    const cols = 8, rows = 6, cw = w / cols, ch = h / rows;
-    g.fillStyle = '#111';
-    for (let r = -1; r <= rows; r++) for (let c = -1; c <= cols; c++) {
-      const x = (c + (r % 2 ? 0.5 : 0)) * cw + cw / 2, y = r * ch + ch / 2;
-      g.beginPath();
-      g.moveTo(x, y - ch * 0.46);
-      g.bezierCurveTo(x + cw * 0.42, y - ch * 0.2, x + cw * 0.42, y + ch * 0.2, x, y + ch * 0.46);
-      g.bezierCurveTo(x - cw * 0.42, y + ch * 0.2, x - cw * 0.42, y - ch * 0.2, x, y - ch * 0.46);
-      g.fill();
-    }
-  }, 1024, 768, 2, 1);
-  // Overlapping scale-petals for the lotus bud.
-  const scales = carved((g, w, h) => {
-    const n = 16, rows = 12, sw = w / n, sh = h / rows;
-    for (let r = rows; r >= -1; r--) for (let c = -1; c <= n; c++) {
-      const x = (c + (r % 2 ? 0.5 : 0)) * sw, y = r * sh;
-      const grd = g.createRadialGradient(x, y, sw * 0.1, x, y, sw * 0.62);
-      grd.addColorStop(0, '#fff'); grd.addColorStop(0.8, '#bbb'); grd.addColorStop(1, '#222');
-      g.fillStyle = grd;
-      g.beginPath(); g.arc(x, y, sw * 0.6, 0, Math.PI); g.fill();
-    }
-  }, 1024, 1024, 1, 1);
-  // Fine vertical fluting for collars.
-  const flutes = carved((g, w, h) => {
-    for (let i = 0; i < 64; i++) { g.fillStyle = i % 2 ? '#fff' : '#333'; g.fillRect((i * w) / 64, 0, w / 128, h); }
-  }, 1024, 64, 1, 1);
+  };
+  const wood = new THREE.MeshPhysicalMaterial({
+    map: pbr('diff', true), normalMap: pbr('nor_gl'), roughnessMap: pbr('rough'), vertexColors: true,
+    color: 0xa89482, roughness: 0.8, clearcoat: 0.35, clearcoatRoughness: 0.18,
+  });
 
-  const lathe = (pts, mat, y) => {
-    const m = new THREE.Mesh(new THREE.LatheGeometry(pts.map(([x, yy]) => new THREE.Vector2(x, yy)), 96), mat);
-    m.position.y = y;
-    stamp.add(m);
-    return m;
-  };
-  const beads = (radius, y, count, size) => {
-    const geo = new THREE.SphereGeometry(size, 12, 8);
-    for (let i = 0; i < count; i++) {
-      const a = (i / count) * Math.PI * 2;
-      const b = new THREE.Mesh(geo, brass);
-      b.position.set(Math.cos(a) * radius, y, Math.sin(a) * radius);
-      stamp.add(b);
-    }
-  };
-  const petals = (radius, y, count, len, tilt, mat) => {
-    const geo = new THREE.SphereGeometry(1, 16, 10);
-    for (let i = 0; i < count; i++) {
-      const a = (i / count) * Math.PI * 2;
-      const p = new THREE.Mesh(geo, mat);
-      p.scale.set(len * 0.38, len, len * 0.16);
-      p.position.set(Math.cos(a) * radius, y, Math.sin(a) * radius);
-      p.rotation.set(0, -a + Math.PI / 2, 0);
-      p.rotateX(tilt);
-      stamp.add(p);
-    }
-  };
-
-  // Plinth and petal collar above the die.
-  lathe([[0, 0], [1.05, 0], [1.1, 0.08], [0.95, 0.14], [0.98, 0.22], [0.8, 0.3], [0, 0.3]], carvedBrass(flutes, 3), 0.45);
-  petals(0.62, 0.95, 12, 0.42, -0.55, brass);
-  beads(0.5, 1.12, 22, 0.055);
-  // Lattice shaft.
-  lathe([[0.36, 0], [0.4, 0.12], [0.38, 0.9], [0.4, 1.02]], carvedBrass(lattice, 5), 1.15);
-  beads(0.44, 2.2, 20, 0.05);
-  lathe([[0, 0], [0.5, 0], [0.56, 0.06], [0.42, 0.14], [0, 0.14]], carvedBrass(flutes, 2), 2.2);
-  // Lotus calyx and the scaled bud.
-  petals(0.42, 2.48, 10, 0.34, -0.85, brass);
-  const bud = [];
-  for (let i = 0; i <= 24; i++) {
-    const t = i / 24;
-    bud.push([Math.sin(Math.PI * Math.pow(t, 0.8)) * 0.48 * (1 - t * 0.35), t * 1.15]);
-  }
-  bud.push([0, 1.2]);
-  lathe(bud, carvedBrass(scales, 4), 2.36);
-  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.28, 16), brass);
-  tip.position.y = 3.68;
-  stamp.add(tip);
-  stamp.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  const stamp = new THREE.Group();
+  gltf.scene.traverse(o => {
+    if (!o.isMesh) return;
+    o.material = o.name.startsWith('wood') ? wood : brass;
+    o.castShadow = true;
+  });
+  stamp.add(gltf.scene);
+  // Bottom face, corners at pi/8 + k*pi/4 like the model and sealFace, so the border meets the edges.
+  const faceGeo = new THREE.CircleGeometry(1.5, 8, Math.PI / 8);
+  const fp = faceGeo.attributes.position, fuv = faceGeo.attributes.uv;
+  for (let i = 0; i < fp.count; i++) fuv.setXY(i, 0.5 + fp.getX(i) / 3.2, 0.5 + fp.getY(i) / 3.2);
+  const die = new THREE.Mesh(faceGeo, faceMat);
+  die.rotation.x = Math.PI / 2;
+  stamp.add(die);
   const REST = 1.6;
   stamp.position.y = REST;
   scene.add(stamp);
