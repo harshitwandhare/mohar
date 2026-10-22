@@ -6,6 +6,7 @@
   --field: #221d17;
   --seal: #c2312a;
   --seal-ink: #ffffff;
+  --seal-text: #e0574d; /* vermilion for text on the dark ground, 4.97:1 */
   --ok: #7fb37a;
   --font: "Schibsted Grotesk", system-ui, sans-serif;
   --deva: "Tiro Devanagari Marathi", serif;
@@ -111,3 +112,49 @@ figcaption { color: var(--soft); font-size: var(--s-small); margin-top: 10px; }
   * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
   .reveal > * { opacity: 1; transform: none; }
 }
+
+/* Documentation pages generated from docs/*.md */
+.doc .doc-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 64px; padding: 48px var(--edge) 120px; }
+.toc { position: sticky; top: 24px; align-self: start; display: grid; gap: 10px; font-size: var(--s-small); }
+.toc a { color: var(--soft); text-decoration: none; }
+.toc a:hover { color: var(--ink); }
+@media (max-width: 900px) { .doc .doc-layout { grid-template-columns: minmax(0, 1fr); } .toc { position: static; } }
+.prose { max-width: 76ch; min-width: 0; }
+.prose h1 { font-size: var(--s-heading); margin-top: 0; }
+.prose h2 { font-size: clamp(28px, 3vw, 40px); margin: 72px 0 16px; scroll-margin-top: 24px; }
+.prose h3 { font-size: var(--s-lead); margin: 40px 0 8px; }
+.prose p, .prose li { color: var(--ink); }
+.prose a { color: var(--seal-text); }
+.prose code { font-family: ui-monospace, "Cascadia Code", Menlo, monospace; font-size: 0.88em; background: var(--field); padding: 2px 6px; }
+.prose pre { background: #0c0a08; padding: 20px; overflow-x: auto; line-height: 1.45; }
+.prose pre code { background: none; padding: 0; font-size: var(--s-small); }
+.prose table { border-collapse: collapse; width: 100%; margin: 24px 0; font-size: var(--s-small); display: block; overflow-x: auto; }
+.prose th, .prose td { text-align: left; padding: 10px 14px; border-bottom: 1px solid #2d261e; vertical-align: top; }
+.prose th { color: var(--soft); font-weight: 500; }
+.prose blockquote { margin: 24px 0; padding-left: 20px; border-left: 4px solid var(--seal); color: var(--soft); }
+.doc .close { padding-top: 48px; }
+
+.figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 96px 48px; margin: 40px 0; }
+.figures a { display: block; margin-top: 10px; font-size: var(--s-small); }
+.figures p { margin: 0; max-width: 36ch; }
+.figures .fig { display: block; font-weight: 800; font-size: var(--s-display); line-height: 1; letter-spacing: -0.04em; color: var(--seal-text); margin-bottom: 12px; }
+.figures a, .note a { color: var(--soft); }
+.diagram { margin: 40px 0 0; }
+.diagram svg { width: 100%; height: auto; display: block; }
+.diagram .box rect { fill: var(--field); }
+.diagram .box.ok rect { fill: #24361f; }
+.diagram .box.ask rect { fill: #3a2c14; }
+.diagram .box.no rect { fill: #3b1714; }
+.diagram text { fill: var(--ink); font: 800 20px var(--font); text-anchor: middle; }
+.diagram text.s { fill: var(--soft); font: 400 14px var(--font); }
+.diagram .arrows path { fill: none; stroke: var(--soft); stroke-width: 2; }
+.receipt-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 48px; align-items: start; margin-top: 40px; }
+.receipt pre { margin: 0; background: #0c0a08; padding: 24px; overflow-x: auto; font: 400 var(--s-small)/1.5 ui-monospace, "Cascadia Code", Menlo, monospace; }
+.fields { margin: 0; display: grid; gap: 22px; }
+.fields dt { font-weight: 800; color: var(--seal-text); }
+.fields dd { margin: 4px 0 0; }
+@media (max-width: 900px) { .receipt-grid { grid-template-columns: 1fr; } }
+.rules-detail table { border-collapse: collapse; width: 100%; margin: 32px 0; display: block; overflow-x: auto; }
+.rules-detail th, .rules-detail td { text-align: left; padding: 14px 16px; vertical-align: top; }
+.rules-detail tbody tr:nth-child(odd) { background: var(--field); }
+.rules-detail th { color: var(--soft); font-weight: 500; }
