@@ -115,3 +115,18 @@ fn the_signing_key_is_readable_only_by_its_owner() {
         .mode();
     assert_eq!(mode & 0o777, 0o600);
 }
+
+#[test]
+fn a_second_writer_is_refused_while_the_first_is_open() {
+    let dir = temp_dir("lock");
+    let first = FileLog::init(&dir).expect("init");
+    match FileLog::open(&dir) {
+        Err(OpenError::Locked(_)) => {}
+        Err(other) => panic!("wrong error: {other}"),
+        Ok(_) => panic!("two writers on one log must not both open"),
+    }
+    // Reading and verifying never needs the lock.
+    assert!(mohar_core::store::read_receipts(&dir.join("receipts.jsonl")).is_ok());
+    drop(first);
+    FileLog::open(&dir).expect("the lock is released when the writer is dropped");
+}

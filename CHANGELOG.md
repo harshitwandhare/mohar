@@ -7,6 +7,11 @@ receipt format; each such change is called out.
 
 ## [Unreleased]
 
+### Added
+
+- A log can only be opened for writing by one process at a time; a second writer gets a clear error
+  instead of interleaving receipts. Reading and verifying never need the lock (#40).
+
 ## [0.1.0] - 2026-10-22
 
 The first release: a signed, hash-chained receipt log and the `mohar` command line tool.

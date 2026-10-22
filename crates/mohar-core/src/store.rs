@@ -4,6 +4,7 @@
 //! key.ed25519     32-byte signing seed, owner-only on Unix. Belongs to the daemon's OS user.
 //! public.key      ed25519:<hex>, for anyone verifying the log.
 //! receipts.jsonl  one receipt per line, oldest first, appended and synced before append returns.
+//! writer.lock     held exclusively by the one process allowed to append; readers don't need it.
 //! ```
 //!
 //! Opening a log verifies the whole chain first. A log that doesn't verify is never extended.
@@ -22,6 +23,7 @@ const KEY_FILE: &str = "key.ed25519";
 const PUBLIC_FILE: &str = "public.key";
 const LOG_FILE: &str = "receipts.jsonl";
 const CHECKPOINT_FILE: &str = "checkpoints.jsonl";
+const LOCK_FILE: &str = "writer.lock";
 
 /// A checkpoint is signed automatically after every this many receipts.
 pub const CHECKPOINT_EVERY: u64 = 1000;
@@ -37,6 +39,9 @@ pub enum OpenError {
         /// The underlying error.
         source: std::io::Error,
     },
+    /// Another process has this log open for writing.
+    #[error("{0} is open for writing by another process")]
+    Locked(PathBuf),
     /// `init` was pointed at a directory that already holds a log.
     #[error("{0} already holds a Mohar log")]
     AlreadyExists(PathBuf),
@@ -75,6 +80,8 @@ fn io(path: &Path) -> impl FnOnce(std::io::Error) -> OpenError + '_ {
 
 /// An open, verified log that appends durably.
 pub struct FileLog {
+    /// Held for the life of the log; the OS releases it when this is dropped or the process exits.
+    _lock: File,
     key: SigningKey,
     file: File,
     path: PathBuf,
@@ -108,6 +115,20 @@ impl FileLog {
 
     /// Open an existing log, verifying every receipt against the log's own public key first.
     pub fn open(dir: &Path) -> Result<Self, OpenError> {
+        let lock_path = dir.join(LOCK_FILE);
+        let lock = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&lock_path)
+            .map_err(io(&lock_path))?;
+        match lock.try_lock() {
+            Ok(()) => {}
+            Err(std::fs::TryLockError::WouldBlock) => {
+                return Err(OpenError::Locked(dir.to_path_buf()));
+            }
+            Err(std::fs::TryLockError::Error(e)) => return Err(io(&lock_path)(e)),
+        }
         let key_path = dir.join(KEY_FILE);
         let seed = fs::read(&key_path).map_err(io(&key_path))?;
         let seed: [u8; 32] = seed
@@ -135,6 +156,7 @@ impl FileLog {
             .open(&path)
             .map_err(io(&path))?;
         Ok(Self {
+            _lock: lock,
             key,
             file,
             path,
