@@ -116,7 +116,7 @@ async function start() {
   camera.lookAt(0, 2.8, 0);
 
   // One warm lamp: a pool of light on the page that falls off into the dark ground around it.
-  const lamp = new THREE.SpotLight(0xffe2b8, 420, 40, Math.PI / 6, 0.9, 2);
+  const lamp = new THREE.SpotLight(0xffe2b8, 420, 40, Math.PI / 6.5, 1, 2);
   lamp.position.set(-3, 14, 5);
   lamp.target.position.set(0, 0, 0.5);
   lamp.castShadow = true;
@@ -134,7 +134,7 @@ async function start() {
   const paperTex = loader.load('assets/1765-saka-1843-ce-jnanesvari-jnandeva-dnyaneshwar.jpg');
   paperTex.colorSpace = THREE.SRGBColorSpace;
   paperTex.anisotropy = aniso;
-  const paper = new THREE.Mesh(new THREE.PlaneGeometry(22, 27), new THREE.MeshStandardMaterial({ map: paperTex, roughness: 0.95 }));
+  const paper = new THREE.Mesh(new THREE.PlaneGeometry(22, 27), new THREE.MeshStandardMaterial({ map: paperTex, roughness: 0.95, color: 0x9a948c }));
   paper.rotation.x = -Math.PI / 2;
   paper.position.z = -1;
   paper.receiveShadow = true;

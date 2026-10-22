@@ -84,7 +84,7 @@ test('llms.txt points agents at the markdown docs', async ({ request }) => {
   expect(body).toContain('/docs/design.md');
 });
 
-const pages = ['/', '/name.html', '/design.html', '/roadmap.html', '/integrations.html', '/compliance.html', '/engineering-bar.html', '/business-model.html'];
+const pages = ['/', '/name.html', '/design.html', '/roadmap.html', '/integrations.html', '/compliance.html', '/engineering-bar.html', '/business-model.html', '/404.html'];
 
 test('no page is wider than a 320px phone, and each has the same header', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 720 });
