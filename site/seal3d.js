@@ -67,7 +67,7 @@ export function sealFace(size, ink, ground, mirror) {
   ctx.font = name.font;
   ctx.fillText(name.text, m - name.width / 2 + name.left + dx, m - name.height / 2 + name.ascent + dy);
   ctx.font = motto.font;
-  ctx.fillText(motto.text, m - motto.width / 2 + motto.left, m + size * 0.27 - motto.height / 2 + motto.ascent);
+  ctx.fillText(motto.text, m - motto.width / 2 + motto.left, m + size * 0.235 - motto.height / 2 + motto.ascent);
   return c;
 }
 
