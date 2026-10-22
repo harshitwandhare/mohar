@@ -162,8 +162,10 @@ fn hex(bytes: &[u8]) -> String {
     out
 }
 
+/// Strict lowercase hex. A second spelling of the same bytes ("AB", "+f") would give one signed
+/// log more than one valid encoding, so only what [`hex`] writes is accepted.
 fn unhex(s: &str) -> Option<Vec<u8>> {
-    if !s.len().is_multiple_of(2) {
+    if !s.len().is_multiple_of(2) || !s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
         return None;
     }
     (0..s.len())
@@ -404,5 +406,7 @@ mod tests {
         assert_eq!(unhex("00017fff"), Some(bytes.to_vec()));
         assert_eq!(unhex("abc"), None);
         assert_eq!(unhex("zz"), None);
+        assert_eq!(unhex("AB"), None);
+        assert_eq!(unhex("+f"), None);
     }
 }

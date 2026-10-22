@@ -9,6 +9,9 @@ receipt format; each such change is called out.
 
 ### Added
 
+- Fuzz targets for receipt parsing and verification, checkpoint parsing, the log file readers, and a
+  mutation check that any edited log which still parses fails verification. They run for 60 seconds on
+  pull requests that touch `crates/` or `fuzz/`, and for 15 minutes each week (#58).
 - A log can only be opened for writing by one process at a time; a second writer gets a clear error
   instead of interleaving receipts. Reading and verifying never need the lock (#40).
 
@@ -21,6 +24,11 @@ receipt format; each such change is called out.
   receipts. `verify` and `verify_checkpoints` work as before (#59).
 - The website scales its type and spacing down to phones, has one header with a menu on every page,
   and uses one button system. A test fails if any page scrolls sideways at 320px (#78).
+
+### Security
+
+- Signatures and public keys must be lowercase hex. Uppercase spellings were accepted, so the last
+  receipt in a log could be rewritten without failing verification. Found by the new fuzz targets (#58).
 
 ## [0.1.0] - 2026-10-22
 
