@@ -3,10 +3,10 @@ name: Rust
 on:
   push:
     branches: [main]
-    paths: ["crates/**", "Cargo.toml", "Cargo.lock", ".github/workflows/rust.yml"]
+    paths: ["crates/**", "spec/**", "Cargo.toml", "Cargo.lock", ".github/workflows/rust.yml"]
   pull_request:
     branches: [main]
-    paths: ["crates/**", "Cargo.toml", "Cargo.lock", ".github/workflows/rust.yml"]
+    paths: ["crates/**", "spec/**", "Cargo.toml", "Cargo.lock", ".github/workflows/rust.yml"]
 
 permissions:
   contents: read
@@ -34,3 +34,11 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --all-targets --locked
       - run: cargo test --locked
+
+  vectors:
+    name: Test vectors (independent Python check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: pip install cryptography==46.0.1
+      - run: python spec/vectors/check.py spec/vectors/v1.json

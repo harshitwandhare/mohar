@@ -172,6 +172,11 @@ fn unhex(s: &str) -> Option<Vec<u8>> {
         .collect()
 }
 
+/// The RFC 8785 canonical bytes of a receipt, signature included: what [`receipt_hash`] hashes.
+pub fn canonical_bytes(r: &Receipt) -> Result<Vec<u8>, Error> {
+    canonical(r)
+}
+
 fn canonical(r: &Receipt) -> Result<Vec<u8>, Error> {
     serde_jcs::to_vec(r).map_err(|e| Error::Canonical(e.to_string()))
 }
@@ -258,6 +263,15 @@ impl Log {
             .receipts
             .last()
             .unwrap_or_else(|| unreachable!("just pushed")))
+    }
+
+    /// Sign a checkpoint over the log as it stands.
+    pub fn checkpoint(&self, ts: &str) -> Result<checkpoint::Checkpoint, Error> {
+        let head = match self.receipts.last() {
+            Some(last) => receipt_hash(last)?,
+            None => genesis(),
+        };
+        checkpoint::sign(&self.key, self.receipts.len() as u64, head, ts.to_string())
     }
 
     /// All receipts, oldest first.
