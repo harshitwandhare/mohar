@@ -42,6 +42,7 @@ jobs:
           min-severity: medium
           online-audits: false
           advanced-security: false
+          config: .github/zizmor.yml
           annotations: true
 
   coverage:

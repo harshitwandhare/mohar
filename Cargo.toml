@@ -15,3 +15,8 @@ missing_docs = "warn"
 [workspace.lints.clippy]
 unwrap_used = "deny"
 expect_used = "warn"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
