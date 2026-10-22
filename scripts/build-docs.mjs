@@ -6,6 +6,8 @@ import { marked } from 'marked';
 const docs = [
   { src: 'docs/design.md', page: 'design.html', title: 'Design', blurb: 'How Mohar decides what an agent may do, how trust is earned and lost, and what each receipt proves.' },
   { src: 'docs/ROADMAP.md', page: 'roadmap.html', title: 'Roadmap', blurb: 'What gets built, in what order.' },
+  { src: 'docs/integrations.md', page: 'integrations.html', title: 'Integrations', blurb: 'How Mohar plugs into Claude Code, Codex, CAO, ADK, MCP, A2A and agent governance platforms, and how strong each seam is.' },
+  { src: 'docs/business-model.md', page: 'business-model.html', title: 'Sustainability', blurb: 'What stays free, what could be paid for later, and what would trigger a company.' },
   { src: 'docs/compliance.md', page: 'compliance.html', title: 'Compliance', blurb: 'How Mohar maps onto the EU AI Act, GDPR, the Cyber Resilience Act, US export rules and NIST, SOC 2 and ISO frameworks.' },
 ];
 
@@ -35,6 +37,7 @@ function page({ title, blurb, body, toc, md }) {
   <nav aria-label="Primary">
     <a href="design.html">Design</a>
     <a href="roadmap.html">Roadmap</a>
+    <a href="integrations.html">Integrations</a>
     <a href="compliance.html">Compliance</a>
     <a href="${md}">Markdown</a>
     <a class="action" href="https://github.com/harshitwandhare/mohar">GitHub</a>
