@@ -74,10 +74,12 @@ function render() {
     const pct = ((c.level * PROMOTE_AFTER + c.streak) / ((LEVELS.length - 1) * PROMOTE_AFTER)) * 100;
     const div = document.createElement('div');
     div.className = 'cap' + (c.demoted ? ' demoted' : '');
-    div.innerHTML = `<p class="name"></p><p class="level"></p><div class="meter"><span style="width:${Math.min(pct, 100)}%"></span></div><p class="why"></p>`;
+    div.innerHTML = `<p class="name"></p><p class="level"></p><div class="meter"><span></span></div><p class="why"></p>`;
     div.querySelector('.name').textContent = caps[k].name + (caps[k].gated ? ' (gated)' : '');
     div.querySelector('.level').textContent = LEVELS[c.level];
     div.querySelector('.why').textContent = c.why;
+    // Set through the CSSOM: the site's CSP blocks inline style attributes.
+    div.querySelector('.meter span').style.width = `${Math.min(pct, 100)}%`;
     el.append(div);
   }
 }

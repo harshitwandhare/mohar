@@ -11,12 +11,25 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Tiro+Devanagari+Marathi&family=Schibsted+Grotesk:wght@400;500;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
-<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" href="assets/brand/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="assets/brand/apple-touch-icon.png">
+<link rel="manifest" href="site.webmanifest">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Mohar">
+<meta property="og:title" content="Mohar · trust that agents earn">
+<meta property="og:description" content="Open-source trust layer for AI agents. Authority is earned per capability from verified results and lost the moment an agent gets it wrong. Every decision leaves a signed receipt.">
+<meta property="og:url" content="https://mohar-liard.vercel.app/">
+<meta property="og:image" content="https://mohar-liard.vercel.app/assets/brand/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="The Mohar gold seal beside the words Mohar, Trust, earned.">
+<meta name="twitter:card" content="summary_large_image">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="bar">
-  <a class="wordmark" href="#top" translate="no"><img src="logo.svg" alt="" width="28" height="28">Mohar</a>
+  <a class="wordmark" href="#top" translate="no"><img src="assets/brand/mohar-mark-96.png" alt="" width="28" height="28">Mohar</a>
   <nav aria-label="Primary"><a href="https://harshitwandhare.github.io/mohar/">Docs</a><a href="design.html">Design</a><a href="roadmap.html">Roadmap</a><a href="integrations.html">Integrations</a><a href="compliance.html">Compliance</a><a class="action" href="https://github.com/harshitwandhare/mohar">GitHub</a></nav>
   <details class="menu"><summary>Menu</summary><nav aria-label="Menu"><a href="https://harshitwandhare.github.io/mohar/">Docs</a><a href="design.html">Design</a><a href="roadmap.html">Roadmap</a><a href="integrations.html">Integrations</a><a href="compliance.html">Compliance</a><a class="action" href="https://github.com/harshitwandhare/mohar">GitHub</a></nav></details>
 </header>
@@ -29,23 +42,45 @@
       <p class="actions"><a class="button" href="#try">Watch an agent earn it <span class="arrow" aria-hidden="true">→</span></a><a class="button quiet" href="https://harshitwandhare.github.io/mohar/latest/getting-started/">Install the CLI</a></p>
     </div>
     <div class="seal3d" id="seal3d">
-      <img fetchpriority="high" src="assets/seal-still.jpg" alt="A carved brass seal stamp with a lotus-bud handle beside vermilion मोहर impressions on an old manuscript" width="900" height="900">
+      <img fetchpriority="high" src="assets/seal-still.jpg" alt="A seal stamp with a carved rosewood handle and an engraved octagonal brass die, standing on an old manuscript page" width="900" height="900">
     </div>
     <p class="hint">Tilt the stamp with your pointer. Click it, or run the agent below, and it presses a receipt.</p>
   </section>
 
   <section class="numbers reveal" aria-labelledby="num-h">
     <h2 id="num-h">Approval prompts stopped working</h2>
-    <div class="figures">
-      <p><span class="fig">93%</span>of Claude Code's manual permission prompts are accepted, by Anthropic's own count. <a href="https://www.anthropic.com/engineering/claude-code-auto-mode">Anthropic, March 2026</a></p>
-      <p><span class="fig">16 min</span>median time to the first critical failure when Zscaler's red team attacked enterprise AI systems. Every system tested had critical flaws. <a href="https://www.zscaler.com/press/zscaler-2026-ai-threat-report-83-year-over-year-surge-ai-activity-creates-growing-oversight">Zscaler ThreatLabz, January 2026</a></p>
+    <div class="mosaic">
+      <div class="mosaic-term" data-ui role="img" aria-label="A coding agent's permission prompt, approved without being read, beside Mohar's verdict for the same action">
+<pre><code><span class="dim">agent wants to run</span>
+  Bash(npm run migrate -- --env=prod)
+
+<span class="dim">Allow this action?</span>  [y] yes   [n] no   [a] always
+<span class="ok">&gt; y</span>   <span class="dim">approved in 0.8 s, prompt 41 of 44 today</span>
+
+<span class="dim">mohar decide, same action</span>
+  capability   db.migrate.prod   <span class="dim">(gated)</span>
+  level        ask first
+  record       3 verified passes, 1 failure 6 days ago
+  result       <span class="seal">escalate to the database owner</span>
+  receipt      #4183  sha256:7be1…c09a</code></pre>
+      </div>
+      <div class="fig-tile ink">
+        <p class="fig">93%</p>
+        <p>of Claude Code's manual permission prompts are accepted. <a href="https://www.anthropic.com/engineering/claude-code-auto-mode">Anthropic, March 2026</a></p>
+      </div>
+      <div class="fig-tile seal">
+        <p class="fig">16 min</p>
+        <p>to the first critical failure, median, when Zscaler's red team attacked enterprise AI systems. <a href="https://www.zscaler.com/press/zscaler-2026-ai-threat-report-83-year-over-year-surge-ai-activity-creates-growing-oversight">Zscaler ThreatLabz, January 2026</a></p>
+      </div>
     </div>
     <p class="note">People approve almost everything, and the systems they approve break fast. Mohar asks less often, and only about actions an agent hasn't earned.</p>
   </section>
 
   <section class="try reveal" id="try" aria-labelledby="try-h">
-    <h2 id="try-h">Run an agent for a week</h2>
-    <p class="note">A simulation of Mohar's rules in your browser. Each task is checked by tests, never by the agent's opinion of itself. Receipts form a real SHA-256 chain; the browser demo has no keys, so it doesn't sign them.</p>
+    <div class="try-head">
+      <h2 id="try-h">Run an agent for a week</h2>
+      <p class="note">Mohar's rules, running in your browser. Each task is checked by tests, never by the agent's opinion of itself. Receipts form a real SHA-256 chain; the browser demo has no keys, so it doesn't sign them.</p>
+    </div>
     <div class="sim">
       <div class="caps" id="caps" aria-live="polite"></div>
       <div class="controls">
@@ -53,43 +88,31 @@
         <button class="button quiet" id="fail" type="button">Break a migration</button>
         <button class="button quiet" id="reset" type="button">Start over</button>
       </div>
-      <ol class="receipts" id="receipts" aria-label="Receipts, newest first"></ol>
+      <ol class="receipts" id="receipts" aria-label="Receipts, newest first" data-ui></ol>
     </div>
     <noscript><p>The simulator needs JavaScript. Its rules are listed under How it works.</p></noscript>
   </section>
 
   <section class="how reveal" id="how" aria-labelledby="how-h">
-    <h2 id="how-h">Four rules, kept in code</h2>
-    <dl class="rules">
-      <div><dt>Record</dt><dd>Every action goes into a local hash-chained log, signed with the agent's key.</dd></div>
-      <div><dt>Verify</dt><dd>Tests, diffs, replays or a person accepting the work decide the outcome. A model grading itself never counts.</dd></div>
-      <div><dt>Score each capability</dt><dd>Editing docs and running migrations are tracked apart. Hard gates sit outside the score, so an average can't hide a failure.</dd></div>
-      <div><dt>Decide</dt><dd>Inside earned limits the action runs. Outside them it goes to the right person, with the agent's history attached.</dd></div>
+    <h2 id="how-h">One decision, four steps</h2>
+    <div class="stages" data-ui>
+      <div class="stage s-record g1"><p class="dur">Instant</p></div>
+      <div class="stage s-verify g5"><p class="dur">As long as your tests take</p></div>
+      <div class="stage s-score g1"><p class="dur">Instant</p></div>
+      <div class="stage s-decide g2"><p class="dur">Instant, or a person</p></div>
+    </div>
+    <dl class="stage-notes">
+      <div class="g1"><dt>Record</dt><dd>The action goes into a local hash-chained log, signed by a key the agent never sees.</dd></div>
+      <div class="g5"><dt>Verify</dt><dd>Tests, a diff, a replay or a person accepting the work decide the outcome. A model grading itself never counts.</dd></div>
+      <div class="g1"><dt>Score</dt><dd>Per capability. Hard gates sit outside the score.</dd></div>
+      <div class="g2"><dt>Decide</dt><dd>Inside earned limits it runs. Outside them it goes to the right person, with the agent's history attached.</dd></div>
     </dl>
-  </section>
-
-  <section class="flow reveal" id="flow" aria-labelledby="flow-h">
-    <h2 id="flow-h">One decision, start to finish</h2>
-    <figure class="diagram" data-ui>
-      <svg viewBox="0 0 1000 300" role="img" aria-labelledby="flow-t">
-        <title id="flow-t">An agent's tool call passes through Mohar's adapter, policy gates and trust engine, then runs, goes to a person, or is denied. Every path writes a signed receipt.</title>
-        <g class="box"><rect x="10" y="110" width="150" height="80"/><text x="85" y="145">Agent</text><text class="s" x="85" y="168">tool call</text></g>
-        <g class="box"><rect x="210" y="110" width="150" height="80"/><text x="285" y="145">Adapter</text><text class="s" x="285" y="168">hook, MCP, plugin</text></g>
-        <g class="box"><rect x="410" y="110" width="150" height="80"/><text x="485" y="145">Gates</text><text class="s" x="485" y="168">hard rules first</text></g>
-        <g class="box"><rect x="610" y="110" width="150" height="80"/><text x="685" y="145">Trust</text><text class="s" x="685" y="168">per capability</text></g>
-        <g class="box ok"><rect x="830" y="20" width="160" height="62"/><text x="910" y="57">Runs</text></g>
-        <g class="box ask"><rect x="830" y="119" width="160" height="62"/><text x="910" y="156">Goes to a person</text></g>
-        <g class="box no"><rect x="830" y="218" width="160" height="62"/><text x="910" y="255">Denied</text></g>
-        <g class="arrows"><path d="M160 150 H210 M360 150 H410 M560 150 H610 M760 150 H830 M760 150 C795 150 795 51 830 51 M760 150 C795 150 795 249 830 249"/></g>
-      </svg>
-      <figcaption>Every path writes a receipt. A failed or undecided gate denies before any score is read. When the outcome arrives, a verifier (tests, diff, replay or a person) records pass or fail, and that is the only evidence trust is built from.</figcaption>
-    </figure>
   </section>
 
   <section class="receipt reveal" id="receipt" aria-labelledby="rec-h">
     <h2 id="rec-h">What a receipt proves</h2>
-    <div class="receipt-grid">
-<pre><code>{
+    <div class="receipt-board">
+<pre class="receipt-json" data-ui><code>{
   "v": 1,
   "seq": 4182,
   "prev": "sha256:9f2c…e01a",
@@ -105,42 +128,69 @@
   "verification": { "kind": "tests", "result": "pass" },
   "sig": "ed25519:8sQ1…wA"
 }</code></pre>
-      <dl class="fields">
-        <div><dt>prev</dt><dd>The hash of the receipt before this one. Change or delete any receipt and every later one stops matching.</dd></div>
-        <div><dt>authority</dt><dd>The chain of people and agents that handed this agent its rights, by pseudonymous ID so the log holds no names. Each link can only narrow what it received.</dd></div>
-        <div><dt>args_sha256</dt><dd>The exact action. A person's approval is bound to this hash, so a different action can't run under it.</dd></div>
-        <div><dt>decision</dt><dd>Why it ran: the level on this capability, and the evidence behind it.</dd></div>
-        <div><dt>sig</dt><dd>Ed25519 over the RFC 8785 canonical bytes, made by a daemon key the agent never sees.</dd></div>
-      </dl>
+      <div class="field-tile"><p class="key">prev</p><p>The hash of the receipt before this one. Change or delete any receipt and every later one stops matching.</p></div>
+      <div class="field-tile"><p class="key">authority</p><p>Who handed this agent its rights, by pseudonymous ID, so the log holds no names. Each link can only narrow what it received.</p></div>
+      <div class="field-tile"><p class="key">args_sha256</p><p>The exact action. A person's approval is bound to this hash, so a different action can't run under it.</p></div>
+      <div class="field-tile"><p class="key">decision</p><p>Why it ran: the level on this capability and the evidence behind it.</p></div>
+      <div class="field-term" data-ui role="img" aria-label="mohar verify reporting a tampered receipt">
+<pre><code>$ mohar verify
+<span class="seal">broken: receipt 4182: BadSignature</span>
+$ echo $?
+1</code></pre>
+        <p>Edit one byte of a receipt and the chain names it. Delete receipts from the end and the last checkpoint says how many are missing.</p>
+      </div>
+      <div class="field-tile seal"><p class="key">sig</p><p>Ed25519 over the RFC 8785 canonical bytes. <code>mohar verify</code> checks every one, a million in about eight seconds.</p></div>
     </div>
-    <p class="note">An example of the planned format. The full field list is in the <a href="design.html#7-receipts">design</a>.</p>
+    <p class="note">The planned full format. The receipt log and its CLI ship today with the fields in <a href="https://harshitwandhare.github.io/mohar/latest/formats/">the format reference</a>; the full field list is in <a href="design.html#7-receipts">the design</a>.</p>
   </section>
 
-  <section class="rules-detail reveal" aria-labelledby="lvl-h">
+  <section class="levels reveal" aria-labelledby="lvl-h">
     <h2 id="lvl-h">How trust moves</h2>
-    <table>
-      <thead><tr><th>Level</th><th>What happens</th><th>To get here</th></tr></thead>
-      <tbody>
-        <tr><td>Ask first</td><td>Every action goes to a person.</td><td>The start, and where any gate violation or high-risk failure sends an agent.</td></tr>
-        <tr><td>Supervised</td><td>Low-risk reversible actions run; 20% are sampled for review.</td><td>10 verified outcomes, a lower 95% Wilson bound of 0.80, and 7 days at the level below.</td></tr>
-        <tr><td>Trusted</td><td>Actions run inside the capability's gates; 5% are sampled.</td><td>30 verified outcomes and a lower bound of 0.95. Never for high-risk irreversible capabilities.</td></tr>
-      </tbody>
-    </table>
-    <p class="note">Five successes out of five give a lower bound of about 0.57, so a lucky streak promotes nobody. Evidence fades with a 30-day half-life. Demotion is immediate; promotion always waits. These are starting values for the benchmark to test. <a href="design.html">Read the full design</a></p>
+    <div class="level-board">
+      <div class="level-tile l-ask"><p class="lname">Ask first</p><p>Every action goes to a person.</p><p class="gets">The start, and where any gate violation or high-risk failure sends an agent.</p></div>
+      <div class="level-tile l-sup"><p class="lname">Supervised</p><p>Low-risk reversible actions run; 20% are sampled for review.</p><p class="gets">10 verified outcomes, a 95% Wilson lower bound of 0.80, and 7 days at the level below.</p></div>
+      <div class="level-tile l-trust"><p class="lname">Trusted</p><p>Actions run inside the capability's gates; 5% are sampled.</p><p class="gets">30 verified outcomes and a lower bound of 0.95. Never for high-risk irreversible capabilities.</p></div>
+    </div>
+    <p class="note">Five passes out of five give a lower bound of about 0.57, so a lucky streak promotes nobody. Evidence fades with a 30-day half-life. Demotion is immediate; promotion always waits. These are starting values for the benchmark to test. <a href="design.html">Read the full design</a></p>
   </section>
-
 
   <section class="fit reveal" aria-labelledby="fit-h">
-    <h2 id="fit-h">Built to sit beside what you run</h2>
-    <p>Mohar works with the orchestrators, identity providers and policy engines you already run. It's planned to plug into Claude Code hooks, MCP servers, awslabs/cli-agent-orchestrator, Google ADK, Microsoft's Agent Governance Toolkit and Paperclip.</p>
-    <p>It's early and built in the open. The signed receipt log and the <code>mohar</code> CLI shipped in 0.1; the trust engine is next. Nothing is production-ready yet.</p>
-    <p class="actions"><a class="button" href="roadmap.html">Read the roadmap <span class="arrow" aria-hidden="true">→</span></a><a class="button quiet" href="https://harshitwandhare.github.io/mohar/">Read the docs</a></p>
+    <div class="fit-board">
+      <div class="fit-head"><h2 id="fit-h">Sits beside what you run</h2><p>Planned seams, in order of strength. Each is described in <a href="integrations.html">Integrations</a>.</p></div>
+      <p class="fit-tile">Claude Code hooks</p>
+      <p class="fit-tile">MCP servers</p>
+      <p class="fit-tile">awslabs CAO</p>
+      <p class="fit-tile">Google ADK</p>
+      <p class="fit-tile">Microsoft Agent Governance Toolkit</p>
+      <p class="fit-tile">Paperclip</p>
+      <p class="fit-tile">OpenAI Codex</p>
+      <p class="fit-tile">A2A agents</p>
+    </div>
+  </section>
+
+  <section class="cta reveal" aria-labelledby="cta-h">
+    <div class="cta-row">
+      <div class="cta-flank ink"></div>
+      <div class="cta-main">
+        <h2 id="cta-h">Seal your first receipt</h2>
+        <p>The receipt log and the <code>mohar</code> CLI shipped in 0.1, for Linux, macOS and Windows. The trust engine is next. Nothing is production-ready yet.</p>
+        <pre data-ui><code>curl --proto '=https' --tlsv1.2 -LsSf https://github.com/harshitwandhare/mohar/releases/latest/download/mohar-cli-installer.sh | sh</code></pre>
+        <p class="actions"><a class="button light" href="https://harshitwandhare.github.io/mohar/latest/getting-started/">Read the getting started guide <span class="arrow" aria-hidden="true">→</span></a><a class="button quiet on-seal" href="roadmap.html">Read the roadmap</a></p>
+      </div>
+      <div class="cta-flank field"></div>
+    </div>
   </section>
 </main>
 
 <footer class="close">
-  <p class="big">Mohar</p>
-  <p>Apache-2.0. <a href="https://harshitwandhare.github.io/mohar/">Docs</a> · <a href="engineering-bar.html">Engineering bar</a> · <a href="business-model.html">How it sustains itself</a> · <a href="name.html">About the name</a></p>
+  <p class="blocks" aria-label="Mohar" role="img"><span>M</span><span>O</span><span>H</span><span>A</span><span>R</span></p>
+  <div class="foot-cols">
+    <nav aria-label="Product"><a href="https://harshitwandhare.github.io/mohar/">Docs</a><a href="https://harshitwandhare.github.io/mohar/latest/getting-started/">Install</a><a href="https://harshitwandhare.github.io/mohar/latest/cli/">CLI reference</a><a href="https://github.com/harshitwandhare/mohar/releases">Releases</a></nav>
+    <nav aria-label="Project"><a href="design.html">Design</a><a href="roadmap.html">Roadmap</a><a href="engineering-bar.html">Engineering bar</a><a href="compliance.html">Compliance</a></nav>
+    <nav aria-label="Community"><a href="https://github.com/harshitwandhare/mohar">GitHub</a><a href="https://github.com/harshitwandhare/mohar/blob/main/CONTRIBUTING.md">Contributing</a><a href="https://github.com/harshitwandhare/mohar/blob/main/SECURITY.md">Security</a><a href="business-model.html">How it sustains itself</a></nav>
+    <nav aria-label="About"><a href="name.html">About the name</a><a href="integrations.html">Integrations</a><a href="llms.txt">llms.txt</a></nav>
+  </div>
+  <p class="credits">Apache-2.0. Hero paper: a 1843 Jnanesvari manuscript by Ms Sarah Welch, CC BY-SA 4.0. Wood and studio light: Poly Haven, CC0.</p>
 </footer>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.min.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"}}</script>
 <script type="module" src="seal3d.js"></script>

@@ -26,7 +26,7 @@ const navLinks = cur => [
 
 // Same header as the hand-written pages; under 900px the links fold into the menu.
 const header = cur => `<header class="bar">
-  <a class="wordmark" href="./" translate="no"><img src="logo.svg" alt="" width="28" height="28">Mohar</a>
+  <a class="wordmark" href="./" translate="no"><img src="assets/brand/mohar-mark-96.png" alt="" width="28" height="28">Mohar</a>
   <nav aria-label="Primary">${navLinks(cur)}</nav>
   <details class="menu"><summary>Menu</summary><nav aria-label="Menu">${navLinks(cur)}</nav></details>
 </header>`;
@@ -44,7 +44,20 @@ function page({ title, blurb, body, toc, md, page }) {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Tiro+Devanagari+Marathi&family=Schibsted+Grotesk:wght@400;500;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
-<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" href="assets/brand/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="assets/brand/apple-touch-icon.png">
+<link rel="manifest" href="site.webmanifest">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Mohar">
+<meta property="og:title" content="${title} · Mohar">
+<meta property="og:description" content="${blurb}">
+<meta property="og:url" content="https://mohar-liard.vercel.app/${page}">
+<meta property="og:image" content="https://mohar-liard.vercel.app/assets/brand/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="The Mohar gold seal beside the words Mohar, Trust, earned.">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="alternate" type="text/markdown" href="${md}">
 </head>
 <body class="doc">

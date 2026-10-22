@@ -108,3 +108,32 @@ test('body text stays readable but not oversized on a phone', async ({ page }) =
   expect(size).toBeGreaterThanOrEqual(16);
   expect(size).toBeLessThanOrEqual(17);
 });
+
+test('no text spills out of its box at phone, tablet or desktop width', async ({ page }) => {
+  for (const width of [320, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const path of pages) {
+      await page.goto(path);
+      const spills = await page.evaluate(() => {
+        const out = [];
+        for (const e of document.querySelectorAll('main *, footer *')) {
+          // Code blocks, tables and the contents chip row scroll on purpose.
+          if (e.children.length || !e.textContent.trim() || e.closest('pre, table, .toc, svg')) continue;
+          if (e.clientWidth && e.scrollWidth > e.clientWidth + 1) out.push(`${e.tagName} "${e.textContent.trim().slice(0, 30)}"`);
+        }
+        return out;
+      });
+      expect(spills, `${path} at ${width}px`).toEqual([]);
+    }
+  }
+});
+
+test('the trust meter fills as passes are verified, under the production CSP', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Next task' }).click();
+  const fill = page.locator('.cap').filter({ hasText: 'Edit docs' }).locator('.meter span');
+  const ratio = async () => (await fill.boundingBox()).width / (await fill.locator('..').boundingBox()).width;
+  // One pass of the eight needed to reach the top: an eighth of the meter, not empty and not full.
+  await expect.poll(ratio).toBeGreaterThan(0.1);
+  await expect.poll(ratio).toBeLessThan(0.15);
+});

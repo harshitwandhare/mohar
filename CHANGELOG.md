@@ -21,6 +21,13 @@ receipt format; each such change is called out.
   laptop. Receipts are parsed, canonicalised, hashed and signature-checked on a worker pool that lives
   for the whole walk, and canonical JSON is written by a fixed template that tests compare against
   `serde_jcs` on arbitrary receipts. Every check and every error is unchanged (#59).
+- New mark: मो in Modi script on a gold octagonal seal, used for the favicon, the site header, the docs site, the
+  README and link previews. The site gains a web manifest and a social preview image.
+- The home page is rebuilt as a board of filled tiles with no photographs: a terminal fragment and two
+  figures, the simulator with a departure-board receipt log, the four steps as one bar sized by how long each
+  takes, receipt fields, trust levels, integrations and a closing action row.
+- The hero stamp is a modelled object: a turned rosewood handle with carved vine bands and an engraved brass
+  die, built by tools/stamp/build_stamp.py in Blender and loaded as a 1.5 MB Draco-compressed glTF.
 - Verifying and opening a log now read `receipts.jsonl` line by line and check checkpoints as the
   receipts go past, so memory use no longer grows with the size of the log. A new `ChainVerifier` checks
   one receipt at a time, `store::verify_file` and `store::verify_log` use it, and signatures are checked
@@ -28,6 +35,11 @@ receipt format; each such change is called out.
   receipts. `verify` and `verify_checkpoints` work as before (#59).
 - The website scales its type and spacing down to phones, has one header with a menu on every page,
   and uses one button system. A test fails if any page scrolls sideways at 320px (#78).
+
+### Fixed
+
+- The simulator's trust meters showed full at every level in production, because the CSP blocked the inline
+  width they were drawn with. The test server now sends the production headers, so tests run under the real CSP.
 
 ### Security
 
