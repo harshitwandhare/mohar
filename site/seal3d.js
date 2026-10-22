@@ -19,7 +19,7 @@ function octagon(ctx, cx, cy, r) {
 }
 
 // The seal face as an image: double octagon border and the inscription. White = raised.
-function sealFace(size, ink, ground, mirror) {
+export function sealFace(size, ink, ground, mirror) {
   const c = document.createElement('canvas');
   c.width = c.height = size;
   const ctx = c.getContext('2d');
@@ -32,13 +32,47 @@ function sealFace(size, ink, ground, mirror) {
   octagon(ctx, m, m, size * 0.47); ctx.stroke();
   ctx.lineWidth = size * 0.012;
   octagon(ctx, m, m, size * 0.41); ctx.stroke();
+  // Centre the two lines as one block using the glyphs' measured ink, not the font's nominal
+  // box: Devanagari's headline and vowel signs sit well outside what textBaseline 'middle' assumes.
   ctx.fillStyle = ink;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = `700 ${size * 0.25}px "Tiro Devanagari Marathi", serif`;
-  ctx.fillText('मोहर', m, m - size * 0.03);
-  ctx.font = `400 ${size * 0.075}px "Tiro Devanagari Marathi", serif`;
-  ctx.fillText('॥ सत्यमेव साक्षी ॥', m, m + size * 0.2);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  const lines = [
+    { text: 'मोहर', font: `700 ${size * 0.25}px "Tiro Devanagari Marathi", serif` },
+    { text: '॥ सत्यमेव साक्षी ॥', font: `400 ${size * 0.075}px "Tiro Devanagari Marathi", serif` },
+  ];
+  for (const l of lines) {
+    ctx.font = l.font;
+    const t = ctx.measureText(l.text);
+    l.left = t.actualBoundingBoxLeft;
+    l.width = t.actualBoundingBoxLeft + t.actualBoundingBoxRight;
+    l.ascent = t.actualBoundingBoxAscent;
+    l.height = t.actualBoundingBoxAscent + t.actualBoundingBoxDescent;
+  }
+  // The name is centred on the octagon by its own ink; the motto sits in the lower band, the way a
+  // seal's legend runs below the device.
+  const [name, motto] = lines;
+  // Font metrics are close but not exact for this face, so measure the drawn ink once and correct.
+  const probe = document.createElement('canvas');
+  probe.width = probe.height = size;
+  const p = probe.getContext('2d', { willReadFrequently: true });
+  p.font = name.font;
+  p.fillText(name.text, m - name.width / 2 + name.left, m - name.height / 2 + name.ascent);
+  const px = p.getImageData(0, 0, size, size).data;
+  let x0 = size, x1 = 0, y0 = size, y1 = 0;
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    if (px[(y * size + x) * 4 + 3] > 127) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  }
+  const dx = x1 >= x0 ? m - (x0 + x1) / 2 : 0, dy = y1 >= y0 ? m - (y0 + y1) / 2 : 0;
+  // Lay the name centred and the motto below it, then lift both so the pair's common centre is
+  // the octagon's centre.
+  const nameH = y1 >= y0 ? y1 - y0 : name.height;
+  const mottoCentre = m + size * 0.235;
+  const lift = (m - nameH / 2 + mottoCentre + motto.height / 2) / 2 - m;
+  ctx.font = name.font;
+  ctx.fillText(name.text, m - name.width / 2 + name.left + dx, m - name.height / 2 + name.ascent + dy - lift);
+  ctx.font = motto.font;
+  ctx.fillText(motto.text, m - motto.width / 2 + motto.left, mottoCentre - motto.height / 2 + motto.ascent - lift);
   return c;
 }
 
@@ -95,8 +129,8 @@ async function start() {
   // petal collar, a pierced ogee-lattice shaft between beaded rings, and a scaled lotus bud on top.
   // All carving is drawn here as textures; nothing is copied from a photograph.
   const stamp = new THREE.Group();
-  const die = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.45, 8), [brass, brass, faceMat]);
-  die.rotation.y = Math.PI / 8;
+  // Corners at pi/8 + k*pi/4, the same angles sealFace draws, so the engraved border sits on the edges.
+  const die = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.45, 8, 1, false, Math.PI / 8), [brass, brass, faceMat]);
   die.position.y = 0.225;
   // The face is the bottom cap; give it planar UVs so the octagon texture sits on it.
   const pos = die.geometry.attributes.position, uv = die.geometry.attributes.uv;
