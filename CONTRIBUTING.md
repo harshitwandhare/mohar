@@ -21,7 +21,21 @@ If an agent wrote the change, the human who directed it signs off and is respons
 
 ## Local checks
 
-The toolchain is being set up in Phase 0. This section will list the exact commands as each one lands.
+Rust (1.95 or newer), from the repository root:
+
+```bash
+cargo fmt --all --check
+cargo clippy --all-targets --locked -- -D warnings
+cargo test --locked
+```
+
+Site (Node 24):
+
+```bash
+npm ci
+npx playwright install chromium
+npx playwright test --project=chromium
+```
 
 ## Reporting security problems
 
