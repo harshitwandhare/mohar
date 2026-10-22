@@ -39,13 +39,13 @@ img { max-width: 100%; height: auto; display: block; }
 .wordmark { flex-shrink: 0; font-weight: 800; font-size: 19px; letter-spacing: -0.01em; text-decoration: none; display: flex; align-items: center; gap: 10px; }
 .wordmark img { width: 28px; height: 28px; }
 .bar nav { display: flex; align-items: center; gap: 4px; font-size: 15px; }
-.bar nav a { text-decoration: none; color: var(--soft); padding: 8px 12px; border-radius: var(--radius); transition: color .15s ease, background .15s ease; }
+.bar nav a { display: inline-flex; align-items: center; min-height: 44px; text-decoration: none; color: var(--soft); padding: 8px 12px; border-radius: var(--radius); transition: color .15s ease, background .15s ease; }
 .bar nav a:hover { color: var(--ink); background: var(--field); }
 .bar nav a[aria-current="page"] { color: var(--ink); }
 .bar nav a.action { margin-left: 12px; color: var(--seal-ink); background: var(--seal); font-weight: 500; padding: 8px 16px; }
 .bar nav a.action:hover { background: var(--seal-hover); }
 .menu { display: none; position: relative; }
-.menu summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px;
+.menu summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 14px;
   background: var(--field); border-radius: var(--radius); font-size: 15px; font-weight: 500; }
 .menu summary::-webkit-details-marker { display: none; }
 .menu summary::after { content: ""; width: 7px; height: 7px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: translateY(-2px) rotate(45deg); transition: transform .15s ease; }
@@ -81,8 +81,8 @@ h2 { font-weight: 800; font-size: var(--s-heading); line-height: 1.02; letter-sp
 .seal3d { height: min(76vh, 720px); display: grid; place-items: center; }
 .seal3d.live img { display: none; }
 .seal3d canvas { width: 100%; height: 100%; display: block; cursor: pointer;
-  -webkit-mask-image: radial-gradient( /* taste-skill-ignore: edge fade on the rendered picture */ellipse 50% 50% at 50% 50%, #000 40%, transparent 100%);
-  mask-image: radial-gradient( /* taste-skill-ignore */ellipse 50% 50% at 50% 50%, #000 40%, transparent 100%); }
+  -webkit-mask-image: radial-gradient( /* taste-skill-ignore: edge fade on the rendered picture */ellipse 58% 62% at 50% 42%, #000 45%, transparent 72%);
+  mask-image: radial-gradient( /* taste-skill-ignore */ellipse 58% 62% at 50% 42%, #000 45%, transparent 72%); }
 .hint { grid-column: 2; color: var(--soft); font-size: var(--s-small); margin: 0; }
 @media (max-width: 900px) { .hero { grid-template-columns: 1fr; min-height: 0; padding-top: 40px; } .hint { grid-column: 1; } .seal3d { height: min(88vw, 420px); } }
 
@@ -112,7 +112,8 @@ figcaption { color: var(--soft); font-size: var(--s-small); margin-top: 10px; }
 .close .big { font-family: var(--deva); font-size: var(--s-display); line-height: 1.1; margin: 0 0 16px; color: var(--seal); }
 .close .credits { color: var(--soft); font-size: var(--s-small); max-width: 64ch; }
 
-.js .reveal > * { opacity: 0; transform: translateY(24px); transition: opacity .7s ease, transform .7s ease; }
+/* Content is never far from visible: a short rise from 40% opacity, so a fast scroll or a screenshot never lands on an empty section. */
+.js .reveal > * { opacity: 0.4; transform: translateY(12px); transition: opacity .45s ease, transform .45s ease; }
 .js .reveal.in > * { opacity: 1; transform: none; }
 .js .reveal.in > *:nth-child(2) { transition-delay: .08s; }
 .js .reveal.in > *:nth-child(3) { transition-delay: .16s; }
@@ -294,5 +295,6 @@ figcaption { color: var(--soft); font-size: var(--s-small); margin-top: 10px; }
 .close .blocks span:nth-child(5) { height: 94%; background: var(--seal-text); }
 .foot-cols { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; margin-bottom: 40px; }
 .foot-cols nav { display: grid; gap: 8px; align-content: start; font-size: 15px; }
-.foot-cols a { text-decoration: none; }
+.foot-cols a { text-decoration: none; display: inline-flex; align-items: center; min-height: 44px; }
+.foot-cols nav { gap: 0; }
 @media (max-width: 760px) { .foot-cols { grid-template-columns: 1fr 1fr; } .close .blocks { height: 22svh; } }
