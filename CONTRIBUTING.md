@@ -43,4 +43,5 @@ Don't open a public issue. See [SECURITY.md](SECURITY.md).
 
 ## Conduct
 
-Be direct, be kind, and assume good intent. Harassment of any kind gets you removed from the project.
+Everyone here follows the [Code of Conduct](CODE_OF_CONDUCT.md). How decisions are made is in
+[GOVERNANCE.md](GOVERNANCE.md).
