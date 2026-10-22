@@ -1,0 +1,23 @@
+# Accepted zizmor findings. Every entry says why; remove it when the cause goes away.
+# All of these are in release.yml, which `dist generate` (cargo-dist 0.32.0) writes and rewrites, so
+# hand edits would be lost. Re-check this list whenever cargo-dist is upgraded.
+rules:
+  excessive-permissions:
+    ignore:
+      # The release job creates the GitHub Release and uploads artefacts; dist sets contents: write at
+      # the workflow level. The workflow only runs on version tags and on pull requests (plan only).
+      - release.yml:18
+  template-injection:
+    ignore:
+      # github.ref_name is the version tag. Only admins can create v* tags (repository ruleset), so it
+      # is not attacker-controlled.
+      - release.yml:80
+      # matrix.* and needs.plan.outputs come from dist's own build plan, generated from this repo's
+      # committed dist-workspace.toml, not from pull request content.
+      - release.yml:135
+      - release.yml:145
+      - release.yml:149
+  unpinned-images:
+    ignore:
+      # No configured target uses a container, so this expression always evaluates to null.
+      - release.yml:111
