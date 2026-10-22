@@ -9,6 +9,8 @@ use ed25519_dalek::{Signature, Signer, Verifier};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+pub mod store;
+
 pub use ed25519_dalek::VerifyingKey;
 
 /// Receipt format version written into every receipt.
@@ -137,6 +139,15 @@ impl SigningKey {
     pub fn verifying_key(&self) -> VerifyingKey {
         self.0.verifying_key()
     }
+
+    /// Rebuild a key from its 32-byte seed.
+    pub fn from_seed(seed: &[u8; 32]) -> Self {
+        Self(ed25519_dalek::SigningKey::from_bytes(seed))
+    }
+
+    pub(crate) fn seed(&self) -> [u8; 32] {
+        self.0.to_bytes()
+    }
 }
 
 /// Lowercase hex, without a dependency for twenty lines of work.
@@ -179,7 +190,43 @@ pub fn receipt_hash(r: &Receipt) -> Result<String, Error> {
     ))
 }
 
-fn genesis() -> String {
+/// Build and sign the receipt at position `seq` that follows a receipt hashing to `prev`.
+pub(crate) fn seal(
+    key: &SigningKey,
+    seq: u64,
+    prev: String,
+    entry: Entry,
+) -> Result<Receipt, Error> {
+    let mut r = Receipt {
+        v: VERSION,
+        seq,
+        prev,
+        ts: entry.ts,
+        agent: Agent {
+            id: entry.agent_id,
+            key: public_key_string(&key.verifying_key()),
+        },
+        action: entry.action,
+        decision: entry.decision,
+        sig: String::new(),
+    };
+    let sig = key.0.sign(&signing_bytes(&r)?);
+    r.sig = format!("{SIG_PREFIX}{}", hex(&sig.to_bytes()));
+    Ok(r)
+}
+
+/// A public key as written in receipts and key files: `ed25519:` and 64 hex digits.
+pub fn public_key_string(key: &VerifyingKey) -> String {
+    format!("{SIG_PREFIX}{}", hex(key.as_bytes()))
+}
+
+/// Parse a public key written by [`public_key_string`].
+pub fn parse_public_key(s: &str) -> Option<VerifyingKey> {
+    let raw = unhex(s.trim().strip_prefix(SIG_PREFIX)?)?;
+    VerifyingKey::from_bytes(&<[u8; 32]>::try_from(raw.as_slice()).ok()?).ok()
+}
+
+pub(crate) fn genesis() -> String {
     format!("{SHA_PREFIX}{}", "0".repeat(64))
 }
 
@@ -204,21 +251,7 @@ impl Log {
             Some(last) => receipt_hash(last)?,
             None => genesis(),
         };
-        let mut r = Receipt {
-            v: VERSION,
-            seq: self.receipts.len() as u64,
-            prev,
-            ts: entry.ts,
-            agent: Agent {
-                id: entry.agent_id,
-                key: format!("{SIG_PREFIX}{}", hex(self.key.verifying_key().as_bytes())),
-            },
-            action: entry.action,
-            decision: entry.decision,
-            sig: String::new(),
-        };
-        let sig = self.key.0.sign(&signing_bytes(&r)?);
-        r.sig = format!("{SIG_PREFIX}{}", hex(&sig.to_bytes()));
+        let r = seal(&self.key, self.receipts.len() as u64, prev, entry)?;
         self.receipts.push(r);
         Ok(self
             .receipts
