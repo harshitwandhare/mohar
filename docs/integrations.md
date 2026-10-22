@@ -22,6 +22,41 @@ Phase 6.
 | **OpenAI Codex** | `PreToolUse`, `PermissionRequest`, `PostToolUse` hooks; managed through `requirements.toml`. Its docs say hook errors and timeouts don't block the tool call. | Advisory. | Same daemon call, deployed through managed `requirements.toml`, run inside Codex's sandbox. |
 | **awslabs/cli-agent-orchestrator (CAO)** | Event plugins today are observers only (`post_*` events, no veto). Because CAO launches the real Claude Code and Codex binaries, their hooks still apply inside CAO sessions. | Inherits the strength of the provider underneath. | Contribute `pre_*` events with veto upstream (CAO issue #671). Map CAO's terminal identity and allowlists onto Mohar capabilities so children narrow from their parent. |
 
+| **Google Antigravity CLI** (`agy`, which replaced Gemini CLI for consumers in 2026) | `PreToolUse` hook that returns allow, ask or deny and can rewrite arguments. | Blocking; fail-open behaviour not yet confirmed. | The same `mohar-hook` binary with a host profile. |
+| **GitHub Copilot** (coding agent, CLI, VS Code agent mode) | Hooks under `.github/hooks`; it also reads Claude Code's settings file. | Blocking where configured. | Host profile for `mohar-hook`; organisation policy for distribution. |
+| **Cursor, Devin Desktop (formerly Windsurf), Kiro, Cline, OpenHands** | Each has a documented pre-tool hook that can deny or ask. Most fail open on a crash or timeout unless told not to. | Blocking when configured to fail closed. | Generated configs for `mohar-hook`, each with fail-closed set. |
+| **Goose, Aider** | No documented pre-tool hook. | None at the tool call. | The MCP gateway for tools they reach through MCP, and the CI check below for everything else. |
+
+All host facts above were read from each product's current documentation in October 2026; hook
+semantics change between versions, so every receipt records the host's name and version.
+
+### Fail closed
+
+A hook that crashes or times out lets the tool call through on most hosts. Every Mohar host profile sets
+the host's fail-closed option where one exists (Claude Code's `onFailure: "block"`, for example), and the
+daemon answers within a fixed budget so a slow decision is a deny, not a pass. For teams, the hooks and the
+Mohar settings are delivered through each host's managed configuration (Claude Code managed settings with
+managed hooks only, Codex `requirements.toml`), and the gates deny agent writes to the files that hold
+them.
+
+### A check for hosts without a hook
+
+A GitHub Action (and the same command for other CI) verifies, on every pull request, that each commit an
+agent made carries receipts that verify against the repository's Mohar key, and fails the check when they
+don't. That covers agents with no usable hook after the fact: their work can't merge without a record.
+
+### Order of work
+
+1. Claude Code plugin (hooks, `http` handler straight to the daemon, managed-settings bundle).
+2. MCP gateway, the floor for every MCP client.
+3. Codex.
+4. Copilot and VS Code.
+5. Cursor.
+6. Antigravity CLI.
+7. ADK and agent-SDK libraries.
+8. Config generators for Devin Desktop, Kiro, Cline and OpenHands on top of `mohar-hook`.
+9. The CI receipt check.
+
 ## Agent frameworks
 
 | Framework | Seam | Strength | Plan |
