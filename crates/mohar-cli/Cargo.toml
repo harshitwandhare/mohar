@@ -16,4 +16,4 @@ workspace = true
 
 [dependencies]
 clap = { version = "4.6", features = ["derive"] }
-mohar-core = { path = "../mohar-core" }
+mohar-core = { path = "../mohar-core", version = "0.0.1" }

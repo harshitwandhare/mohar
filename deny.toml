@@ -1,0 +1,32 @@
+# cargo-deny policy: what may enter the dependency tree.
+# https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+all-features = true
+
+[advisories]
+# Any RustSec advisory (vulnerable, unsound or unmaintained) fails the build.
+version = 2
+yanked = "deny"
+
+[licenses]
+version = 2
+# Permissive licences compatible with shipping Mohar under Apache-2.0, including inside closed products.
+# Only licences actually present are listed; adding one is a reviewed change.
+allow = [
+  "Apache-2.0",
+  "MIT",
+  "BSD-3-Clause",
+  "Unicode-3.0",
+]
+confidence-threshold = 0.9
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
