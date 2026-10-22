@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<script>document.documentElement.classList.add('js')</script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mohar · trust that agents earn</title>
+<meta name="description" content="Mohar is an open-source trust layer for AI agents. Authority is earned per capability from verified results and lost the moment an agent gets it wrong. Every decision leaves a sealed receipt.">
+<meta name="theme-color" content="#16130f">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Tiro+Devanagari+Marathi&family=Schibsted+Grotesk:wght@400;500;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="seal.svg" type="image/svg+xml">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="bar">
+  <a class="wordmark" href="#top" translate="no">Mohar</a>
+  <nav aria-label="Primary">
+    <a href="#try">Try it</a>
+    <a href="#how">How it works</a>
+    <a href="#seal">The seal</a>
+    <a class="action" href="https://github.com/harshitwandhare/mohar">GitHub</a>
+  </nav>
+</header>
+
+<main id="main">
+  <section class="hero" id="top">
+    <div class="hero-copy">
+      <h1>Trust, earned.</h1>
+      <p class="lede">Mohar watches what an AI agent does, checks whether the result was right, and turns that record into permission, one capability at a time. One wrong move on a gated capability and the right is gone. Every decision is sealed with a receipt.</p>
+      <p><a class="button" href="#try">Watch an agent earn it</a></p>
+    </div>
+    <div class="seal3d" id="seal3d">
+      <img fetchpriority="high" src="assets/seal-still.jpg" alt="An octagonal brass seal engraved with मोहर resting on an old Marathi manuscript" width="900" height="900">
+    </div>
+    <p class="hint">Tilt the seal with your pointer. Click it, or run the agent below, and it presses a receipt.</p>
+  </section>
+
+  <section class="try reveal" id="try" aria-labelledby="try-h">
+    <h2 id="try-h">Run an agent for a week</h2>
+    <p class="note">A simulation of Mohar's rules in your browser. Each task is checked by tests, never by the agent's opinion of itself. Receipts form a real SHA-256 chain; the browser demo has no keys, so it doesn't sign them.</p>
+    <div class="sim">
+      <div class="caps" id="caps" aria-live="polite"></div>
+      <div class="controls">
+        <button class="button" id="step" type="button">Next task</button>
+        <button class="button quiet" id="fail" type="button">Break a migration</button>
+        <button class="button quiet" id="reset" type="button">Start over</button>
+      </div>
+      <ol class="receipts" id="receipts" aria-label="Receipts, newest first"></ol>
+    </div>
+    <noscript><p>The simulator needs JavaScript. Its rules are listed under How it works.</p></noscript>
+  </section>
+
+  <section class="how reveal" id="how" aria-labelledby="how-h">
+    <h2 id="how-h">Four rules, kept in code</h2>
+    <dl class="rules">
+      <div><dt>Record</dt><dd>Every action goes into a local hash-chained log, signed with the agent's key.</dd></div>
+      <div><dt>Verify</dt><dd>Tests, diffs, replays or a person accepting the work decide the outcome. A model grading itself never counts.</dd></div>
+      <div><dt>Score each capability</dt><dd>Editing docs and running migrations are tracked apart. Hard gates sit outside the score, so an average can't hide a failure.</dd></div>
+      <div><dt>Decide</dt><dd>Inside earned limits the action runs. Outside them it goes to the right person, with the agent's history attached.</dd></div>
+    </dl>
+  </section>
+
+  <figure class="band reveal">
+    <img src="assets/mahadarwaza-and-fortification-of-raigad-fort.jpg" alt="The walls and main gate of Raigad fort winding along a cliff in the Sahyadri hills" width="1920" height="1440" loading="lazy">
+    <figcaption>Raigad fort in the Sahyadris, the Maratha capital from 1674.</figcaption>
+  </figure>
+
+  <section class="seal-story reveal" id="seal" aria-labelledby="seal-h">
+    <figure class="plate">
+      <img src="assets/rajmudra-fort-raigad.jpg" alt="A carved stone inscription in Devanagari at Raigad fort" width="1920" height="1440" loading="lazy">
+      <figcaption>Stone inscription at Raigad fort, Maharashtra.</figcaption>
+    </figure>
+    <div class="seal-copy">
+      <h2 id="seal-h">Why a seal</h2>
+      <p>In Maratha administration a letter wasn't an order until it carried the mohar, the seal that said who stood behind it. Mohar does the same for agents: every action carries proof of whose authority it ran under and what the agent had earned at that moment.</p>
+      <figure class="plate">
+        <img class="top" src="assets/shaniwar-wada-main-gate-01.jpg" alt="The stone bastions and main gate of Shaniwar Wada in Pune" width="1920" height="1440" loading="lazy">
+        <figcaption>Shaniwar Wada, Pune, seat of the Peshwa administration.</figcaption>
+      </figure>
+      <p>The seal on this page is Mohar's own, cut in that tradition: an octagon with a double border, engraved मोहर and ॥ सत्यमेव साक्षी ॥, "truth alone is the witness".</p>
+    </div>
+    <figure class="plate wide">
+      <img src="assets/1765-saka-1843-ce-jnanesvari-jnandeva-dnyaneshwar.jpg" alt="Two pages of an 1843 Marathi manuscript of the Jnaneshwari in Devanagari" width="1694" height="2074" loading="lazy">
+      <figcaption>Jnaneshwari manuscript, 1843 CE, Devanagari Marathi.</figcaption>
+    </figure>
+  </section>
+
+  <section class="fit reveal" aria-labelledby="fit-h">
+    <h2 id="fit-h">Built to sit beside what you run</h2>
+    <p>Mohar works with the orchestrators, identity providers and policy engines you already run. It's planned to plug into Claude Code hooks, MCP servers, awslabs/cli-agent-orchestrator, Google ADK, Microsoft's Agent Governance Toolkit and Paperclip.</p>
+    <p>It's early and built in the open. The signed receipt log is the first piece being written, and nothing is production-ready yet.</p>
+    <p><a class="button" href="https://github.com/harshitwandhare/mohar/blob/main/docs/ROADMAP.md">Read the roadmap</a></p>
+  </section>
+</main>
+
+<footer class="close">
+  <p class="big" translate="no" lang="mr">मोहर</p>
+  <p>Mohar, Marathi for a seal. Apache-2.0.</p>
+  <p class="credits">Pictures: "Rajmudra (Fort raigad)" via Wikimedia Commons, CC BY-SA 3.0. "1765 Saka, 1843 CE, Jnanesvari Jnandeva Dnyaneshwar manuscript page 1 and 2, Devanagari Marathi" via Wikimedia Commons, CC BY-SA 4.0. "Mahadarwaza and fortification of Raigad fort" via Wikimedia Commons, CC BY-SA 4.0. "Shaniwar Wada Main Gate 01" via Wikimedia Commons, CC0. Authors and links in <a href="https://github.com/harshitwandhare/mohar/blob/main/site/assets/credits.json">credits.json</a>.</p>
+</footer>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.min.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"}}</script>
+<script type="module" src="seal3d.js"></script>
+<script src="sim.js" defer></script>
+<script src="reveal.js" defer></script>
+</body>
+</html>
