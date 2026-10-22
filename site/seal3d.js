@@ -64,10 +64,15 @@ export function sealFace(size, ink, ground, mirror) {
     if (px[(y * size + x) * 4 + 3] > 127) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
   }
   const dx = x1 >= x0 ? m - (x0 + x1) / 2 : 0, dy = y1 >= y0 ? m - (y0 + y1) / 2 : 0;
+  // Lay the name centred and the motto below it, then lift both so the pair's common centre is
+  // the octagon's centre.
+  const nameH = y1 >= y0 ? y1 - y0 : name.height;
+  const mottoCentre = m + size * 0.235;
+  const lift = (m - nameH / 2 + mottoCentre + motto.height / 2) / 2 - m;
   ctx.font = name.font;
-  ctx.fillText(name.text, m - name.width / 2 + name.left + dx, m - name.height / 2 + name.ascent + dy);
+  ctx.fillText(name.text, m - name.width / 2 + name.left + dx, m - name.height / 2 + name.ascent + dy - lift);
   ctx.font = motto.font;
-  ctx.fillText(motto.text, m - motto.width / 2 + motto.left, m + size * 0.235 - motto.height / 2 + motto.ascent);
+  ctx.fillText(motto.text, m - motto.width / 2 + motto.left, mottoCentre - motto.height / 2 + motto.ascent - lift);
   return c;
 }
 
