@@ -1,0 +1,11 @@
+{
+  "name": "mohar-site",
+  "private": true,
+  "scripts": {
+    "serve": "node e2e/serve.mjs",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}
