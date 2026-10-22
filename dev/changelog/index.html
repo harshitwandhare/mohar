@@ -909,6 +909,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1102,6 +1113,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1181,6 +1203,14 @@ receipt format; each such change is called out.</p>
 <ul>
 <li>A log can only be opened for writing by one process at a time; a second writer gets a clear error
   instead of interleaving receipts. Reading and verifying never need the lock (#40).</li>
+</ul>
+<h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Verifying and opening a log now read <code>receipts.jsonl</code> line by line and check checkpoints as the
+  receipts go past, so memory use no longer grows with the size of the log. A new <code>ChainVerifier</code> checks
+  one receipt at a time, <code>store::verify_file</code> and <code>store::verify_log</code> use it, and signatures are checked
+  on all available cores. <code>mohar verify</code> and <code>mohar log</code> stream too; <code>log --last N</code> keeps only N
+  receipts. <code>verify</code> and <code>verify_checkpoints</code> work as before (#59).</li>
 </ul>
 <h2 id="010-2026-10-22"><a href="https://github.com/harshitwandhare/mohar/releases/tag/v0.1.0">0.1.0</a> - 2026-10-22<a class="headerlink" href="#010-2026-10-22" title="Permanent link">&para;</a></h2>
 <p>The first release: a signed, hash-chained receipt log and the <code>mohar</code> command line tool.</p>
