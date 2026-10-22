@@ -13,7 +13,7 @@ would notice. Never on a fixed schedule.
 5. After it merges and `main` is green, tag the merge commit and push the tag:
 
    ```bash
-   git tag -s vX.Y.Z -m "vX.Y.Z"
+   git tag -a vX.Y.Z -m "vX.Y.Z"   # use -s instead once a signing key is set up
    git push origin vX.Y.Z
    ```
 
