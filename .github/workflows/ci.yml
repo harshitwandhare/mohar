@@ -22,8 +22,6 @@ jobs:
     # apt mirror or a browser download. Its version must match @playwright/test in package-lock.json.
     container:
       image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:7852dc5a7d72f5fe458a597d690f6c42fbc8e9e26ddfa95f8e6ef552558d9bbf
-      env:
-        HOME: /root # Firefox refuses to start as root under another user's home
     strategy:
       fail-fast: false
       matrix:
@@ -34,6 +32,8 @@ jobs:
           persist-credentials: false
       - run: npm ci
       - run: npx playwright test --project=${{ matrix.project }}
+        env:
+          HOME: /root # Firefox won't run as root with another user's home; Actions resets HOME per step
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
