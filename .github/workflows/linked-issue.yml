@@ -13,6 +13,7 @@ jobs:
     name: Pull request links an issue
     if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Look for "Closes #N"
         env:
