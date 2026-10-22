@@ -17,3 +17,13 @@
   --md-typeset-a-color: #a8201a;
 }
 .md-header__title { font-weight: 800; }
+
+/* Headings and chrome in the landing page's weight and spacing. */
+.md-header { box-shadow: none; border-bottom: 1px solid #2e2721; }
+.md-typeset h1 { color: var(--md-default-fg-color); font-weight: 800; letter-spacing: -0.03em; }
+.md-typeset h2 { font-weight: 800; letter-spacing: -0.02em; }
+.md-typeset h3 { font-weight: 800; }
+.md-typeset .admonition, .md-typeset details { border-radius: 8px; }
+.md-typeset pre > code { border-radius: 8px; }
+.md-typeset .md-button { border-radius: 6px; font-weight: 500; }
+.md-typeset .md-button--primary { background-color: #c2312a; border-color: #c2312a; color: #fff; }
