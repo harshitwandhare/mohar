@@ -1,0 +1,70 @@
+name: Docs
+
+# Versioned documentation with mike: `dev` follows main, each release tag publishes a frozen X.Y
+# version and moves `latest` to it. mike keeps the versions on the gh-pages branch, which GitHub Pages
+# serves at https://harshitwandhare.github.io/mohar/.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Release tag to publish docs for, such as v0.1.0"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Docs build (strict)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - run: uv run --no-project --with-requirements docs/requirements.txt mkdocs build --strict
+
+  publish:
+    name: Publish versioned docs
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # mike commits the built site to gh-pages
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+          fetch-depth: 0
+          persist-credentials: true # mike pushes to gh-pages; no artefacts are uploaded from this job
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin gh-pages --depth=1 || true
+      - name: Deploy
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_REF: ${{ github.event.inputs.ref }}
+        run: |
+          MIKE="uv run --no-project --with-requirements docs/requirements.txt mike"
+          if [ "$EVENT" = "push" ] && [ "$REF_NAME" = "main" ]; then
+            $MIKE deploy --push dev
+          else
+            TAG="${INPUT_REF:-$REF_NAME}"
+            case "$TAG" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "not a release tag: $TAG"; exit 1 ;; esac
+            MINOR="$(echo "${TAG#v}" | cut -d. -f1,2)"
+            $MIKE deploy --push --update-aliases "$MINOR" latest
+            $MIKE set-default --push latest
+          fi

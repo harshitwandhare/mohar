@@ -1,0 +1,91 @@
+site_name: Mohar
+site_description: Open-source trust layer for AI agents. Authority earned per capability from verified outcomes, lost on failure, with a signed receipt for every decision.
+site_url: https://harshitwandhare.github.io/mohar/
+repo_url: https://github.com/harshitwandhare/mohar
+repo_name: harshitwandhare/mohar
+edit_uri: edit/main/docs/
+copyright: Apache-2.0. "Mohar" is the project's name and is not licensed for use as the name of other products.
+
+theme:
+  name: material
+  logo: assets/logo.svg
+  favicon: assets/logo.svg
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: red
+      accent: red
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: red
+      accent: red
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+  font: false
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - navigation.instant
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+
+extra:
+  version:
+    provider: mike
+    default: latest
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/harshitwandhare/mohar
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Install and first log: getting-started.md
+      - CLI reference: cli.md
+  - Concepts:
+      - Design: design.md
+      - Engineering bar: engineering-bar.md
+      - Integrations: integrations.md
+  - Formats:
+      - Receipts and checkpoints: formats.md
+  - Trust and compliance:
+      - Compliance: compliance.md
+      - Security policy: security.md
+  - Project:
+      - Roadmap: ROADMAP.md
+      - Changelog: changelog.md
+      - Releasing: RELEASING.md
+      - How it sustains itself: business-model.md
+      - Contributing: contributing.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true
+
+plugins:
+  - search
+
+# Any broken link between pages fails the strict build.
+validation:
+  links:
+    not_found: warn
+    anchors: warn

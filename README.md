@@ -47,6 +47,11 @@ provider or your policy engine.
 Claude Code hooks, MCP servers through a proxy, awslabs/cli-agent-orchestrator, Google ADK,
 Microsoft's Agent Governance Toolkit, and Paperclip. Mohar is built to sit beside them.
 
+## Documentation
+
+Versioned docs live at **https://harshitwandhare.github.io/mohar/**: getting started, the CLI
+reference, the design, formats and test vectors, integrations, compliance and the roadmap.
+
 ## Install
 
 The first piece that runs is the receipt log and its `mohar` CLI. Each
