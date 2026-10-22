@@ -186,8 +186,8 @@ before hashing and signing.
   can be published to an external transparency log so a deleted tail of the local log can be detected.
 
 Receipt format work is aligned with the IETF drafts on attenuating agent tokens and delegation rather
-than inventing a competing token format. Mohar will publish test vectors so other implementations can
-check against it.
+than inventing a competing token format. Test vectors for this format, with an independent Python
+checker, are in [`spec/vectors`](https://github.com/harshitwandhare/mohar/tree/main/spec/vectors).
 
 ## 8. Privacy
 
