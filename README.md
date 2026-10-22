@@ -47,9 +47,31 @@ provider or your policy engine.
 Claude Code hooks, MCP servers through a proxy, awslabs/cli-agent-orchestrator, Google ADK,
 Microsoft's Agent Governance Toolkit, and Paperclip. Mohar is built to sit beside them.
 
+## Install
+
+The first piece that runs is the receipt log and its `mohar` CLI. Each
+[release](https://github.com/harshitwandhare/mohar/releases) has builds for Linux and macOS (x86_64 and
+arm64) and Windows (x86_64), checksums, and GitHub build attestations.
+
+```bash
+# Linux and macOS
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/harshitwandhare/mohar/releases/latest/download/mohar-cli-installer.sh | sh
+```
+
+```powershell
+# Windows
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/harshitwandhare/mohar/releases/latest/download/mohar-cli-installer.ps1 | iex"
+```
+
+To check that a download was built by this repository's release workflow:
+
+```bash
+gh attestation verify mohar-cli-x86_64-unknown-linux-gnu.tar.xz -R harshitwandhare/mohar
+```
+
 ## Try the receipt log
 
-The first piece that runs is the receipt log and its CLI. From a clone, with Rust 1.95 or newer:
+From a clone, with Rust 1.95 or newer (or use the installed `mohar` in place of `cargo run -p mohar-cli --`):
 
 ```bash
 cargo run -p mohar-cli -- init
