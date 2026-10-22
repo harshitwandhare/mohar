@@ -31,15 +31,18 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      # The browser download and apt step sometimes stall on the runner. Give each try five minutes
-      # and retry, so one stuck mirror doesn't cost the whole job.
+      # The runner's apt mirror is sometimes slow. System packages install once, with apt retrying each
+      # download itself; killing apt from outside leaves its lock held, so it is never wrapped in
+      # timeout. Only the browser download, which is safe to restart, is retried.
       - name: Install browser
         env:
           BROWSER: ${{ matrix.project == 'mobile' && 'chromium' || matrix.project }}
         run: |
+          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\n' | sudo tee /etc/apt/apt.conf.d/80-retries
+          npx playwright install-deps "$BROWSER"
           for try in 1 2 3; do
-            timeout 300 npx playwright install --with-deps "$BROWSER" && exit 0
-            echo "install attempt $try failed or stalled; retrying"
+            timeout 300 npx playwright install "$BROWSER" && exit 0
+            echo "browser download attempt $try failed or stalled; retrying"
           done
           exit 1
       - run: npx playwright test --project=${{ matrix.project }}
