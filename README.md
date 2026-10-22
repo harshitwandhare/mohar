@@ -47,6 +47,19 @@ provider or your policy engine.
 Claude Code hooks, MCP servers through a proxy, awslabs/cli-agent-orchestrator, Google ADK,
 Microsoft's Agent Governance Toolkit, and Paperclip. Mohar is built to sit beside them.
 
+## Try the receipt log
+
+The first piece that runs is the receipt log and its CLI. From a clone, with Rust 1.95 or newer:
+
+```bash
+cargo run -p mohar-cli -- init
+cargo run -p mohar-cli -- append --agent agent:me/1 --capability fs.edit.docs --tool Edit --target docs/a.md --args-sha256 c41b77d0 --result allow
+cargo run -p mohar-cli -- log
+cargo run -p mohar-cli -- verify
+```
+
+Edit any line in `.mohar/receipts.jsonl` and `verify` names the receipt that broke.
+
 ## Roadmap
 
 See [docs/ROADMAP.md](docs/ROADMAP.md). The full design, with the trust rules, receipt format and threat model, is in [docs/design.md](docs/design.md).
