@@ -39,9 +39,9 @@ npx playwright test --project=chromium
 
 ## Reporting security problems
 
-Don't open a public issue. See [SECURITY.md](SECURITY.md).
+Don't open a public issue. See [SECURITY.md](https://github.com/harshitwandhare/mohar/blob/main/SECURITY.md).
 
 ## Conduct
 
-Everyone here follows the [Code of Conduct](CODE_OF_CONDUCT.md). How decisions are made is in
-[GOVERNANCE.md](GOVERNANCE.md).
+Everyone here follows the [Code of Conduct](https://github.com/harshitwandhare/mohar/blob/main/CODE_OF_CONDUCT.md). How decisions are made is in
+[GOVERNANCE.md](https://github.com/harshitwandhare/mohar/blob/main/GOVERNANCE.md).

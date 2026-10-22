@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="t">
+  <title id="t">Mohar</title>
+  <!-- A seal stamp after 17th-century Deccani gilt-brass finials: scaled lotus bud, calyx, beaded
+       collar, ogee-lattice shaft, flared petal base, octagonal die. Carvings are cut through, so the
+       mark works on any background. -->
+  <defs>
+    <pattern id="scales" width="32" height="32" patternUnits="userSpaceOnUse" x="240" y="40">
+      <path d="M0 0 A16 16 0 0 0 32 0 M-16 16 A16 16 0 0 0 16 16 M16 16 A16 16 0 0 0 48 16 M0 32 A16 16 0 0 0 32 32" fill="none" stroke="#000" stroke-width="4.5"/>
+    </pattern>
+    <pattern id="ogee" width="34" height="44" patternUnits="userSpaceOnUse" x="239" y="246">
+      <path d="M17 4 C30 14 30 30 17 40 C4 30 4 14 17 4 Z" fill="#000"/>
+    </pattern>
+    <clipPath id="budClip"><path d="M256 46 C234 78 198 110 198 152 C198 182 224 202 256 202 C288 202 314 182 314 152 C314 110 278 78 256 46 Z"/></clipPath>
+    <clipPath id="shaftClip"><rect x="228" y="250" width="56" height="94"/></clipPath>
+    <mask id="cut" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512">
+      <rect width="512" height="512" fill="#fff"/>
+      <rect x="190" y="40" width="132" height="170" fill="url(#scales)" clip-path="url(#budClip)"/>
+      <rect x="226" y="248" width="60" height="98" fill="url(#ogee)" clip-path="url(#shaftClip)"/>
+      <path d="M194 398 C196 384 205 374 216 370 C216 384 209 394 194 398 Z M318 398 C316 384 307 374 296 370 C296 384 303 394 318 398 Z M236 398 C232 385 238 374 248 369 C252 382 248 393 236 398 Z M276 398 C280 385 274 374 264 369 C260 382 264 393 276 398 Z" fill="#000"/>
+      <rect x="186" y="422" width="140" height="52" fill="none" stroke="#000" stroke-width="6"/>
+      <path d="M152 414 V482 M360 414 V482" stroke="#000" stroke-width="6"/>
+    </mask>
+  </defs>
+  <g fill="#c2312a" mask="url(#cut)">
+    <path d="M256 12 L263 46 L249 46 Z"/>
+    <path d="M256 46 C234 78 198 110 198 152 C198 182 224 202 256 202 C288 202 314 182 314 152 C314 110 278 78 256 46 Z"/>
+    <path d="M174 200 C194 190 216 198 226 220 C206 226 186 218 174 200 Z M338 200 C318 190 296 198 286 220 C306 226 326 218 338 200 Z"/>
+    <path d="M204 194 C224 190 242 202 246 224 C226 224 210 212 204 194 Z M308 194 C288 190 270 202 266 224 C286 224 302 212 308 194 Z"/>
+    <path d="M256 194 C270 204 272 218 256 230 C240 218 242 204 256 194 Z"/>
+    <rect x="216" y="228" width="80" height="10" rx="5"/>
+    <circle cx="224" cy="244" r="5"/><circle cx="240" cy="244" r="5"/><circle cx="256" cy="244" r="5"/>
+    <circle cx="272" cy="244" r="5"/><circle cx="288" cy="244" r="5"/>
+    <rect x="228" y="250" width="56" height="94"/>
+    <rect x="212" y="344" width="88" height="10" rx="5"/>
+    <path d="M166 404 C174 380 194 362 216 358 L296 358 C318 362 338 380 346 404 Z"/>
+    <path d="M152 410 L360 410 L378 428 L378 468 L360 486 L152 486 L134 468 L134 428 Z"/>
+  </g>
+</svg>
