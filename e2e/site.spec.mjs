@@ -83,3 +83,28 @@ test('llms.txt points agents at the markdown docs', async ({ request }) => {
   expect(body).toMatch(/^# Mohar/);
   expect(body).toContain('/docs/design.md');
 });
+
+const pages = ['/', '/name.html', '/design.html', '/roadmap.html', '/integrations.html', '/compliance.html', '/engineering-bar.html', '/business-model.html'];
+
+test('no page is wider than a 320px phone, and each has the same header', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  for (const path of pages) {
+    await page.goto(path);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow, `${path} scrolls sideways`).toBe(0);
+    const menu = page.locator('.menu');
+    await expect(menu, `${path} has no menu`).toBeVisible();
+    await menu.locator('summary').click();
+    for (const name of ['Docs', 'Design', 'Roadmap', 'Integrations', 'Compliance', 'GitHub']) {
+      await expect(page.getByRole('navigation', { name: 'Menu' }).getByRole('link', { name, exact: true })).toBeVisible();
+    }
+  }
+});
+
+test('body text stays readable but not oversized on a phone', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/');
+  const size = await page.evaluate(() => parseFloat(getComputedStyle(document.body).fontSize));
+  expect(size).toBeGreaterThanOrEqual(16);
+  expect(size).toBeLessThanOrEqual(17);
+});

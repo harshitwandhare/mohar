@@ -1,16 +1,42 @@
-<p align="center"><img src="site/logo.svg" alt="Mohar" width="140"></p>
+<p align="center"><img src="site/logo.svg" alt="Mohar" width="120"></p>
 
-# Mohar
+<h1 align="center">Mohar</h1>
 
-Agents should earn what they're allowed to do, and lose it the moment they get it wrong.
+<p align="center">Agents should earn what they're allowed to do, and lose it the moment they get it wrong.</p>
+
+<p align="center">
+  <a href="https://github.com/harshitwandhare/mohar/actions/workflows/rust.yml"><img alt="Rust" src="https://github.com/harshitwandhare/mohar/actions/workflows/rust.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/harshitwandhare/mohar/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/harshitwandhare/mohar/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/harshitwandhare/mohar/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/harshitwandhare/mohar"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/harshitwandhare/mohar"><img alt="OpenSSF Scorecard" src="https://api.scorecard.dev/projects/github.com/harshitwandhare/mohar/badge"></a>
+  <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
+</p>
+
+<p align="center">
+  <a href="https://mohar-liard.vercel.app">Website</a> ·
+  <a href="https://harshitwandhare.github.io/mohar/">Docs</a> ·
+  <a href="https://harshitwandhare.github.io/mohar/latest/getting-started/">Install</a> ·
+  <a href="docs/design.md">Design</a> ·
+  <a href="docs/ROADMAP.md">Roadmap</a>
+</p>
 
 Mohar is an open-source trust layer for AI agents. It watches what an agent does, checks whether the
 result was actually right, and turns that record into permission: an agent that keeps passing your tests
 on a kind of task stops asking you about it, and an agent that breaks something loses that right straight
 away. Every decision leaves a signed receipt.
 
-> Status: early. The design is written and the first pieces are being built in the open. Nothing here is
-> production-ready yet, and the roadmap says honestly what exists and what doesn't.
+## Status
+
+Mohar is early, and this table is kept honest.
+
+| Piece | State |
+|---|---|
+| Signed, hash-chained receipt log (`mohar-core`) | Released in 0.1 |
+| `mohar` CLI: `init`, `append`, `log`, `checkpoint`, `verify` | Released in 0.1, for Linux, macOS and Windows |
+| Receipt format test vectors, with an independent Python checker | Released in 0.1 |
+| Trust engine, verifiers, escalation, host adapters | Designed in [docs/design.md](docs/design.md), being built ([roadmap](docs/ROADMAP.md)) |
+
+Nothing here is production-ready yet.
 
 ## Why
 
@@ -42,21 +68,10 @@ provider or your policy engine.
    with what the agent has done before and what that person usually decides. One failure on a gated
    capability demotes the agent immediately.
 
-## What's planned to plug into
-
-Claude Code hooks, MCP servers through a proxy, awslabs/cli-agent-orchestrator, Google ADK,
-Microsoft's Agent Governance Toolkit, and Paperclip. Mohar is built to sit beside them.
-
-## Documentation
-
-Versioned docs live at **https://harshitwandhare.github.io/mohar/**: getting started, the CLI
-reference, the design, formats and test vectors, integrations, compliance and the roadmap.
-
 ## Install
 
-The first piece that runs is the receipt log and its `mohar` CLI. Each
-[release](https://github.com/harshitwandhare/mohar/releases) has builds for Linux and macOS (x86_64 and
-arm64) and Windows (x86_64), checksums, and GitHub build attestations.
+Each [release](https://github.com/harshitwandhare/mohar/releases) has builds for Linux and macOS (x86_64
+and arm64) and Windows (x86_64), with checksums and GitHub build attestations.
 
 ```bash
 # Linux and macOS
@@ -74,23 +89,46 @@ To check that a download was built by this repository's release workflow:
 gh attestation verify mohar-cli-x86_64-unknown-linux-gnu.tar.xz -R harshitwandhare/mohar
 ```
 
-## Try the receipt log
-
-From a clone, with Rust 1.95 or newer (or use the installed `mohar` in place of `cargo run -p mohar-cli --`):
+## Try it
 
 ```bash
-cargo run -p mohar-cli -- init
-cargo run -p mohar-cli -- append --agent agent:me/1 --capability fs.edit.docs --tool Edit --target docs/a.md --args-sha256 c41b77d0 --result allow
-cargo run -p mohar-cli -- checkpoint
-cargo run -p mohar-cli -- log
-cargo run -p mohar-cli -- verify
+mohar init
+mohar append --agent agent:me/1 --capability fs.edit.docs --tool Edit \
+  --target docs/a.md --args-sha256 c41b77d0 --result allow --level 1 --by score
+mohar checkpoint
+mohar verify
+# ok: 1 receipts and 1 checkpoints verified
 ```
 
-Edit any line in `.mohar/receipts.jsonl` and `verify` names the receipt that broke. Delete lines from the end after a checkpoint and `verify` reports how many receipts are missing.
+Edit any line in `.mohar/receipts.jsonl` and `verify` names the receipt that broke. Delete lines from the
+end after a checkpoint and `verify` reports how many receipts are missing. The
+[getting started guide](https://harshitwandhare.github.io/mohar/latest/getting-started/) walks through
+both.
 
-## Roadmap
+## What's planned to plug into
 
-See [docs/ROADMAP.md](docs/ROADMAP.md). The full design, with the trust rules, receipt format and threat model, is in [docs/design.md](docs/design.md).
+Claude Code hooks, MCP servers through a proxy, awslabs/cli-agent-orchestrator, Google ADK, Microsoft's
+Agent Governance Toolkit, and Paperclip. [Integrations](docs/integrations.md) says how strong each seam
+is.
+
+## Repository
+
+| Path | What it holds |
+|---|---|
+| `crates/mohar-core` | Receipts, signing, verification and the on-disk log |
+| `crates/mohar-cli` | The `mohar` command |
+| `spec/vectors` | Format test vectors and the independent checker |
+| `docs` | Design, roadmap, compliance, engineering bar; published as the docs site |
+| `site` | The website |
+
+Every pull request runs tests on Linux, macOS and Windows, an 85% coverage floor, cargo-deny, CodeQL,
+gitleaks, zizmor, and browser tests in Chromium, Firefox, WebKit and a phone profile. The standard each part is held to is in
+[docs/engineering-bar.md](docs/engineering-bar.md).
+
+## Security
+
+Report vulnerabilities privately, as described in [SECURITY.md](SECURITY.md). Please don't open a public
+issue for them.
 
 ## Contributing
 
@@ -104,6 +142,6 @@ name of other products.
 
 ## The name
 
-Mohar (मोहर) is the Marathi word for a seal or stamp, the mark that makes a record count. The mark is a seal stamp drawn after 17th-century Deccani gilt-brass finials: a scaled lotus bud, a beaded collar, an ogee-lattice shaft and an octagonal die.
-
-The site lives at https://mohar-liard.vercel.app.
+Mohar (मोहर) is the Marathi word for a seal or stamp, the mark that makes a record count. The logo is a
+seal stamp drawn after 17th-century Deccani gilt-brass finials: a scaled lotus bud, a beaded collar, an
+ogee-lattice shaft and an octagonal die.
