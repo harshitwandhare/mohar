@@ -6,6 +6,7 @@ import { marked } from 'marked';
 const docs = [
   { src: 'docs/design.md', page: 'design.html', title: 'Design', blurb: 'How Mohar decides what an agent may do, how trust is earned and lost, and what each receipt proves.' },
   { src: 'docs/ROADMAP.md', page: 'roadmap.html', title: 'Roadmap', blurb: 'What gets built, in what order.' },
+  { src: 'docs/compliance.md', page: 'compliance.html', title: 'Compliance', blurb: 'How Mohar maps onto the EU AI Act, GDPR, the Cyber Resilience Act, US export rules and NIST, SOC 2 and ISO frameworks.' },
 ];
 
 // Anchors come from the heading's plain text; anything that isn't a letter or digit becomes a dash.
@@ -34,6 +35,7 @@ function page({ title, blurb, body, toc, md }) {
   <nav aria-label="Primary">
     <a href="design.html">Design</a>
     <a href="roadmap.html">Roadmap</a>
+    <a href="compliance.html">Compliance</a>
     <a href="${md}">Markdown</a>
     <a class="action" href="https://github.com/harshitwandhare/mohar">GitHub</a>
   </nav>
@@ -61,7 +63,7 @@ for (const d of docs) {
     return `<h${depth} id="${id}">${text}</h${depth}>`;
   };
   // Links between docs point at the rendered pages.
-  const body = marked.parse(md, { renderer }).replaceAll('href="ROADMAP.md"', 'href="roadmap.html"').replaceAll('href="design.md"', 'href="design.html"');
+  const body = marked.parse(md, { renderer }).replaceAll('href="ROADMAP.md"', 'href="roadmap.html"').replaceAll('href="design.md"', 'href="design.html"').replaceAll('href="compliance.md"', 'href="compliance.html"');
   const toc = heads.map(h => `<a href="#${h.id}">${h.text}</a>`).join('');
   const raw = `docs/${d.src.split('/').pop()}`;
   await copyFile(d.src, `site/${raw}`);

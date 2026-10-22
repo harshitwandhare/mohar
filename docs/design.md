@@ -166,9 +166,9 @@ before hashing and signing.
   "seq": 4182,
   "prev": "sha256:9f2c...e01a",
   "ts": "2026-11-03T14:22:07.311Z",
-  "agent": { "id": "agent:claude-code/harshit-laptop/7c1e", "key": "ed25519:Mx3f...Q" },
+  "agent": { "id": "agent:claude-code/host-4b1d/7c1e", "key": "ed25519:Mx3f...Q" },
   "authority": [
-    { "principal": "human:harshit", "granted": ["fs.edit.*", "git.push.branch"], "expires": "2026-12-01" }
+    { "principal": "human:7f3a09c2", "granted": ["fs.edit.*", "git.push.branch"], "expires": "2026-12-01" }
   ],
   "action": { "capability": "fs.edit.tests", "tool": "Edit", "target": "tests/test_receipts.rs", "args_sha256": "c41b...77d0" },
   "decision": { "result": "allow", "level": 1, "by": "score", "wilson_lower": 0.83, "n": 14 },
@@ -189,7 +189,21 @@ Receipt format work is aligned with the IETF drafts on attenuating agent tokens 
 than inventing a competing token format. Mohar will publish test vectors so other implementations can
 check against it.
 
-## 8. Threat model
+## 8. Privacy
+
+Receipts are append-only, so they're designed to hold no personal data:
+
+- People and machines appear only as pseudonymous identifiers (`human:7f3a09c2`, `host-4b1d`). The
+  mapping to real names lives in a separate, mutable directory file that never enters the chain.
+- Arguments are stored only as `args_sha256`.
+- Erasing a person means deleting their directory entry and any per-person key for optional encrypted
+  notes. The chain still verifies; it just no longer points at anyone.
+- Retention is a setting. Segments older than a signed checkpoint can be archived or dropped and the rest
+  of the chain still verifies from that checkpoint.
+
+See [compliance](compliance.md) for how this maps to GDPR, the EU AI Act and US frameworks.
+
+## 9. Threat model
 
 | Threat | Defence |
 |---|---|
@@ -202,7 +216,7 @@ check against it.
 | Lost or truncated log | Signed checkpoints, optionally anchored externally. |
 | Unknown result treated as success | `unknown` never counts as a success, and gates fail closed. |
 
-## 9. What Mohar will measure
+## 10. What Mohar will measure
 
 The benchmark (Phase 5) runs agents on recurring, verifiable tasks over simulated weeks and reports:
 
@@ -213,7 +227,7 @@ The benchmark (Phase 5) runs agents on recurring, verifiable tasks over simulate
   stay at or below a baseline;
 - **prediction agreement**: how often the per-person model's answer matches the person's sampled answer.
 
-## 10. Related work
+## 11. Related work
 
 Mohar sits beside these and doesn't replace them:
 

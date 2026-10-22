@@ -22,6 +22,7 @@
     <a href="#how">How it works</a>
     <a href="design.html">Design</a>
     <a href="roadmap.html">Roadmap</a>
+    <a href="compliance.html">Compliance</a>
     <a class="action" href="https://github.com/harshitwandhare/mohar">GitHub</a>
   </nav>
 </header>
@@ -101,7 +102,7 @@
   "ts": "2026-11-03T14:22:07.311Z",
   "agent": { "id": "agent:claude-code/laptop/7c1e",
              "key": "ed25519:Mx3f…Q" },
-  "authority": [{ "principal": "human:harshit",
+  "authority": [{ "principal": "human:7f3a09c2",
                   "granted": ["fs.edit.*"] }],
   "action": { "capability": "fs.edit.tests",
               "args_sha256": "c41b…77d0" },
@@ -112,7 +113,7 @@
 }</code></pre>
       <dl class="fields">
         <div><dt>prev</dt><dd>The hash of the receipt before this one. Change or delete any receipt and every later one stops matching.</dd></div>
-        <div><dt>authority</dt><dd>The chain of people and agents that handed this agent its rights. Each link can only narrow what it received.</dd></div>
+        <div><dt>authority</dt><dd>The chain of people and agents that handed this agent its rights, by pseudonymous ID so the log holds no names. Each link can only narrow what it received.</dd></div>
         <div><dt>args_sha256</dt><dd>The exact action. A person's approval is bound to this hash, so a different action can't run under it.</dd></div>
         <div><dt>decision</dt><dd>Why it ran: the level on this capability, and the evidence behind it.</dd></div>
         <div><dt>sig</dt><dd>Ed25519 over the RFC 8785 canonical bytes, made by a daemon key the agent never sees.</dd></div>
