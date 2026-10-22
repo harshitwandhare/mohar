@@ -4,6 +4,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 14 # match the project rule: nothing younger than two weeks
     groups:
       actions:
         patterns: ["*"]
@@ -11,3 +13,11 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 14 # match the project rule: nothing younger than two weeks
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 14 # match the project rule: nothing younger than two weeks

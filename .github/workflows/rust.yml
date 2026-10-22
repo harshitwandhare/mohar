@@ -29,6 +29,8 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Toolchain
         run: rustup toolchain install 1.95 --profile minimal --component rustfmt,clippy && rustup default 1.95
       - run: cargo fmt --all --check
@@ -40,5 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - run: pip install cryptography==46.0.1
       - run: python spec/vectors/check.py spec/vectors/v1.json
