@@ -22,7 +22,7 @@
         
       
       
-      <link rel="icon" href="../assets/logo.svg">
+      <link rel="icon" href="../assets/favicon-64.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
@@ -102,7 +102,7 @@
   <nav class="md-header__inner md-grid" aria-label="Header">
     <a href=".." title="Mohar" class="md-header__button md-logo" aria-label="Mohar" data-md-component="logo">
       
-  <img src="../assets/logo.svg" alt="logo">
+  <img src="../assets/mohar-seal-512.png" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
@@ -239,7 +239,7 @@
   <label class="md-nav__title" for="__drawer">
     <a href=".." title="Mohar" class="md-nav__button md-logo" aria-label="Mohar" data-md-component="logo">
       
-  <img src="../assets/logo.svg" alt="logo">
+  <img src="../assets/mohar-seal-512.png" alt="logo">
 
     </a>
     Mohar
@@ -929,6 +929,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#security" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1144,6 +1155,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#security" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1243,6 +1265,13 @@ receipt format; each such change is called out.</p>
   laptop. Receipts are parsed, canonicalised, hashed and signature-checked on a worker pool that lives
   for the whole walk, and canonical JSON is written by a fixed template that tests compare against
   <code>serde_jcs</code> on arbitrary receipts. Every check and every error is unchanged (#59).</li>
+<li>New mark: मो in Modi script on a gold octagonal seal, used for the favicon, the site header, the docs site, the
+  README and link previews. The site gains a web manifest and a social preview image.</li>
+<li>The home page is rebuilt as a board of filled tiles with no photographs: a terminal fragment and two
+  figures, the simulator with a departure-board receipt log, the four steps as one bar sized by how long each
+  takes, receipt fields, trust levels, integrations and a closing action row.</li>
+<li>The hero stamp is a modelled object: a turned rosewood handle with carved vine bands and an engraved brass
+  die, built by tools/stamp/build_stamp.py in Blender and loaded as a 1.5 MB Draco-compressed glTF.</li>
 <li>Verifying and opening a log now read <code>receipts.jsonl</code> line by line and check checkpoints as the
   receipts go past, so memory use no longer grows with the size of the log. A new <code>ChainVerifier</code> checks
   one receipt at a time, <code>store::verify_file</code> and <code>store::verify_log</code> use it, and signatures are checked
@@ -1250,6 +1279,11 @@ receipt format; each such change is called out.</p>
   receipts. <code>verify</code> and <code>verify_checkpoints</code> work as before (#59).</li>
 <li>The website scales its type and spacing down to phones, has one header with a menu on every page,
   and uses one button system. A test fails if any page scrolls sideways at 320px (#78).</li>
+</ul>
+<h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
+<ul>
+<li>The simulator's trust meters showed full at every level in production, because the CSP blocked the inline
+  width they were drawn with. The test server now sends the production headers, so tests run under the real CSP.</li>
 </ul>
 <h3 id="security">Security<a class="headerlink" href="#security" title="Permanent link">&para;</a></h3>
 <ul>
