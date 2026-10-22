@@ -107,6 +107,22 @@ agent: 5 successes out of 5 give a lower bound of about 0.57, not 1.0.
 - A verified failure elsewhere drops one level immediately.
 - Demotion never waits for the window. Promotion always does.
 
+### The ceiling
+
+Every capability has a ceiling a person sets, the highest level an agent may ever reach on it, and
+"never above Ask first" is a valid ceiling. No amount of evidence moves the ceiling; only the person who
+set it can, and that change is itself a receipt. This follows the "earned authority under a fixed
+ceiling" model (arXiv 2607.23586): evidence can lower authority freely and raise it only up to a bound
+the user issued.
+
+### Rubber-stamping
+
+A person's approval is the weakest kind of verification, because tired reviewers approve almost
+everything. So a human accept counts toward promotion only when the reviewer spent time on it, and
+Mohar watches each reviewer's approval rate: if someone approves more than 95% of requests over the last
+50, their accepts stop counting toward promotion until a sampled re-check shows they are still reading.
+Tests, diffs and replays are unaffected.
+
 ### Hard gates
 
 Gates are checked before the score and can't be outweighed by it. Examples: never write outside the
@@ -229,7 +245,10 @@ The benchmark (Phase 5) runs agents on recurring, verifiable tasks over simulate
 
 ## 11. Related work
 
-Mohar sits beside these and doesn't replace them:
+Mohar sits beside these and doesn't replace them. A check on 22 October 2026 found that several pieces
+of this design exist on their own elsewhere; what we found nowhere was the combination, promotion from
+verified outcomes inside agent hooks, the per-person model limited to reversible actions, and a
+benchmark with results.
 
 - **Microsoft Agent Governance Toolkit** (MIT): policy, identity, delegation that narrows, a single trust
   score, audit. Its own limitations document says its audit records attempts rather than verified
@@ -242,3 +261,13 @@ Mohar sits beside these and doesn't replace them:
   regardless of score, which is why gates sit outside the score here.
 - **Claude Code auto mode**: a classifier that approves or blocks actions. Anthropic reported that users
   accept 93% of manual permission prompts, which is the fatigue this design tries to remove.
+- **sarkar4777/abenix, MMVFIRM/Universal-Earned-Autonomy-Layer, microsoft/agent-learning**: trust per
+  action type with a Wilson lower bound, minimum counts and time at level, which section 4 also uses.
+- **Tracekit (Cygnux Labs)**: Ed25519-signed, hash-chained records in a Merkle tree with witness
+  cosigning, and approvals bound to the exact arguments' digest.
+- **"Approve What, Exactly?" (arXiv 2610.21063)**: approvals bound to a canonical description of the
+  action's effect, with a formally checked gateway.
+- **"Progressive Autonomy as Preference Learning" (arXiv 2605.19151)**: models a person's approve and deny
+  answers to decide when to escalate, in simulation.
+- **"The Digital Apprentice" (arXiv 2606.04321)**: per-skill autonomy with automatic rollback, and the
+  warning about reviewer complacency that the rubber-stamping rule above answers.
