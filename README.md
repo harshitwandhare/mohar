@@ -65,4 +65,4 @@ name of other products.
 
 Mohar (मोहर) is the Marathi word for a seal or stamp, the mark that makes a record count. The mark is a seal stamp drawn after 17th-century Deccani gilt-brass finials: a scaled lotus bud, a beaded collar, an ogee-lattice shaft and an octagonal die.
 
-The site lives at https://mohar.vercel.app.
+The site lives at https://mohar-liard.vercel.app.
