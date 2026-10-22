@@ -8,7 +8,8 @@ const docs = [
   { src: 'docs/ROADMAP.md', page: 'roadmap.html', title: 'Roadmap', blurb: 'What gets built, in what order.' },
 ];
 
-const slug = s => s.toLowerCase().replace(/<[^>]+>/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+// Anchors come from the heading's plain text; anything that isn't a letter or digit becomes a dash.
+const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 function page({ title, blurb, body, toc, md }) {
   return `<!doctype html>
@@ -41,7 +42,7 @@ function page({ title, blurb, body, toc, md }) {
   <nav class="toc" aria-label="On this page">${toc}</nav>
   <main id="main" class="prose">${body}</main>
 </div>
-<footer class="close"><p>Generated from <a href="https://github.com/harshitwandhare/mohar/blob/main/${md.replace(/^docs\//, 'docs/')}">${md}</a> in the repository. Apache-2.0.</p></footer>
+<footer class="close"><p>Generated from <a href="https://github.com/harshitwandhare/mohar/blob/main/${md}">${md}</a> in the repository. Apache-2.0.</p></footer>
 </body>
 </html>
 `;
@@ -53,9 +54,9 @@ for (const d of docs) {
   const md = await readFile(d.src, 'utf8');
   const heads = [];
   const renderer = new marked.Renderer();
-  renderer.heading = ({ tokens, depth }) => {
+  renderer.heading = ({ tokens, depth, text: plain }) => {
     const text = marked.Parser.parseInline(tokens);
-    const id = slug(text);
+    const id = slug(plain);
     if (depth === 2) heads.push({ id, text });
     return `<h${depth} id="${id}">${text}</h${depth}>`;
   };
