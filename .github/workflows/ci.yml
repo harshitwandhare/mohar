@@ -18,6 +18,10 @@ jobs:
     name: Site e2e (${{ matrix.project }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Microsoft's Playwright image ships every browser and its system packages, so no job waits on an
+    # apt mirror or a browser download. Its version must match @playwright/test in package-lock.json.
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:7852dc5a7d72f5fe458a597d690f6c42fbc8e9e26ddfa95f8e6ef552558d9bbf
     strategy:
       fail-fast: false
       matrix:
@@ -26,23 +30,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
-        with:
-          node-version: 24
-          cache: npm
       - run: npm ci
-      # The browser download and apt step sometimes stall on the runner. Give each try five minutes
-      # and retry, so one stuck mirror doesn't cost the whole job.
-      - name: Install browser
-        env:
-          BROWSER: ${{ matrix.project == 'mobile' && 'chromium' || matrix.project }}
-        run: |
-          for try in 1 2 3; do
-            timeout 300 npx playwright install --with-deps "$BROWSER" && exit 0
-            echo "install attempt $try failed or stalled; retrying"
-          done
-          exit 1
       - run: npx playwright test --project=${{ matrix.project }}
+        env:
+          HOME: /root # Firefox won't run as root with another user's home; Actions resets HOME per step
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
