@@ -1,13 +1,13 @@
 //! `mohar`: create, append to, read and verify a receipt log.
 
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::{Parser, Subcommand};
-use mohar_core::checkpoint::verify_checkpoints;
-use mohar_core::store::{FileLog, read_checkpoints, read_receipts};
-use mohar_core::{Action, Decision, Entry, parse_public_key, verify};
+use mohar_core::store::{FileLog, OpenError, for_each_receipt, verify_log};
+use mohar_core::{Action, Decision, Entry, Receipt, parse_public_key};
 
 #[derive(Parser)]
 #[command(
@@ -118,10 +118,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             println!("checkpoint at {} receipts", c.count);
         }
         Command::Log { last } => {
-            let receipts =
-                read_receipts(&cli.dir.join("receipts.jsonl")).map_err(|e| e.to_string())?;
-            let skip = last.map_or(0, |n| receipts.len().saturating_sub(n));
-            for r in &receipts[skip..] {
+            let print = |r: &Receipt| {
                 println!(
                     "{:>6}  {}  {:<8} {:<20} {}  level {} by {}",
                     r.seq,
@@ -132,7 +129,26 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
                     r.decision.level,
                     r.decision.by
                 );
+            };
+            let path = cli.dir.join("receipts.jsonl");
+            match last {
+                None => for_each_receipt(&path, |r| print(&r)),
+                Some(n) => {
+                    // Only the last `n` receipts are ever held.
+                    let mut tail = VecDeque::new();
+                    for_each_receipt(&path, |r| {
+                        if n == 0 {
+                            return;
+                        }
+                        if tail.len() == n {
+                            tail.pop_front();
+                        }
+                        tail.push_back(r);
+                    })
+                    .map(|()| tail.iter().for_each(print))
+                }
             }
+            .map_err(|e| e.to_string())?;
         }
         Command::Verify { public_key } => {
             let key_path = public_key.unwrap_or_else(|| cli.dir.join("public.key"));
@@ -140,38 +156,28 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
                 .map_err(|e| format!("{}: {e}", key_path.display()))?;
             let key = parse_public_key(&text)
                 .ok_or_else(|| format!("{} is not an ed25519 public key", key_path.display()))?;
-            let receipts = match read_receipts(&cli.dir.join("receipts.jsonl")) {
-                Ok(r) => r,
+            match verify_log(
+                &cli.dir.join("receipts.jsonl"),
+                &cli.dir.join("checkpoints.jsonl"),
+                &key,
+            ) {
+                Ok(stats) => println!(
+                    "ok: {} receipts and {} checkpoints verified",
+                    stats.receipts, stats.checkpoints
+                ),
+                Err(OpenError::Chain(b)) => {
+                    println!("broken: receipt {}: {:?}", b.index, b.kind);
+                    return Ok(ExitCode::from(1));
+                }
+                Err(OpenError::Checkpoint(b)) => {
+                    println!("broken: {b}");
+                    return Ok(ExitCode::from(1));
+                }
                 Err(e) => {
                     println!("broken: {e}");
                     return Ok(ExitCode::from(1));
                 }
-            };
-            if let Err(b) = verify(&receipts, &key) {
-                println!("broken: receipt {}: {:?}", b.index, b.kind);
-                return Ok(ExitCode::from(1));
             }
-            let ckpt_path = cli.dir.join("checkpoints.jsonl");
-            let checkpoints = if ckpt_path.exists() {
-                match read_checkpoints(&ckpt_path) {
-                    Ok(c) => c,
-                    Err(e) => {
-                        println!("broken: {e}");
-                        return Ok(ExitCode::from(1));
-                    }
-                }
-            } else {
-                Vec::new()
-            };
-            if let Err(b) = verify_checkpoints(&checkpoints, &receipts, &key) {
-                println!("broken: {b}");
-                return Ok(ExitCode::from(1));
-            }
-            println!(
-                "ok: {} receipts and {} checkpoints verified",
-                receipts.len(),
-                checkpoints.len()
-            );
         }
     }
     Ok(ExitCode::SUCCESS)
