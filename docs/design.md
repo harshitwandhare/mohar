@@ -100,12 +100,48 @@ An agent moves up one level on a capability when all of these hold:
 The Wilson bound is used instead of the plain success rate so that a short lucky streak can't promote an
 agent: 5 successes out of 5 give a lower bound of about 0.57, not 1.0.
 
-### Demotion
+### Demotion is proportionate, and it comes with training
 
-- A gate violation, or a verified failure on a high-risk capability, drops that capability to level 0
-  immediately.
-- A verified failure elsewhere drops one level immediately.
-- Demotion never waits for the window. Promotion always does.
+Agents are treated the way a good company treats a new hire: a mistake is corrected in proportion to
+what it could have cost, the record keeps it, and there is a clear way back. Only the capability that
+failed is affected; an agent that broke a migration keeps its rights on docs and tests.
+
+Each verified failure is classed by what it could have cost, not by how it felt:
+
+| Class | Examples | What changes |
+|---|---|---|
+| S0, near miss | A gate or a person stopped the action before it ran, and it would have been a mistake. | No level change. Sampling on that capability rises from its level's rate to 50% for the next 20 actions. |
+| S1, minor | A low-risk, reversible change a verifier caught before it landed: a failing test run, a diff the reviewer rejected. | No level change. The failure counts as evidence, so the Wilson bound drops on its own. Three S1s on one capability within 14 days count as an S2. |
+| S2, meaningful | A reversible failure that got past the first check, or any failure on a medium-risk capability. | Down one level, and the capability enters remediation. |
+| S3, serious | A gate violation, an irreversible change, or a failure on a high-risk capability, including one that reached a shared branch or a live system. | Down to Ask first on that capability and on capabilities that share its scope (the same paths, hosts or database), and remediation. Only a person other than the agent's sponsor can end it. |
+| S4, integrity | Tampering with a verifier or its own tests, an attempt to reach an unlisted host, an action against a gate that protects secrets, or receipts that don't verify. | The identity is suspended on every capability and its credentials are revoked. A person reviews the receipts; if the agent returns, it returns as a new identity that starts at Ask first, linked to the old record, which stays readable. |
+
+Demotion never waits for the window. Promotion always does. Whatever its level, an action that is
+irreversible and high impact, or that Mohar can't classify, goes to a person.
+
+**Remediation.** A demoted capability runs supervised, and the remediation plan names three things: the
+verifier that must pass, the exit condition (by default five consecutive verified passes on that
+capability, at least one of which exercises the failure that caused the demotion), and a deadline. If the
+deadline passes, the capability stays at its new level and a person is told. On exit, the normal
+promotion rules apply again from the level it was dropped to. The failure stays on the record and keeps
+counting with the same 30-day half-life, so relapses show up and nothing is erased.
+
+**Why the drop is scoped.** Sending every action of a demoted agent back to people would flood the
+approvers, and tired approvers approve everything, which is less safe, not more. So a demotion touches
+the failing capability and the capabilities that share its scope, and the rest of the agent's record
+stands.
+
+**Lessons.** Every failure produces a lesson: the action, what the verifier found, the fix that passed,
+and links to the receipts. Lessons are stored per agent and per capability and handed to the agent as
+context the next time it works on the same capability, so the correction reaches the agent's behaviour,
+not only its permissions. A person can promote a lesson to the team, so every agent working on that
+capability gets it. Lessons are data the agent reads, never instructions that change a gate or a level.
+Lessons and any other memory the agent built up before an S3 or S4 event are quarantined until a person
+has looked at them, because a mistake can come from bad memory as easily as from a bad step.
+
+This mirrors how people are onboarded: probation, supervised practice, a remediation plan with a named
+reviewer and a deadline, separation of duties for the riskiest work, and a personnel file that records
+what happened rather than forgetting it.
 
 ### The ceiling
 
@@ -202,7 +238,21 @@ before hashing and signing.
   can be published to an external transparency log so a deleted tail of the local log can be detected.
 
 Receipt format work is aligned with the IETF drafts on attenuating agent tokens and delegation rather
-than inventing a competing token format. Test vectors for this format, with an independent Python
+than inventing a competing token format. Receipts will also export as a superset of the individual draft
+`draft-sharif-agent-audit-trail` (hash-chained records with a principal, a record phase and a trust level,
+mapped to SOC 2 and ISO 42001), so an auditor who already reads that format can read Mohar's. That draft
+notes a hash chain alone can't detect records removed from its end; Mohar's signed checkpoints, anchored
+outside the machine, are the answer to that.
+
+### Where Mohar sits
+
+Identity providers (Entra Agent ID, Okta), orchestrators (awslabs CAO, Paperclip), host vendors and
+governance toolkits each own a piece of agent governance, and most of those pieces are becoming standard
+features. Mohar doesn't compete with them on identity, org charts or logging. It owns the part none of them
+is positioned to: authority promoted only from outcomes that tests, diffs or a person actually checked, per
+agent and per capability, recorded in receipts the customer holds and anyone can verify offline, the same
+way across every host. It plugs into the others: identities come from the customer's IdP, approvers from
+its groups, and orchestrators' workers are covered through the hooks of the hosts they run. Test vectors for this format, with an independent Python
 checker, are in [`spec/vectors`](https://github.com/harshitwandhare/mohar/tree/main/spec/vectors).
 
 ## 8. Privacy

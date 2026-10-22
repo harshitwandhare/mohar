@@ -24,7 +24,8 @@ to the [engineering bar](engineering-bar.md). Each phase ships as small pull req
 
 ## Phase 3: trust per capability (Jan to Mar 2027)
 
-- Capability taxonomy, per-capability scores, hard veto gates, instant demotion.
+- Capability taxonomy, per-capability scores, hard veto gates, and demotion in proportion to what a
+  failure could have cost, with remediation plans and lessons the agent is given next time.
 - Promotion only from verified outcomes, over a minimum window.
 
 ## Phase 4: escalation (Mar to May 2027)
@@ -42,7 +43,16 @@ to the [engineering bar](engineering-bar.md). Each phase ships as small pull req
 ## Phase 6: integrations (Aug 2027 onward)
 
 - MCP proxy, CAO, Google ADK, Microsoft Agent Governance Toolkit, Paperclip.
+- One `mohar-hook` binary with profiles for Codex, Copilot, Cursor, Antigravity CLI and other hosts,
+  each set to fail closed, and a CI check that refuses agent commits without verifying receipts.
 - Agent contributors on open-source repos: start untrusted, earn rights through merged, verified work.
+
+## Phase 7: enterprise (alongside Phases 4 to 6)
+
+- Auditor evidence pack: an offline-verifiable export with control mappings and configurable retention.
+- Approver protections: two-person approval, independent reinstatement after serious failures, escalation
+  budgets and batching.
+- Cost per verified outcome by agent, person and team, from the hosts' own cost telemetry.
 
 ## Not planned
 
