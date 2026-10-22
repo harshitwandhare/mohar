@@ -11,8 +11,8 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      ref:
-        description: "Release tag to publish docs for, such as v0.1.0"
+      version:
+        description: "Version label to publish from the selected branch, such as 0.1 (for releases cut before the docs site existed)"
         required: true
 
 permissions:
@@ -43,7 +43,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.inputs.ref || github.ref }}
           fetch-depth: 0
           persist-credentials: true # mike pushes to gh-pages; no artefacts are uploaded from this job
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
@@ -56,15 +55,19 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           REF_NAME: ${{ github.ref_name }}
-          INPUT_REF: ${{ github.event.inputs.ref }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
           MIKE="uv run --no-project --with-requirements docs/requirements.txt mike"
           if [ "$EVENT" = "push" ] && [ "$REF_NAME" = "main" ]; then
             $MIKE deploy --push dev
+          elif [ "$EVENT" = "workflow_dispatch" ]; then
+            case "$INPUT_VERSION" in [0-9]*.[0-9]*) ;; *) echo "version must look like 0.1: $INPUT_VERSION"; exit 1 ;; esac
+            MINOR="$INPUT_VERSION"
           else
-            TAG="${INPUT_REF:-$REF_NAME}"
-            case "$TAG" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "not a release tag: $TAG"; exit 1 ;; esac
-            MINOR="$(echo "${TAG#v}" | cut -d. -f1,2)"
+            case "$REF_NAME" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "not a release tag: $REF_NAME"; exit 1 ;; esac
+            MINOR="$(echo "${REF_NAME#v}" | cut -d. -f1,2)"
+          fi
+          if [ "$EVENT" != "push" ] || [ "$REF_NAME" != "main" ]; then
             $MIKE deploy --push --update-aliases "$MINOR" latest
             $MIKE set-default --push latest
           fi

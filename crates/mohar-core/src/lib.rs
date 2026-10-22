@@ -293,31 +293,104 @@ fn check_signature(r: &Receipt, key: &VerifyingKey) -> bool {
     key.verify(&msg, &Signature::from_bytes(&bytes)).is_ok()
 }
 
-/// Check a whole chain, oldest first, against the daemon's public key.
+/// What can be worked out about a receipt without knowing where it sits in the chain.
+pub(crate) struct Prechecked {
+    signature_ok: bool,
+    hash: Option<String>,
+}
+
+impl Prechecked {
+    pub(crate) fn of(r: &Receipt, key: &VerifyingKey) -> Self {
+        Self {
+            signature_ok: check_signature(r, key),
+            hash: receipt_hash(r).ok(),
+        }
+    }
+
+    /// The result for a receipt that couldn't be checked at all: it fails closed.
+    pub(crate) fn failed() -> Self {
+        Self {
+            signature_ok: false,
+            hash: None,
+        }
+    }
+}
+
+/// Checks a chain one receipt at a time, holding only what the next receipt must match.
 ///
-/// Returns the first receipt that fails and why. Anything that can't be checked counts as a failure.
-pub fn verify(receipts: &[Receipt], key: &VerifyingKey) -> Result<(), ChainBreak> {
-    let mut expected_prev = genesis();
-    for (index, r) in receipts.iter().enumerate() {
+/// Memory use is the same for a log of ten receipts and a log of ten million: the expected `prev`
+/// hash and the next position. [`verify`] and the file readers in [`store`] are built on it.
+pub struct ChainVerifier<'k> {
+    key: &'k VerifyingKey,
+    expected_prev: String,
+    next_index: usize,
+}
+
+impl<'k> ChainVerifier<'k> {
+    /// A verifier at the start of a chain, checking signatures against `key`.
+    pub fn new(key: &'k VerifyingKey) -> Self {
+        Self {
+            key,
+            expected_prev: genesis(),
+            next_index: 0,
+        }
+    }
+
+    /// Check the next receipt in the chain. On failure the verifier is left where it was.
+    ///
+    /// Anything that can't be checked counts as a failure.
+    pub fn push(&mut self, r: &Receipt) -> Result<(), ChainBreak> {
+        let checked = Prechecked::of(r, self.key);
+        self.push_prechecked(r, checked)
+    }
+
+    /// [`push`](Self::push) with the expensive, order-independent work (signature and hash) already
+    /// done, so a caller can do it for a batch of receipts on several threads. The checks that depend
+    /// on position still run here, in the same order as `push`.
+    pub(crate) fn push_prechecked(
+        &mut self,
+        r: &Receipt,
+        checked: Prechecked,
+    ) -> Result<(), ChainBreak> {
+        let index = self.next_index;
         let fail = |kind| Err(ChainBreak { index, kind });
         if r.v != VERSION {
             return fail(BreakKind::UnknownVersion);
         }
-        if !check_signature(r, key) {
+        if !checked.signature_ok {
             return fail(BreakKind::BadSignature);
         }
         if r.seq != index as u64 {
             return fail(BreakKind::WrongSequence);
         }
-        if r.prev != expected_prev {
+        if r.prev != self.expected_prev {
             return fail(BreakKind::BrokenLink);
         }
-        expected_prev = match receipt_hash(r) {
-            Ok(h) => h,
-            Err(_) => return fail(BreakKind::Unreadable),
-        };
+        match checked.hash {
+            Some(h) => self.expected_prev = h,
+            None => return fail(BreakKind::Unreadable),
+        }
+        self.next_index += 1;
+        Ok(())
     }
-    Ok(())
+
+    /// How many receipts have been accepted so far.
+    pub fn count(&self) -> u64 {
+        self.next_index as u64
+    }
+
+    /// The hash the next receipt's `prev` must equal: that of the last accepted receipt.
+    pub fn head(&self) -> &str {
+        &self.expected_prev
+    }
+}
+
+/// Check a whole chain, oldest first, against the daemon's public key.
+///
+/// Returns the first receipt that fails and why. Anything that can't be checked counts as a failure.
+pub fn verify(receipts: &[Receipt], key: &VerifyingKey) -> Result<(), ChainBreak> {
+    let mut chain = ChainVerifier::new(key);
+    receipts.iter().try_for_each(|r| chain.push(r))
 }
 
 #[cfg(test)]

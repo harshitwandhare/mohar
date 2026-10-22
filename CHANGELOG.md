@@ -12,6 +12,14 @@ receipt format; each such change is called out.
 - A log can only be opened for writing by one process at a time; a second writer gets a clear error
   instead of interleaving receipts. Reading and verifying never need the lock (#40).
 
+### Changed
+
+- Verifying and opening a log now read `receipts.jsonl` line by line and check checkpoints as the
+  receipts go past, so memory use no longer grows with the size of the log. A new `ChainVerifier` checks
+  one receipt at a time, `store::verify_file` and `store::verify_log` use it, and signatures are checked
+  on all available cores. `mohar verify` and `mohar log` stream too; `log --last N` keeps only N
+  receipts. `verify` and `verify_checkpoints` work as before (#59).
+
 ## [0.1.0] - 2026-10-22
 
 The first release: a signed, hash-chained receipt log and the `mohar` command line tool.
