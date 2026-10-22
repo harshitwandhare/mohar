@@ -1,12 +1,13 @@
 name: Rust
 
+# Runs on every pull request: its jobs are required checks on main, and a path filter would leave
+# them unreported, blocking unrelated pull requests.
+
 on:
   push:
     branches: [main]
-    paths: ["crates/**", "spec/**", "Cargo.toml", "Cargo.lock", ".github/workflows/rust.yml"]
   pull_request:
     branches: [main]
-    paths: ["crates/**", "spec/**", "Cargo.toml", "Cargo.lock", ".github/workflows/rust.yml"]
 
 permissions:
   contents: read
