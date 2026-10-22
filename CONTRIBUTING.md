@@ -29,6 +29,15 @@ cargo clippy --all-targets --locked -- -D warnings
 cargo test --locked
 ```
 
+Fuzzing (nightly toolchain, `cargo install --locked cargo-fuzz`), from the `fuzz` directory:
+
+```bash
+cargo +nightly fuzz run chain_mutation -- -max_total_time=60
+```
+
+The targets are `receipt_json`, `checkpoint_json`, `log_file` and `chain_mutation`. A crash input lands in
+`fuzz/artifacts/`; turn it into a regression test under `crates/mohar-core/tests/` with the fix.
+
 Site (Node 24):
 
 ```bash
