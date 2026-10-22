@@ -8,6 +8,7 @@ const docs = [
   { src: 'docs/ROADMAP.md', page: 'roadmap.html', title: 'Roadmap', blurb: 'What gets built, in what order.' },
   { src: 'docs/integrations.md', page: 'integrations.html', title: 'Integrations', blurb: 'How Mohar plugs into Claude Code, Codex, CAO, ADK, MCP, A2A and agent governance platforms, and how strong each seam is.' },
   { src: 'docs/business-model.md', page: 'business-model.html', title: 'Sustainability', blurb: 'What stays free, what could be paid for later, and what would trigger a company.' },
+  { src: 'docs/engineering-bar.md', page: 'engineering-bar.html', title: 'Engineering bar', blurb: 'The correctness, reliability, performance, security and compatibility standard every part of Mohar is held to.' },
   { src: 'docs/compliance.md', page: 'compliance.html', title: 'Compliance', blurb: 'How Mohar maps onto the EU AI Act, GDPR, the Cyber Resilience Act, US export rules and NIST, SOC 2 and ISO frameworks.' },
 ];
 
@@ -66,7 +67,7 @@ for (const d of docs) {
     return `<h${depth} id="${id}">${text}</h${depth}>`;
   };
   // Links between docs point at the rendered pages.
-  const body = marked.parse(md, { renderer }).replaceAll('href="ROADMAP.md"', 'href="roadmap.html"').replaceAll('href="design.md"', 'href="design.html"').replaceAll('href="compliance.md"', 'href="compliance.html"');
+  const body = marked.parse(md, { renderer }).replaceAll('href="ROADMAP.md"', 'href="roadmap.html"').replaceAll('href="design.md"', 'href="design.html"').replaceAll('href="compliance.md"', 'href="compliance.html"').replaceAll('href="engineering-bar.md"', 'href="engineering-bar.html"');
   const toc = heads.map(h => `<a href="#${h.id}">${h.text}</a>`).join('');
   const raw = `docs/${d.src.split('/').pop()}`;
   await copyFile(d.src, `site/${raw}`);

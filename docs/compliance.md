@@ -95,6 +95,43 @@ change that adds a non-standard cryptographic algorithm must revisit this.
 | ISO/IEC 42001 | AI management system: oversight, traceability and records of AI system operation. |
 | HIPAA | Audit controls for systems that handle electronic protected health information (45 CFR 164.312(b)). |
 
+## Control matrix
+
+The specific requirements Mohar helps a deployer meet, the feature that meets each one, how it is proven,
+and whether it exists today. A deployer still needs their own policies, risk assessment and auditor;
+software alone certifies nothing.
+
+| Framework and control | What it requires | Mohar feature | Evidence | Status |
+|---|---|---|---|---|
+| HIPAA 45 CFR 164.312(b) Audit controls | Record and examine activity in systems with ePHI | Every agent decision is a receipt, appended and synced before it is acknowledged | store tests, `mohar verify` | Built |
+| HIPAA 164.312(c)(1) Integrity | Protect ePHI from improper alteration or destruction | Hash chain, Ed25519 signatures, signed checkpoints catch edits, deletions, reordering and truncation | chain and checkpoint tests, test vectors | Built |
+| HIPAA 164.312(d) Person or entity authentication | Verify that a person or entity seeking access is who they claim | Agent keys and pseudonymous identities in receipts; human approvals bound to the exact action | design section 6 | Designed (Phase 4) |
+| HIPAA minimum necessary, 164.502(b) | Use the least ePHI needed | Arguments stored only as hashes; strict privacy mode hashes targets and identifiers too | #64 | Partly built |
+| GDPR Art. 5(1)(c) Data minimisation | Only the personal data needed | Pseudonymous identifiers, hashed arguments, no names in receipts | design section 8 | Built for arguments; identifiers designed |
+| GDPR Art. 17 Erasure | Erase personal data on request | Identity mapping kept outside the chain; deleting it unlinks receipts while the chain still verifies | design section 8 | Designed |
+| GDPR Art. 25 Data protection by design and by default | Privacy built in, defaults protective | Local-only by default, nothing sent to the project, telemetry off by default | engineering bar | Built |
+| GDPR Art. 32 Security of processing | Integrity, confidentiality, resilience, regular testing | Signatures, owner-only keys, crash-safe writes, CI security scanning | store tests, CI | Built |
+| SOC 2 CC6.1 Logical access | Restrict access to information assets | Capabilities, gates, ceilings, earned levels | design sections 3 and 4 | Designed (Phase 3) |
+| SOC 2 CC7.2 System monitoring | Monitor components for anomalies | Receipts plus OpenTelemetry metrics and traces | #62 | Planned (Phase 2) |
+| SOC 2 CC8.1 Change management | Authorise, test and approve changes | Every agent change recorded with who authorised it and how it was verified | design sections 5 and 7 | Built for recording; verifiers Phase 2 |
+| ISO/IEC 27001:2022 A.8.15 Logging | Produce, keep, protect and analyse logs | Tamper-evident receipts and checkpoints, retention by segment | #63 | Built, segments planned |
+| ISO/IEC 27001:2022 A.8.24 Use of cryptography | Rules for effective use of cryptography | Ed25519, SHA-256, RFC 8785 canonical form, published test vectors | spec/vectors | Built |
+| ISO/IEC 42001 AI system records and oversight | Traceability and human oversight of AI systems | Receipts per AI action; escalation to accountable people | design sections 6 and 7 | Partly built |
+| EU AI Act Art. 12 and 14 | Automatic logs over the lifetime; human oversight | As above | as above | Partly built |
+
+## How the project itself is built
+
+The development practices auditors look for under ISO/IEC 27001 A.8.25 to A.8.29 (secure development)
+and SOC 2 CC8:
+
+- every change starts from an issue and lands through a reviewed pull request; `main` is protected with
+  14 required checks, linear history and no force pushes;
+- static analysis (CodeQL, clippy with warnings denied), secret scanning (gitleaks), dependency
+  advisories and licences (cargo-deny), workflow security (zizmor), OpenSSF Scorecard;
+- tests on three operating systems, an 85% coverage floor, mutation checks on security rules;
+- signed-off commits (DCO), release tags limited to admins, attested release artefacts;
+- private vulnerability reporting and fix-before-disclosure (SECURITY.md).
+
 ## Open questions for counsel
 
 - Does crypto-shredding of the identity mapping satisfy GDPR Article 17 for a given deployment?
