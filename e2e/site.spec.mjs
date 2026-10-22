@@ -90,8 +90,14 @@ test('no page is wider than a 320px phone, and each has the same header', async 
   await page.setViewportSize({ width: 320, height: 720 });
   for (const path of pages) {
     await page.goto(path);
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-    expect(overflow, `${path} scrolls sideways`).toBe(0);
+    // On failure, name what sticks out, so the fix doesn't have to be guessed.
+    const wide = await page.evaluate(() => {
+      const W = document.documentElement.clientWidth;
+      if (document.documentElement.scrollWidth <= W) return [];
+      return [...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > W + 0.5 && !e.closest('pre'))
+        .slice(0, 6).map(e => `${e.tagName.toLowerCase()}.${e.className} ends at ${Math.round(e.getBoundingClientRect().right)}px: ${e.textContent.trim().slice(0, 30)}`);
+    });
+    expect(wide, `${path} scrolls sideways`).toEqual([]);
     const menu = page.locator('.menu');
     await expect(menu, `${path} has no menu`).toBeVisible();
     await menu.locator('summary').click();
