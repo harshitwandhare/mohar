@@ -59,8 +59,8 @@ async function start() {
   scene.environmentIntensity = 0.35;
 
   const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
-  camera.position.set(0, 9.4, 11);
-  camera.lookAt(0, 0.8, 0);
+  camera.position.set(0, 6.6, 9.2);
+  camera.lookAt(0, 2.0, 0);
 
   // One warm lamp: a pool of light on the page that falls off into the dark ground around it.
   const lamp = new THREE.SpotLight(0xffe2b8, 420, 40, Math.PI / 6, 0.9, 2);
@@ -84,13 +84,16 @@ async function start() {
   scene.add(paper);
 
   // Brass matrix: octagonal die with the engraving as a bump map, turned brass handle above it.
-  const brass = new THREE.MeshStandardMaterial({ color: 0x8c6a3c, metalness: 1, roughness: 0.48 });
+  const brass = new THREE.MeshStandardMaterial({ color: 0x9c7840, metalness: 1, roughness: 0.42 });
   const face = new THREE.CanvasTexture(sealFace(1024, '#fff', '#000', true));
   const faceMat = brass.clone();
   faceMat.bumpMap = face;
   faceMat.bumpScale = 6;
   faceMat.roughness = 0.55;
 
+  // The stamp tool, modelled on 17th-century Deccani gilt-brass finials: an octagonal die, a lotus
+  // petal collar, a pierced ogee-lattice shaft between beaded rings, and a scaled lotus bud on top.
+  // All carving is drawn here as textures; nothing is copied from a photograph.
   const stamp = new THREE.Group();
   const die = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.45, 8), [brass, brass, faceMat]);
   die.rotation.y = Math.PI / 8;
@@ -100,11 +103,103 @@ async function start() {
   for (let i = 0; i < pos.count; i++) {
     if (pos.getY(i) < 0) uv.setXY(i, 0.5 + pos.getX(i) / 3.2, 0.5 + pos.getZ(i) / 3.2);
   }
-  const profile = [[0.0, 0], [0.55, 0], [0.5, 0.15], [0.32, 0.5], [0.3, 1.3], [0.45, 1.55], [0.55, 1.9], [0.42, 2.25], [0.0, 2.35]]
-    .map(([x, y]) => new THREE.Vector2(x, y));
-  const handle = new THREE.Mesh(new THREE.LatheGeometry(profile, 64), brass);
-  handle.position.y = 0.45;
-  stamp.add(die, handle);
+  stamp.add(die);
+
+  // A carved texture drawn into a canvas, used as a bump map and to darken the recesses.
+  function carved(draw, w = 1024, h = 1024, rx = 1, ry = 1) {
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const g = c.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
+    draw(g, w, h);
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(rx, ry);
+    return t;
+  }
+  function carvedBrass(tex, bump) {
+    const m = brass.clone();
+    m.bumpMap = tex; m.bumpScale = bump;
+    m.aoMap = tex; m.aoMapIntensity = 0.9;
+    return m;
+  }
+  // Ogee lattice: rows of almond cells, each cell sunk, the net between them left standing.
+  const lattice = carved((g, w, h) => {
+    const cols = 8, rows = 6, cw = w / cols, ch = h / rows;
+    g.fillStyle = '#111';
+    for (let r = -1; r <= rows; r++) for (let c = -1; c <= cols; c++) {
+      const x = (c + (r % 2 ? 0.5 : 0)) * cw + cw / 2, y = r * ch + ch / 2;
+      g.beginPath();
+      g.moveTo(x, y - ch * 0.46);
+      g.bezierCurveTo(x + cw * 0.42, y - ch * 0.2, x + cw * 0.42, y + ch * 0.2, x, y + ch * 0.46);
+      g.bezierCurveTo(x - cw * 0.42, y + ch * 0.2, x - cw * 0.42, y - ch * 0.2, x, y - ch * 0.46);
+      g.fill();
+    }
+  }, 1024, 768, 2, 1);
+  // Overlapping scale-petals for the lotus bud.
+  const scales = carved((g, w, h) => {
+    const n = 16, rows = 12, sw = w / n, sh = h / rows;
+    for (let r = rows; r >= -1; r--) for (let c = -1; c <= n; c++) {
+      const x = (c + (r % 2 ? 0.5 : 0)) * sw, y = r * sh;
+      const grd = g.createRadialGradient(x, y, sw * 0.1, x, y, sw * 0.62);
+      grd.addColorStop(0, '#fff'); grd.addColorStop(0.8, '#bbb'); grd.addColorStop(1, '#222');
+      g.fillStyle = grd;
+      g.beginPath(); g.arc(x, y, sw * 0.6, 0, Math.PI); g.fill();
+    }
+  }, 1024, 1024, 1, 1);
+  // Fine vertical fluting for collars.
+  const flutes = carved((g, w, h) => {
+    for (let i = 0; i < 64; i++) { g.fillStyle = i % 2 ? '#fff' : '#333'; g.fillRect((i * w) / 64, 0, w / 128, h); }
+  }, 1024, 64, 1, 1);
+
+  const lathe = (pts, mat, y) => {
+    const m = new THREE.Mesh(new THREE.LatheGeometry(pts.map(([x, yy]) => new THREE.Vector2(x, yy)), 96), mat);
+    m.position.y = y;
+    stamp.add(m);
+    return m;
+  };
+  const beads = (radius, y, count, size) => {
+    const geo = new THREE.SphereGeometry(size, 12, 8);
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * Math.PI * 2;
+      const b = new THREE.Mesh(geo, brass);
+      b.position.set(Math.cos(a) * radius, y, Math.sin(a) * radius);
+      stamp.add(b);
+    }
+  };
+  const petals = (radius, y, count, len, tilt, mat) => {
+    const geo = new THREE.SphereGeometry(1, 16, 10);
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * Math.PI * 2;
+      const p = new THREE.Mesh(geo, mat);
+      p.scale.set(len * 0.38, len, len * 0.16);
+      p.position.set(Math.cos(a) * radius, y, Math.sin(a) * radius);
+      p.rotation.set(0, -a + Math.PI / 2, 0);
+      p.rotateX(tilt);
+      stamp.add(p);
+    }
+  };
+
+  // Plinth and petal collar above the die.
+  lathe([[0, 0], [1.05, 0], [1.1, 0.08], [0.95, 0.14], [0.98, 0.22], [0.8, 0.3], [0, 0.3]], carvedBrass(flutes, 3), 0.45);
+  petals(0.62, 0.95, 12, 0.42, -0.55, brass);
+  beads(0.5, 1.12, 22, 0.055);
+  // Lattice shaft.
+  lathe([[0.36, 0], [0.4, 0.12], [0.38, 0.9], [0.4, 1.02]], carvedBrass(lattice, 5), 1.15);
+  beads(0.44, 2.2, 20, 0.05);
+  lathe([[0, 0], [0.5, 0], [0.56, 0.06], [0.42, 0.14], [0, 0.14]], carvedBrass(flutes, 2), 2.2);
+  // Lotus calyx and the scaled bud.
+  petals(0.42, 2.48, 10, 0.34, -0.85, brass);
+  const bud = [];
+  for (let i = 0; i <= 24; i++) {
+    const t = i / 24;
+    bud.push([Math.sin(Math.PI * Math.pow(t, 0.8)) * 0.48 * (1 - t * 0.35), t * 1.15]);
+  }
+  bud.push([0, 1.2]);
+  lathe(bud, carvedBrass(scales, 4), 2.36);
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.28, 16), brass);
+  tip.position.y = 3.68;
+  stamp.add(tip);
   stamp.traverse(o => { if (o.isMesh) o.castShadow = true; });
   const REST = 1.6;
   stamp.position.y = REST;
@@ -186,6 +281,9 @@ async function start() {
       if (u.t >= 1) stamp.userData = {};
     } else {
       stamp.position.y = REST + Math.sin(timer.getElapsed() * 1.4) * 0.05;
+      // Drift back to the centre of the page between presses.
+      stamp.position.x += (0 - stamp.position.x) * 0.04;
+      stamp.position.z += (0.3 - stamp.position.z) * 0.04;
     }
     renderer.render(scene, camera);
   });

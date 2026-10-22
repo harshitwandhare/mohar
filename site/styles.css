@@ -27,7 +27,7 @@ img { max-width: 100%; height: auto; display: block; }
 :focus-visible { outline: 3px solid var(--seal); outline-offset: 3px; }
 
 .bar { display: flex; justify-content: space-between; align-items: center; padding: 20px var(--edge); }
-.wordmark { font-weight: 800; font-size: var(--s-lead); text-decoration: none; }
+.wordmark { font-weight: 800; font-size: var(--s-lead); text-decoration: none; display: flex; align-items: center; gap: 10px; }
 .bar nav { display: flex; gap: 28px; align-items: center; }
 .bar nav a { text-decoration: none; }
 .bar nav a:hover { color: var(--soft); }
