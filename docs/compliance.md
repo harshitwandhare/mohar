@@ -128,7 +128,7 @@ and SOC 2 CC8:
   14 required checks, linear history and no force pushes;
 - static analysis (CodeQL, clippy with warnings denied), secret scanning (gitleaks), dependency
   advisories and licences (cargo-deny), workflow security (zizmor), OpenSSF Scorecard;
-- tests on three operating systems, an 85% coverage floor, mutation checks on security rules;
+- tests on three operating systems, a 95% line coverage floor, mutation checks on security rules;
 - signed-off commits (DCO), release tags limited to admins, attested release artefacts;
 - private vulnerability reporting and fix-before-disclosure (SECURITY.md).
 

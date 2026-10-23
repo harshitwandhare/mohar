@@ -121,7 +121,7 @@ is.
 | `docs` | Design, roadmap, compliance, engineering bar; published as the docs site |
 | `site` | The website |
 
-Every pull request runs tests on Linux, macOS and Windows, an 85% coverage floor, cargo-deny, CodeQL,
+Every pull request runs tests on Linux, macOS and Windows, a 95% line coverage floor, cargo-deny, CodeQL,
 gitleaks, zizmor, and browser tests in Chromium, Firefox, WebKit and a phone profile. The standard each part is held to is in
 [docs/engineering-bar.md](docs/engineering-bar.md).
 

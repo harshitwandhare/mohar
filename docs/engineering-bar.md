@@ -14,7 +14,7 @@ targets for the first production-ready release and are measured, not assumed.
   requests) with cargo-fuzz, run in CI for a fixed time on every pull request touching them and nightly
   for longer.
 - Published test vectors, checked by an independent implementation in CI.
-- Line coverage of at least 85%, enforced in CI.
+- Line coverage of at least 95%, enforced in CI. A line no test can reach says why beside it.
 
 ## Reliability
 
