@@ -33,7 +33,8 @@ checkpoint vouched for, or a different receipt at that position.
 ## Test vectors
 
 [`spec/vectors/v1.json`](https://github.com/harshitwandhare/mohar/blob/main/spec/vectors/v1.json) holds
-a fixed test-only key, three receipts with their canonical bytes, hashes and signatures, and a
+a fixed test-only key, four receipts (three decisions and the outcome of the first) with their canonical
+bytes, hashes and signatures, and a
 checkpoint. The Rust tests regenerate it byte for byte, and
 [`spec/vectors/check.py`](https://github.com/harshitwandhare/mohar/blob/main/spec/vectors/check.py)
 checks it in Python with no code shared with the Rust implementation. To test another implementation:
