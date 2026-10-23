@@ -578,6 +578,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#install-the-claude-code-plugin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Install the Claude Code plugin
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#coding-agent-hosts" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1115,6 +1126,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#install-the-claude-code-plugin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Install the Claude Code plugin
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#coding-agent-hosts" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1244,8 +1266,26 @@ is about to happen, asks the local Mohar daemon for a decision, and records the 
 <li><strong>Advisory</strong>: the host's hooks fail open on errors or timeouts, so Mohar records and warns but can't
   guarantee a block.</li>
 </ul>
-<p>Status for every row: designed, not built. The roadmap puts Claude Code first (Phase 2) and the rest in
-Phase 6.</p>
+<p>Status: the Claude Code adapter and the local daemon are built (Phase 2); until the trust engine ships,
+the daemon allows reads and sends everything else to a person. Every other row is designed, not built,
+and lands in Phase 6.</p>
+<h2 id="install-the-claude-code-plugin">Install the Claude Code plugin<a class="headerlink" href="#install-the-claude-code-plugin" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Install <code>mohar</code> (<a href="../getting-started/">getting started</a>), create a log with <code>mohar init</code> and start the
+   daemon with <code>mohar daemon</code>. Keep it running: every tool call waits on it, and if it's down, tool calls
+   are denied.</li>
+<li>Load the plugin from <code>integrations/claude-code</code> in this repository, for example with
+   <code>claude --plugin-dir path/to/mohar/integrations/claude-code</code>. Its <code>hooks/hooks.json</code> runs
+   <code>mohar hook claude-code</code> on every <code>PreToolUse</code> and <code>PostToolUse</code>, with <code>onFailure: "block"</code> (Claude Code
+   2.1.295 or later) so a hook that can't run blocks the call instead of letting it through.</li>
+<li>Without the plugin system, put the same <code>hooks</code> object in <code>~/.claude/settings.json</code> (for you) or
+   <code>.claude/settings.json</code> (for a project).</li>
+</ol>
+<p>For a team, deliver the hooks through managed settings so users can't remove them: put the <code>hooks</code> object
+and <code>"allowManagedHooksOnly": true</code> in <code>managed-settings.json</code> (<code>/etc/claude-code/</code> on Linux and WSL,
+<code>/Library/Application Support/ClaudeCode/</code> on macOS, <code>C:\Program Files\ClaudeCode\</code> on Windows), or set
+them in the admin console. A user hook is advisory, because the person running Claude Code can turn it off.
+A managed one is not.</p>
 <h2 id="coding-agent-hosts">Coding agent hosts<a class="headerlink" href="#coding-agent-hosts" title="Permanent link">&para;</a></h2>
 <table>
 <thead>

@@ -489,6 +489,28 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#mohar-daemon-addr-hostport-max-inflight-n" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mohar daemon [--addr &lt;host:port&gt;] [--max-inflight &lt;n&gt;]
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mohar-hook-claude-code-daemon-url" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mohar hook claude-code [--daemon &lt;url&gt;]
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1130,6 +1152,28 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#mohar-daemon-addr-hostport-max-inflight-n" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mohar daemon [--addr &lt;host:port&gt;] [--max-inflight &lt;n&gt;]
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mohar-hook-claude-code-daemon-url" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mohar hook claude-code [--daemon &lt;url&gt;]
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1220,6 +1264,29 @@ checkpoint is also written automatically every 1,000 receipts.</p>
 <p>Checks every receipt and every checkpoint against the public key (<code>public.key</code> in the log directory
 by default). Prints <code>ok: ...</code> or the first break with its index and reason. Doesn't need the signing
 key, so anyone can verify a log they were given.</p>
+<h2 id="mohar-daemon-addr-hostport-max-inflight-n"><code>mohar daemon [--addr &lt;host:port&gt;] [--max-inflight &lt;n&gt;]</code><a class="headerlink" href="#mohar-daemon-addr-hostport-max-inflight-n" title="Permanent link">&para;</a></h2>
+<p>Serves decisions and outcomes to agent hosts on this machine, from the log in <code>--dir</code>, which it holds
+open for writing while it runs. It listens on <code>127.0.0.1:7878</code> by default and refuses any address that
+isn't loopback. It prints <code>listening on &lt;address&gt;</code> once bound, and how many earlier decisions are still
+waiting for an outcome.</p>
+<p>Two endpoints, JSON in and out:</p>
+<div class="highlight"><pre><span></span><code>POST /v1/decide   {agent, capability, tool, target, args_sha256, call_id?}  -&gt;  {result, level, receipt_seq}
+POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256}  -&gt;  {receipt_seq}
+</code></pre></div>
+<p><code>result</code> is <code>allow</code>, <code>escalate</code> or <code>deny</code>. <code>verifier</code> is <code>tests</code>, <code>diff</code>, <code>replay</code>, <code>human</code> or <code>host</code>;
+<code>host</code> is the host's own report that a tool ran and never counts toward trust. Unknown fields, bad hashes
+and oversized bodies are refused with a 4xx and recorded nowhere. Past <code>--max-inflight</code> requests at once
+(default 64) the daemon answers 503 rather than queueing.</p>
+<p>Until the trust engine ships, the policy is fixed: reads (<code>fs.read</code>) are allowed and everything else is
+escalated to a person. Every answer is a signed receipt either way.</p>
+<p>After a crash, decisions without an outcome are rebuilt from the log on the next start and can still be
+given one by <code>receipt_seq</code>; <code>call_id</code>s live only for the life of the process.</p>
+<h2 id="mohar-hook-claude-code-daemon-url"><code>mohar hook claude-code [--daemon &lt;url&gt;]</code><a class="headerlink" href="#mohar-hook-claude-code-daemon-url" title="Permanent link">&para;</a></h2>
+<p>The command Claude Code runs for <code>PreToolUse</code> and <code>PostToolUse</code>. It reads the hook payload on stdin, asks
+the daemon, and prints Claude Code's <code>permissionDecision</code>: <code>allow</code>, <code>ask</code> (for <code>escalate</code>) or <code>deny</code>. It
+denies when the daemon can't be reached, answers with an error, or the payload can't be read, and it only
+ever talks to a loopback address. <code>PostToolUse</code> is recorded as a <code>host</code> outcome matched by <code>tool_use_id</code>.
+Subagents are identified as <code>agent:claude-code/&lt;agent_type&gt;</code>, the main agent as <code>agent:claude-code/main</code>.</p>
 
 
 

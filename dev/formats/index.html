@@ -1122,6 +1122,12 @@
   signature included. The first receipt's <code>prev</code> is <code>sha256:</code> followed by 64 zeros.</li>
 <li><strong>Sequence</strong>: <code>seq</code> is the receipt's position, starting at 0.</li>
 <li><strong>Version</strong>: <code>v</code> is <code>1</code>. A verifier refuses versions it doesn't know.</li>
+<li><strong>Outcome</strong>: a follow-up receipt that records the outcome of an earlier decision carries a
+  <code>verification</code> object, <code>{"evidence_sha256", "kind", "of", "result"}</code>, where <code>of</code> is the <code>seq</code> of the
+  decision, <code>kind</code> is the verifier (<code>tests</code>, <code>diff</code>, <code>replay</code>, <code>human</code>, or <code>host</code> for the host's own report
+  that a tool ran) and <code>result</code> is <code>pass</code>, <code>fail</code> or <code>unknown</code>. It repeats the decision's agent, action
+  and decision. Receipts without an outcome have no <code>verification</code> key at all, so their bytes, and every
+  existing test vector, are unchanged; <code>verification</code> sorts last in the canonical form.</li>
 </ul>
 <h2 id="checkpoint">Checkpoint<a class="headerlink" href="#checkpoint" title="Permanent link">&para;</a></h2>
 <p>One JSON object per line in <code>checkpoints.jsonl</code>:</p>
