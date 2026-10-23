@@ -9,6 +9,11 @@ receipt format; each such change is called out.
 
 ### Added
 
+- Hard gates in the policy, checked before any trust score: writes outside the project root, denied
+  capabilities (the built-in policy denies pushing the default branch), hosts outside an allowlist in a
+  fetched URL or a command line, and protected paths (the built-in policy protects `.mohar/`). A gate that
+  can't decide refuses. Each stop is a signed `deny` receipt with `by: gate`, and the hook tells the
+  person which gate and why (#49).
 - The trust engine (`mohar_core::trust`): trust per agent per capability from verified outcomes weighted
   by a 30-day half-life, promotion one level at a time on the 95% Wilson lower bound with minimum counts,
   7 days at a level and 14 quiet days after a serious failure, never above the capability's ceiling.

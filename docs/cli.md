@@ -111,6 +111,29 @@ list of rules; the first rule that matches an action's tool and target wins:
   irreversible, ceiling 0.
 - Unknown fields, unknown capability names in rules and the reserved name `unclassified` are refused.
 
+### Gates
+
+Gates are checked before any trust score, and no record outweighs them. A gate stop is a `deny` receipt
+with `by: gate`, and the answer names the gate and the reason, which the Claude Code hook shows the
+person. A gate that can't decide (a write with no path, a URL it can't parse) refuses.
+
+```json
+"gates": {
+  "deny_capabilities": ["git.push.main"],
+  "allowed_hosts": ["api.github.com", "*.example.com"],
+  "protected_paths": [".mohar/**", "tests/**"]
+}
+```
+
+- Writes (`Edit`, `MultiEdit`, `Write`, `NotebookEdit`) outside the project root are always refused.
+- `deny_capabilities`: capabilities no agent may use at any level; each must be defined.
+- `allowed_hosts`: when set, a `WebFetch` URL or any URL in a command line must go to a listed host;
+  `*.example.com` matches subdomains only. When absent, this gate is off.
+- `protected_paths`: globs (relative to the root) no agent may write to.
+
+The built-in policy denies `git.push.main` and protects `.mohar/**`, so an agent can't rewrite its own
+policy or log.
+
 The built-in policy (`mohar_core::policy::BUILTIN`) is a fuller example: reads, docs, tests, code and
 config edits, read-only shell commands, pushes to a branch and to the default branch.
 

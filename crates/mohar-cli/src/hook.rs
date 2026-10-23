@@ -77,7 +77,10 @@ fn pre_tool_use(daemon: &str, p: &Value) -> String {
             "ask",
             reason("not earned yet on this capability, so a person decides"),
         ),
-        Some("deny") => ("deny", reason("denied")),
+        Some("deny") => match answer["reason"].as_str() {
+            Some(why) => ("deny", reason(&format!("refused by a gate: {why}"))),
+            None => ("deny", reason("denied")),
+        },
         _ => ("deny", reason("unexpected answer from the daemon; denying")),
     };
     decision_json(decision, &why)

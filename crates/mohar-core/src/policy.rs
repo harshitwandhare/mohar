@@ -78,7 +78,40 @@ struct File {
     root: Option<PathBuf>,
     capabilities: BTreeMap<String, Capability>,
     rules: Vec<Rule>,
+    #[serde(default)]
+    gates: Gates,
 }
+
+/// Hard gates: checked before any trust score, and no score outweighs them.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Gates {
+    /// Capabilities no agent may use at any level, such as pushing the default branch.
+    #[serde(default)]
+    pub deny_capabilities: Vec<String>,
+    /// Hosts an agent may send requests to. When set, any other host is refused; when absent, this
+    /// gate is off.
+    #[serde(default)]
+    pub allowed_hosts: Option<Vec<String>>,
+    /// Paths (globs relative to the root) no agent may change, such as the files that verify its work.
+    #[serde(default)]
+    pub protected_paths: Vec<String>,
+}
+
+/// A gate that stopped an action.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GateStop {
+    /// Which gate: `outside_root`, `denied_capability`, `unlisted_host`, `protected_path` or
+    /// `undecidable`.
+    pub gate: &'static str,
+    /// Why, in a sentence a person can act on.
+    pub reason: String,
+}
+
+/// Host tools that change files, whose targets are paths.
+const WRITE_TOOLS: [&str; 4] = ["Edit", "MultiEdit", "Write", "NotebookEdit"];
+/// Host tools whose target is a URL.
+const URL_TOOLS: [&str; 1] = ["WebFetch"];
 
 /// A loaded, validated policy.
 #[derive(Debug, Clone)]
@@ -86,6 +119,7 @@ pub struct Policy {
     root: PathBuf,
     capabilities: BTreeMap<String, Capability>,
     rules: Vec<Rule>,
+    gates: Gates,
 }
 
 /// Why a policy file was refused.
@@ -129,6 +163,12 @@ pub enum PolicyError {
     #[error("capability {name:?} is high risk and irreversible, so its ceiling can't be above 1")]
     IrreversibleCeiling {
         /// The capability.
+        name: String,
+    },
+    /// A gate names a capability that isn't defined.
+    #[error("gates.deny_capabilities names {name:?}, which is not defined under capabilities")]
+    UnknownGateCapability {
+        /// The name.
         name: String,
     },
     /// The reserved name used for actions that match nothing.
@@ -176,10 +216,16 @@ impl Policy {
             Some(r) => base.join(r),
             None => base.to_path_buf(),
         };
+        for name in &file.gates.deny_capabilities {
+            if !file.capabilities.contains_key(name) {
+                return Err(PolicyError::UnknownGateCapability { name: name.clone() });
+            }
+        }
         Ok(Self {
             root: resolve(&root),
             capabilities: file.capabilities,
             rules: file.rules,
+            gates: file.gates,
         })
     }
 
@@ -196,6 +242,66 @@ impl Policy {
             .get(capability)
             .cloned()
             .unwrap_or(UNCLASSIFIED_SPEC)
+    }
+
+    /// Check the hard gates. `Some` means the action is refused, whatever the agent's record. A gate
+    /// that can't tell (a write with no path, a URL it can't parse) refuses too.
+    pub fn gate(&self, tool: &str, target: &str, capability: &str) -> Option<GateStop> {
+        if self.gates.deny_capabilities.iter().any(|c| c == capability) {
+            return Some(GateStop {
+                gate: "denied_capability",
+                reason: format!("no agent may use {capability}; a person has to do it"),
+            });
+        }
+        if WRITE_TOOLS.contains(&tool) {
+            let Some(rel) = self.relative(target) else {
+                return Some(if target.is_empty() {
+                    GateStop {
+                        gate: "undecidable",
+                        reason: "a write with no path".into(),
+                    }
+                } else {
+                    GateStop {
+                        gate: "outside_root",
+                        reason: format!("{target} is outside the project"),
+                    }
+                });
+            };
+            if self
+                .gates
+                .protected_paths
+                .iter()
+                .any(|g| glob(g.as_bytes(), rel.as_bytes(), true))
+            {
+                return Some(GateStop {
+                    gate: "protected_path",
+                    reason: format!("{rel} is protected"),
+                });
+            }
+        }
+        if let Some(allowed) = &self.gates.allowed_hosts {
+            let hosts = if URL_TOOLS.contains(&tool) {
+                match url_host(target) {
+                    Some(h) => vec![h],
+                    None => {
+                        return Some(GateStop {
+                            gate: "undecidable",
+                            reason: format!("can't tell which host {target} reaches"),
+                        });
+                    }
+                }
+            } else {
+                // A command line: every URL in it must go to an allowed host.
+                target.split_whitespace().filter_map(url_host).collect()
+            };
+            if let Some(h) = hosts.iter().find(|h| !host_allowed(h, allowed)) {
+                return Some(GateStop {
+                    gate: "unlisted_host",
+                    reason: format!("{h} is not an allowed host"),
+                });
+            }
+        }
+        None
     }
 
     /// Classify an action by host tool and target. Path targets are resolved against the root.
@@ -290,6 +396,33 @@ fn normalize(p: &Path) -> PathBuf {
     out
 }
 
+/// The host of an http or https URL, lower-cased, without a port or credentials.
+fn url_host(s: &str) -> Option<String> {
+    let s = s.trim_matches(|c| c == '"' || c == '\'');
+    let rest = s
+        .strip_prefix("https://")
+        .or_else(|| s.strip_prefix("http://"))?;
+    let authority = rest.split(['/', '?', '#']).next()?;
+    let host = authority.rsplit('@').next()?;
+    let host = if let Some(v6) = host.strip_prefix('[') {
+        v6.split(']').next()?
+    } else {
+        host.split(':').next()?
+    };
+    (!host.is_empty()).then(|| host.to_ascii_lowercase())
+}
+
+/// An allowed entry matches the host itself, and `*.example.com` matches its subdomains.
+fn host_allowed(host: &str, allowed: &[String]) -> bool {
+    allowed.iter().any(|a| {
+        let a = a.to_ascii_lowercase();
+        match a.strip_prefix("*.") {
+            Some(base) => host.len() > base.len() + 1 && host.ends_with(&format!(".{base}")),
+            None => host == a,
+        }
+    })
+}
+
 /// Glob match. In path mode `*` and `?` stop at `/` and `**` crosses it; in command mode `*` matches
 /// anything.
 fn glob(pat: &[u8], text: &[u8], path: bool) -> bool {
@@ -351,7 +484,11 @@ pub const BUILTIN: &str = r#"{
     { "tools": ["Bash"], "commands": ["ls", "ls *", "pwd", "git status*", "git diff*", "git log*", "cat *", "cargo test*", "npm test*", "pytest*"], "capability": "shell.run.readonly" },
     { "tools": ["Bash"], "commands": ["*"], "capability": "shell.run" },
     { "tools": ["WebFetch", "WebSearch"], "commands": ["*"], "capability": "net.fetch" }
-  ]
+  ],
+  "gates": {
+    "deny_capabilities": ["git.push.main"],
+    "protected_paths": [".mohar/**"]
+  }
 }"#;
 
 #[cfg(test)]
