@@ -9,6 +9,10 @@ receipt format; each such change is called out.
 
 ### Added
 
+- The diff verifier: in a git repository, the files a task changed (since its first decision, renames under
+  both names, the log directory excluded) must fall under capabilities the agent was given in that task;
+  any that don't fail the task with the list returned as `out_of_scope`. It runs before the tests, and each
+  decision gets one outcome from the first verifier that fails (#46).
 - The tests verifier: when a Claude Code task stops, the daemon runs the project's test command once
   (`verify.tests` in the policy, run with no shell from the root) and records a `tests` outcome for every
   decision in the task that ran and changes something: `pass` on exit 0, `fail` otherwise, `unknown` with
