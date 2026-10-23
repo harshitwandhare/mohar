@@ -4,7 +4,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use mohar_core::store::{FileLog, OpenError};
+use mohar_core::store::{FileLog, OpenError, for_each_receipt, read_receipts};
 use mohar_core::{Action, BreakKind, Decision, Entry};
 
 /// A fresh, empty directory under the system temp dir, unique to this test.
@@ -130,4 +130,74 @@ fn a_second_writer_is_refused_while_the_first_is_open() {
     assert!(mohar_core::store::read_receipts(&dir.join("receipts.jsonl")).is_ok());
     drop(first);
     FileLog::open(&dir).expect("the lock is released when the writer is dropped");
+}
+
+#[test]
+fn an_empty_log_says_so_and_stops_saying_so_after_an_append() {
+    let dir = temp_dir("empty");
+    let mut log = FileLog::init(&dir).expect("init");
+    assert!(log.is_empty());
+    log.append(entry(0)).expect("append");
+    assert!(!log.is_empty());
+}
+
+#[test]
+fn blank_lines_between_receipts_and_checkpoints_are_skipped() {
+    let dir = temp_dir("blank");
+    let mut log = FileLog::init(&dir).expect("init");
+    for i in 0..3 {
+        log.append(entry(i)).expect("append");
+    }
+    log.checkpoint("2026-10-14T15:00:00.000Z")
+        .expect("checkpoint");
+    drop(log);
+    for name in ["receipts.jsonl", "checkpoints.jsonl"] {
+        let path = dir.join(name);
+        let text = fs::read_to_string(&path).expect("read");
+        fs::write(&path, text.replace('\n', "\n\n")).expect("write");
+    }
+    let log = FileLog::open(&dir).expect("blank lines are not receipts");
+    assert_eq!(log.len(), 3);
+}
+
+#[test]
+fn reading_stops_at_an_unreadable_line_after_handing_over_the_ones_before() {
+    let dir = temp_dir("walk");
+    let mut log = FileLog::init(&dir).expect("init");
+    for i in 0..3 {
+        log.append(entry(i)).expect("append");
+    }
+    drop(log);
+    let path = dir.join("receipts.jsonl");
+    let text = fs::read_to_string(&path).expect("read");
+    let mut lines: Vec<&str> = text.lines().collect();
+    lines.insert(2, "{not a receipt");
+    fs::write(&path, lines.join("\n") + "\n").expect("write");
+
+    let mut seen = Vec::new();
+    let err = for_each_receipt(&path, |r| seen.push(r.seq)).expect_err("must stop");
+    assert!(matches!(err, OpenError::Unreadable { line: 3 }), "{err}");
+    assert_eq!(seen, vec![0, 1]);
+    assert!(matches!(
+        read_receipts(&path),
+        Err(OpenError::Unreadable { line: 3 })
+    ));
+}
+
+#[test]
+fn an_unreadable_checkpoint_line_names_its_file_and_line() {
+    let dir = temp_dir("bad-checkpoint");
+    let mut log = FileLog::init(&dir).expect("init");
+    log.append(entry(0)).expect("append");
+    log.checkpoint("2026-10-14T15:00:00.000Z")
+        .expect("checkpoint");
+    drop(log);
+    let path = dir.join("checkpoints.jsonl");
+    let text = fs::read_to_string(&path).expect("read");
+    fs::write(&path, text + "{\"v\":1\n").expect("write");
+    match FileLog::open(&dir) {
+        Err(OpenError::UnreadableCheckpoint { path: p, line: 2 }) => assert_eq!(p, path),
+        Err(e) => panic!("wrong error: {e}"),
+        Ok(_) => panic!("opened a log with an unreadable checkpoint"),
+    }
 }

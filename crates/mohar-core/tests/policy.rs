@@ -409,3 +409,78 @@ fn the_builtin_gates_forbid_pushing_main_and_editing_mohar_itself() {
         Some("protected_path")
     );
 }
+
+fn with_extra(extra: &str) -> Result<Policy, PolicyError> {
+    Policy::from_json(
+        &format!(
+            r#"{{"version": 1,
+                "capabilities": {{"fs.edit.docs": {{"risk": "low", "reversible": true, "ceiling": 2}}}},
+                "rules": [{{"tools": ["Edit"], "paths": ["docs/**"], "capability": "fs.edit.docs"}}]
+                {extra}}}"#
+        ),
+        Path::new(ROOT),
+    )
+}
+
+#[test]
+fn a_root_in_the_file_is_taken_as_is_or_relative_to_the_file() {
+    let relative = with_extra(r#", "root": "sub""#).expect("valid");
+    assert_eq!(relative.root(), Path::new(ROOT).join("sub"));
+    let absolute = std::env::temp_dir();
+    let json = serde_json::to_string(&absolute).expect("path as json");
+    let p = with_extra(&format!(r#", "root": {json}"#)).expect("valid");
+    assert_eq!(p.root(), absolute);
+}
+
+#[test]
+fn an_empty_test_command_is_refused() {
+    let err = with_extra(r#", "verify": {"tests": {"command": []}}"#).expect_err("refused");
+    assert!(matches!(err, PolicyError::EmptyTestCommand), "{err}");
+}
+
+#[test]
+fn without_a_tests_verifier_nothing_is_a_test_file() {
+    let p = with_extra("").expect("valid");
+    assert!(p.tests_verifier().is_none());
+    assert!(!p.is_test_path("/repo/tests/a.rs"));
+}
+
+#[test]
+fn dot_segments_are_resolved_before_matching() {
+    let p = with_extra("").expect("valid");
+    assert_eq!(
+        p.classify("Edit", "./docs/./a.md").capability,
+        "fs.edit.docs"
+    );
+    assert_eq!(
+        p.classify("Edit", "/repo/src/../docs/a.md").capability,
+        "fs.edit.docs"
+    );
+    assert_eq!(
+        p.classify("Edit", "/repo/docs/../src/a.rs").capability,
+        UNCLASSIFIED
+    );
+}
+
+#[test]
+fn a_single_character_wildcard_never_crosses_a_directory() {
+    let p =
+        policy(r#"{"tools": ["Edit"], "paths": ["docs/a?b.md"], "capability": "fs.edit.docs"}"#)
+            .expect("valid");
+    assert_eq!(
+        p.classify("Edit", "/repo/docs/axb.md").capability,
+        "fs.edit.docs"
+    );
+    assert_eq!(
+        p.classify("Edit", "/repo/docs/a/b.md").capability,
+        UNCLASSIFIED
+    );
+}
+
+#[test]
+fn ipv6_hosts_are_checked_against_the_list() {
+    let p = gated(r#"{"allowed_hosts": ["::1"]}"#);
+    let host = |target: &str| p.gate("WebFetch", target, "net.fetch").map(|s| s.gate);
+    assert_eq!(host("http://[::1]:8080/x"), None);
+    assert_eq!(host("http://[fe80::1]/x"), Some("unlisted_host"));
+}

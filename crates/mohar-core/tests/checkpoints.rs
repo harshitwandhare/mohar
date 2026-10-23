@@ -139,3 +139,38 @@ fn a_checkpoint_is_written_automatically_every_1000_receipts() {
     assert_eq!(checkpoints[0].count, 1000);
     assert_eq!(check(&dir), Ok(()));
 }
+
+#[test]
+fn a_checkpoint_with_a_malformed_signature_is_rejected() {
+    let dir = log_with_checkpoints("malformed-sig", 3, 0);
+    let receipts = read_receipts(&dir.join("receipts.jsonl")).expect("receipts");
+    let good = read_checkpoints(&dir.join("checkpoints.jsonl")).expect("checkpoints");
+    let key =
+        parse_public_key(&fs::read_to_string(dir.join("public.key")).expect("key")).expect("parse");
+    for sig in [
+        "",
+        "rsa:00",
+        "ed25519:zz",
+        "ed25519:00",
+        &good[0].sig[..good[0].sig.len() - 2],
+    ] {
+        let mut checkpoints = good.clone();
+        checkpoints[0].sig = sig.to_string();
+        assert_eq!(
+            verify_checkpoints(&checkpoints, &receipts, &key),
+            Err(CheckpointBreak::BadSignature { checkpoint: 0 }),
+            "sig {sig:?}"
+        );
+    }
+}
+
+#[test]
+fn a_checkpoint_over_an_empty_log_vouches_for_nothing_and_verifies() {
+    let key = SigningKey::generate().expect("keygen");
+    let log = mohar_core::Log::new(key.clone());
+    let c = log
+        .checkpoint("2026-10-14T15:00:00.000Z")
+        .expect("checkpoint");
+    assert_eq!(c.count, 0);
+    assert_eq!(verify_checkpoints(&[c], &[], &key.verifying_key()), Ok(()));
+}

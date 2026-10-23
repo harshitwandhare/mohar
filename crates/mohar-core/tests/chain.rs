@@ -112,3 +112,20 @@ proptest! {
         }
     }
 }
+
+#[test]
+fn a_receipt_with_a_malformed_signature_breaks_the_chain() {
+    let (log, key) = log_of(2);
+    let good = log.receipts().to_vec();
+    let cut = &good[1].sig[..good[1].sig.len() - 2];
+    for sig in ["", "rsa:00", "ed25519:zz", "ed25519:00", cut] {
+        let mut receipts = good.clone();
+        receipts[1].sig = sig.to_string();
+        let err = verify(&receipts, &key.verifying_key()).expect_err("must break");
+        assert_eq!(
+            (err.index, err.kind),
+            (1, BreakKind::BadSignature),
+            "sig {sig:?}"
+        );
+    }
+}
