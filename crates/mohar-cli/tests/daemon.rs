@@ -994,3 +994,23 @@ fn the_daemon_s_own_log_is_never_counted_as_a_change_the_task_made() {
         "{v}"
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn the_own_log_is_recognised_when_the_project_is_reached_through_a_symlink() {
+    // As on macOS, where the temp directory is reached through /var, a link to /private/var.
+    let (proj, _log) = git_project("own-log-link");
+    let alias = proj.with_extension("alias");
+    let _ = std::fs::remove_file(&alias);
+    std::os::unix::fs::symlink(&proj, &alias).expect("symlink");
+    let d = Daemon::start(&alias.join(".mohar"), &[]);
+    edit_that_ran(d.port, &alias, "docs/a.md", "t1");
+    std::fs::write(proj.join("docs/a.md"), "new\n").expect("write");
+    std::fs::write(proj.join(".mohar/checkpoints.extra"), "x\n").expect("write");
+    let v = verify_task(d.port, "t1");
+    assert_eq!(
+        (v["result"].as_str(), &v["out_of_scope"]),
+        (Some("pass"), &json!([])),
+        "{v}"
+    );
+}

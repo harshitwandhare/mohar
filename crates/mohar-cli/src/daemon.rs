@@ -108,7 +108,9 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
         });
     }
 
-    let log_dir = std::path::absolute(dir).map_err(|e| e.to_string())?;
+    // Resolved the way the policy resolves its root (following symlinks, and in the long-path form on
+    // Windows), so the two can be compared.
+    let log_dir = std::fs::canonicalize(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let state = Arc::new(State {
         log_dir,
         log: Mutex::new(Inner {
