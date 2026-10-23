@@ -1014,3 +1014,18 @@ fn the_own_log_is_recognised_when_the_project_is_reached_through_a_symlink() {
         "{v}"
     );
 }
+
+#[test]
+fn a_policy_file_that_cannot_be_read_stops_the_daemon() {
+    let dir = fresh_log("policy-unreadable");
+    std::fs::create_dir(dir.join("policy.json")).expect("a directory where the file should be");
+    let out = Command::new(BIN)
+        .arg("--dir")
+        .arg(&dir)
+        .args(["daemon", "--addr", "127.0.0.1:0"])
+        .stdin(Stdio::null())
+        .output()
+        .expect("run daemon");
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("policy.json"));
+}

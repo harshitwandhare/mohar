@@ -207,3 +207,46 @@ fn publish_refuses_a_url_for_now() {
     );
     assert_eq!(out.status.code(), Some(2));
 }
+
+#[test]
+fn log_prints_every_receipt_or_the_last_few() {
+    let dir = temp_dir("log-all");
+    assert!(mohar(&dir, &["init"]).status.success());
+    for t in ["a.md", "b.md", "c.md"] {
+        assert!(append(&dir, t).status.success());
+    }
+    let all = String::from_utf8(mohar(&dir, &["log"]).stdout).expect("utf8");
+    assert_eq!(all.lines().count(), 3);
+    assert!(all.lines().next().unwrap_or("").contains("a.md"));
+    let none = mohar(&dir, &["log", "--last", "0"]);
+    assert!(none.status.success());
+    assert!(none.stdout.is_empty());
+}
+
+#[test]
+fn publish_takes_a_bare_file_name_relative_to_where_it_runs() {
+    let dir = temp_dir("ext-bare");
+    let cwd = temp_dir("ext-bare-cwd");
+    fs::create_dir_all(&cwd).expect("mkdir");
+    assert!(mohar(&dir, &["init"]).status.success());
+    assert!(append(&dir, "a").status.success());
+    let out = Command::new(env!("CARGO_BIN_EXE_mohar"))
+        .current_dir(&cwd)
+        .arg("--dir")
+        .arg(&dir)
+        .args(["checkpoint", "--publish", "published.jsonl"])
+        .output()
+        .expect("run mohar");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(cwd.join("published.jsonl"))
+            .expect("published")
+            .lines()
+            .count(),
+        1
+    );
+}
