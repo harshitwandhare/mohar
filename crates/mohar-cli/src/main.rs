@@ -74,6 +74,9 @@ enum Command {
         /// Requests handled at once; past this the daemon answers 503.
         #[arg(long, default_value_t = 64)]
         max_inflight: usize,
+        /// Exit when stdin closes, for a parent process that starts and stops the daemon.
+        #[arg(long)]
+        exit_on_stdin_eof: bool,
     },
     /// Run as an agent host's hook: read its payload on stdin, ask the daemon, print the answer.
     Hook {
@@ -140,13 +143,18 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
                 .map_err(|e| e.to_string())?;
             println!("{}", r.seq);
         }
-        Command::Daemon { addr, max_inflight } => {
+        Command::Daemon {
+            addr,
+            max_inflight,
+            exit_on_stdin_eof,
+        } => {
             daemon::serve(
                 &cli.dir,
                 daemon::Config {
                     addr,
                     max_inflight,
                     io_timeout: std::time::Duration::from_secs(5),
+                    exit_on_stdin_eof,
                 },
             )?;
         }

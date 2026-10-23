@@ -34,8 +34,9 @@ impl Daemon {
         let mut child = Command::new(BIN)
             .arg("--dir")
             .arg(dir)
-            .args(["daemon", "--addr", "127.0.0.1:0"])
+            .args(["daemon", "--addr", "127.0.0.1:0", "--exit-on-stdin-eof"])
             .args(extra)
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()
             .expect("spawn daemon");
@@ -56,6 +57,9 @@ impl Daemon {
         format!("http://127.0.0.1:{}", self.port)
     }
 
+    /// Stop the daemon the normal way: close its stdin and wait for it to exit.
+    fn stop(self) {}
+
     /// Kill without any chance to clean up, like a crash.
     fn crash(mut self) {
         let _ = self.child.kill();
@@ -64,7 +68,16 @@ impl Daemon {
 }
 
 impl Drop for Daemon {
+    /// Close stdin so the daemon exits on its own, and kill it only if it hangs.
     fn drop(&mut self) {
+        drop(self.child.stdin.take());
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while std::time::Instant::now() < deadline {
+            if let Ok(Some(_)) = self.child.try_wait() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
@@ -150,7 +163,7 @@ fn decisions_and_outcomes_become_receipts() {
             .to_string(),
     );
     assert_eq!(s, 404);
-    d.crash();
+    d.stop();
     assert!(verify(&dir).contains("3 receipts"));
     let log = std::fs::read_to_string(dir.join("receipts.jsonl")).expect("log");
     let last: Value = serde_json::from_str(log.lines().last().expect("line")).expect("json");
@@ -203,7 +216,7 @@ fn malformed_requests_are_refused_and_not_recorded() {
         400,
         "a model is not a verifier"
     );
-    d.crash();
+    d.stop();
     assert!(verify(&dir).contains("0 receipts"));
 }
 
@@ -265,7 +278,7 @@ fn a_crash_between_decide_and_outcome_loses_nothing() {
     let by_seq =
         json!({"receipt_seq": seq, "verifier": "human", "result": "pass", "evidence_sha256": SHA});
     assert_eq!(post(d.port, "/v1/outcome", &by_seq.to_string()).0, 200);
-    d.crash();
+    d.stop();
     assert!(verify(&dir).contains("2 receipts"));
 }
 
@@ -347,7 +360,7 @@ fn the_claude_code_hook_asks_the_daemon_and_records_what_ran() {
         Value::Null,
         "PostToolUse prints nothing"
     );
-    d.crash();
+    d.stop();
     assert!(verify(&dir).contains("3 receipts"));
     let log = std::fs::read_to_string(dir.join("receipts.jsonl")).expect("log");
     let lines: Vec<Value> = log

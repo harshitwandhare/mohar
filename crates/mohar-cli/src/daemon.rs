@@ -33,6 +33,8 @@ pub struct Config {
     pub max_inflight: usize,
     /// How long a client may take to send its request or read the answer.
     pub io_timeout: Duration,
+    /// Exit when stdin closes, so a parent process can stop the daemon by closing the pipe.
+    pub exit_on_stdin_eof: bool,
 }
 
 /// A decision that has no outcome yet: enough to write the follow-up receipt.
@@ -69,11 +71,25 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
     let pending = pending_decisions(&dir.join("receipts.jsonl"))?;
     let listener = TcpListener::bind(cfg.addr).map_err(|e| format!("{}: {e}", cfg.addr))?;
     let local = listener.local_addr().map_err(|e| e.to_string())?;
-    println!("listening on {local}");
+    // Nobody may be reading stdout (a closed pipe on Windows); the daemon must not die over that.
+    let mut out = std::io::stdout();
+    let _ = writeln!(out, "listening on {local}");
     if !pending.is_empty() {
-        println!("{} decisions are waiting for an outcome", pending.len());
+        let _ = writeln!(
+            out,
+            "{} decisions are waiting for an outcome",
+            pending.len()
+        );
     }
-    let _ = std::io::stdout().flush();
+    let _ = out.flush();
+    if cfg.exit_on_stdin_eof {
+        // The process that started the daemon closes stdin to stop it. Exiting this way, not by being
+        // killed, lets every receipt already appended stay synced and ends the process cleanly.
+        std::thread::spawn(|| {
+            let _ = std::io::copy(&mut std::io::stdin(), &mut std::io::sink());
+            std::process::exit(0);
+        });
+    }
 
     let state = Arc::new(State {
         log: Mutex::new(Inner {
