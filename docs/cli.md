@@ -57,7 +57,7 @@ waiting for an outcome.
 Two endpoints, JSON in and out:
 
 ```
-POST /v1/decide   {agent, capability, tool, target, args_sha256, call_id?}  ->  {result, level, receipt_seq}
+POST /v1/decide   {agent, tool, target, args_sha256, call_id?}  ->  {result, level, receipt_seq}
 POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256}  ->  {receipt_seq}
 ```
 
@@ -66,8 +66,44 @@ POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256}  ->
 and oversized bodies are refused with a 4xx and recorded nowhere. Past `--max-inflight` requests at once
 (default 64) the daemon answers 503 rather than queueing.
 
-Until the trust engine ships, the policy is fixed: reads (`fs.read`) are allowed and everything else is
-escalated to a person. Every answer is a signed receipt either way.
+The daemon decides which capability an action falls under from its policy (below); a request can't name
+one. Until the trust engine ships, capabilities with risk `none` (reads) are allowed and everything else
+is escalated to a person. Every answer is a signed receipt either way.
+
+### The policy file
+
+The daemon reads `<dir>/policy.json` when it starts and refuses to start if the file is invalid. Without
+one it uses a built-in policy rooted at its working directory. A policy names capabilities and an ordered
+list of rules; the first rule that matches an action's tool and target wins:
+
+```json
+{
+  "version": 1,
+  "root": "..",
+  "capabilities": {
+    "fs.edit.docs": { "risk": "low",  "reversible": true,  "ceiling": 2 },
+    "db.migrate":   { "risk": "high", "reversible": false, "ceiling": 1 }
+  },
+  "rules": [
+    { "tools": ["Edit", "Write"], "paths": ["docs/**"], "capability": "fs.edit.docs" },
+    { "tools": ["Bash"], "commands": ["*migrate*"], "capability": "db.migrate" }
+  ]
+}
+```
+
+- `risk` is `none`, `low`, `medium` or `high`; `ceiling` is the highest level an agent may reach on the
+  capability, 0 to 2, and a high-risk irreversible capability can't go above 1.
+- A rule gives either `paths` (globs over the target relative to `root`, where `*` and `?` stay within a
+  directory and `**` crosses directories) or `commands` (globs over the whole command line, where `*`
+  matches anything), never both. `tools` limits it to those host tools.
+- `root` defaults to the directory that holds the log directory. `..` in a target is resolved first, so a
+  path can't climb out of the root.
+- An action that matches no rule, or names a path outside the root, is `unclassified`: high risk,
+  irreversible, ceiling 0.
+- Unknown fields, unknown capability names in rules and the reserved name `unclassified` are refused.
+
+The built-in policy (`mohar_core::policy::BUILTIN`) is a fuller example: reads, docs, tests, code and
+config edits, read-only shell commands, pushes to a branch and to the default branch.
 
 After a crash, decisions without an outcome are rebuilt from the log on the next start and can still be
 given one by `receipt_seq`; `call_id`s live only for the life of the process.

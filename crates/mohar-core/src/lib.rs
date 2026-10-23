@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 pub mod checkpoint;
+pub mod policy;
 pub mod store;
 
 pub use ed25519_dalek::VerifyingKey;

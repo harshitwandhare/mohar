@@ -13,6 +13,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use mohar_core::policy::{Capability, Policy, Risk};
 use mohar_core::store::{FileLog, for_each_receipt};
 use mohar_core::{Action, Decision, Entry, Receipt, Verification};
 use serde::Deserialize;
@@ -47,6 +48,7 @@ struct Pending {
 
 struct State {
     log: Mutex<Inner>,
+    policy: Policy,
     inflight: AtomicUsize,
     max_inflight: usize,
 }
@@ -67,6 +69,7 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
             cfg.addr
         ));
     }
+    let policy = load_policy(dir)?;
     let log = FileLog::open(dir).map_err(|e| e.to_string())?;
     let pending = pending_decisions(&dir.join("receipts.jsonl"))?;
     let listener = TcpListener::bind(cfg.addr).map_err(|e| format!("{}: {e}", cfg.addr))?;
@@ -99,6 +102,7 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
         }),
         inflight: AtomicUsize::new(0),
         max_inflight: cfg.max_inflight,
+        policy,
     });
     for stream in listener.incoming() {
         let Ok(mut stream) = stream else { continue };
@@ -121,6 +125,28 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
         });
     }
     Ok(())
+}
+
+/// The project's policy from `<dir>/policy.json`, rooted at the directory that holds the log
+/// directory; without one, the built-in policy rooted at the working directory. An invalid policy
+/// stops the daemon from starting rather than being ignored.
+fn load_policy(dir: &Path) -> Result<Policy, String> {
+    let file = dir.join("policy.json");
+    match std::fs::read_to_string(&file) {
+        Ok(text) => {
+            let base = std::path::absolute(dir)
+                .map_err(|e| e.to_string())?
+                .parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_default();
+            Policy::from_json(&text, &base).map_err(|e| format!("{}: {e}", file.display()))
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
+            Ok(Policy::builtin(&cwd))
+        }
+        Err(e) => Err(format!("{}: {e}", file.display())),
+    }
 }
 
 /// Decisions in the log that no later receipt has recorded an outcome for.
@@ -287,7 +313,6 @@ fn respond(stream: &mut TcpStream, status: u16, body: &serde_json::Value) {
 #[serde(deny_unknown_fields)]
 struct DecideRequest {
     agent: String,
-    capability: String,
     tool: String,
     target: String,
     args_sha256: String,
@@ -320,9 +345,9 @@ fn field_ok(s: &str, max: usize) -> bool {
     !s.is_empty() && s.len() <= max
 }
 
-/// The fixed policy until the trust engine exists: reads run, everything else asks a person.
-fn policy(capability: &str) -> &'static str {
-    if capability == "fs.read" || capability.starts_with("fs.read.") {
+/// The answer until the trust engine exists: actions with no effect run, everything else asks a person.
+fn answer(spec: &Capability) -> &'static str {
+    if spec.risk == Risk::None {
         "allow"
     } else {
         "escalate"
@@ -334,11 +359,8 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         Ok(r) => r,
         Err(_) => return bad("body is not a valid decide request"),
     };
-    if !(field_ok(&req.agent, MAX_FIELD)
-        && field_ok(&req.capability, MAX_FIELD)
-        && field_ok(&req.tool, MAX_FIELD))
-    {
-        return bad("agent, capability and tool must be non-empty and at most 512 bytes");
+    if !(field_ok(&req.agent, MAX_FIELD) && field_ok(&req.tool, MAX_FIELD)) {
+        return bad("agent and tool must be non-empty and at most 512 bytes");
     }
     if req.target.len() > MAX_TARGET {
         return bad("target is longer than 4096 bytes");
@@ -353,14 +375,16 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     {
         return bad("call_id must be non-empty and at most 512 bytes");
     }
+    // The daemon classifies the action from its own policy; the agent's side never names its capability.
+    let classified = state.policy.classify(&req.tool, &req.target);
     let action = Action {
-        capability: req.capability,
+        capability: classified.capability,
         tool: req.tool,
         target: req.target,
         args_sha256: req.args_sha256,
     };
     let decision = Decision {
-        result: policy(&action.capability).to_string(),
+        result: answer(&classified.spec).to_string(),
         level: 0,
         by: "gate".to_string(),
     };

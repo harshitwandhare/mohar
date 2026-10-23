@@ -9,6 +9,11 @@ receipt format; each such change is called out.
 
 ### Added
 
+- A capability policy (`.mohar/policy.json`): named capabilities with a risk tier, a reversibility flag
+  and a ceiling, and ordered rules mapping a host tool and a path or command glob onto them. The first
+  match wins; anything unmatched or outside the project root is `unclassified` and treated as the
+  highest risk. Invalid files are refused with the reason. The daemon now classifies every action
+  itself, so a decide request no longer carries a capability (#47).
 - `mohar daemon`: a local service on a loopback address that answers `POST /v1/decide` and
   `POST /v1/outcome`, signs every answer into the log, refuses malformed or oversized requests, answers 503
   past a limit of requests in flight, and rebuilds decisions still waiting for an outcome after a crash (#43).
