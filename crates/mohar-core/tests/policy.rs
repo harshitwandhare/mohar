@@ -205,3 +205,38 @@ fn the_builtin_policy_is_valid_and_sensible() {
     assert_eq!(c("WebFetch", "https://example.com"), "net.fetch");
     assert_eq!(c("mcp__github__create_issue", "x"), UNCLASSIFIED);
 }
+
+#[cfg(unix)]
+#[test]
+fn symlinks_are_resolved_so_they_cannot_hide_where_a_path_really_goes() {
+    let base = std::env::temp_dir().join(format!("mohar-policy-links-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    let root = base.join("repo");
+    let outside = base.join("elsewhere");
+    std::fs::create_dir_all(root.join("docs")).expect("mkdir");
+    std::fs::create_dir_all(&outside).expect("mkdir");
+    // A link inside the project that points out of it.
+    std::os::unix::fs::symlink(&outside, root.join("docs/link")).expect("symlink");
+    // A second name for the project itself, like /var and /private/var on macOS.
+    std::os::unix::fs::symlink(&root, base.join("alias")).expect("symlink");
+    let p = Policy::from_json(
+        r#"{"version": 1,
+            "capabilities": {"fs.edit.docs": {"risk": "low", "reversible": true, "ceiling": 2}},
+            "rules": [{"tools": ["Edit"], "paths": ["docs/**"], "capability": "fs.edit.docs"}]}"#,
+        &root,
+    )
+    .expect("valid");
+    let at = |path: &std::path::Path| p.classify("Edit", &path.to_string_lossy()).capability;
+    assert_eq!(at(&root.join("docs/a.md")), "fs.edit.docs");
+    assert_eq!(
+        at(&base.join("alias/docs/a.md")),
+        "fs.edit.docs",
+        "the same file by another name"
+    );
+    assert_eq!(
+        at(&root.join("docs/link/secrets.txt")),
+        UNCLASSIFIED,
+        "a link out of the root"
+    );
+    let _ = std::fs::remove_dir_all(&base);
+}

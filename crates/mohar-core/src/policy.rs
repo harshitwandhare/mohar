@@ -177,7 +177,7 @@ impl Policy {
             None => base.to_path_buf(),
         };
         Ok(Self {
-            root: normalize(&root),
+            root: resolve(&root),
             capabilities: file.capabilities,
             rules: file.rules,
         })
@@ -228,9 +228,9 @@ impl Policy {
         }
         let p = Path::new(target);
         let full = if p.is_absolute() {
-            normalize(p)
+            resolve(p)
         } else {
-            normalize(&self.root.join(p))
+            resolve(&self.root.join(p))
         };
         let rel = full.strip_prefix(&self.root).ok()?;
         let parts: Vec<String> = rel
@@ -238,6 +238,32 @@ impl Policy {
             .map(|c| c.as_os_str().to_string_lossy().into_owned())
             .collect();
         Some(parts.join("/"))
+    }
+}
+
+/// Resolve a path the way the file system will: `.` and `..` first, then symlinks through the deepest
+/// part of it that exists. Without this, a symlink inside the root that points outside it (docs/link to
+/// /etc) would be classified as inside, and the same directory reached by two paths (/var and
+/// /private/var on macOS) would look like two places.
+fn resolve(p: &Path) -> PathBuf {
+    let lexical = normalize(p);
+    let mut existing = lexical.clone();
+    let mut rest = Vec::new();
+    loop {
+        if let Ok(real) = std::fs::canonicalize(&existing) {
+            let mut out = real;
+            for part in rest.iter().rev() {
+                out.push(part);
+            }
+            return out;
+        }
+        match existing.file_name() {
+            Some(name) => rest.push(name.to_os_string()),
+            None => return lexical,
+        }
+        if !existing.pop() {
+            return lexical;
+        }
     }
 }
 
