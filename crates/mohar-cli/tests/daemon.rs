@@ -469,6 +469,18 @@ fn the_shipped_plugin_runs_the_hook_on_every_tool_and_blocks_on_failure() {
         hooks["hooks"]["PreToolUse"][0]["hooks"][0]["onFailure"], "block",
         "a PreToolUse hook that can't run must block the call"
     );
+    for event in ["Stop", "SubagentStop"] {
+        let h = &hooks["hooks"][event][0]["hooks"][0];
+        assert_eq!(
+            h["args"],
+            json!(["hook", "claude-code"]),
+            "{event} verifies the task"
+        );
+        assert!(
+            h["timeout"].as_u64().unwrap_or(0) >= 600,
+            "{event} must allow a full test run"
+        );
+    }
 }
 
 #[test]
@@ -666,4 +678,174 @@ fn a_gate_stop_is_a_signed_deny_by_gate_and_the_hook_says_why() {
         );
     }
     assert!(verify(&dir).contains("3 receipts"));
+}
+
+/// A log whose policy runs `command` as the project's tests, with `tests/**` as the test files.
+fn verifying_log(name: &str, command: Value, timeout: u64) -> PathBuf {
+    let dir = fresh_log(name);
+    let policy = json!({"version": 1,
+        "capabilities": {"fs.edit.code": {"risk": "medium", "reversible": true, "ceiling": 2}},
+        "rules": [{"tools": ["Edit", "Write"], "paths": ["**"], "capability": "fs.edit.code"}],
+        "verify": {"tests": {"command": command, "timeout_secs": timeout, "test_paths": ["tests/**"]}}});
+    std::fs::write(dir.join("policy.json"), policy.to_string()).expect("policy");
+    dir
+}
+
+/// An edit decided in `task` and reported by the host as having run.
+fn edit_that_ran(port: u16, root: &Path, rel: &str, task: &str) {
+    let call = format!("call-{rel}");
+    let b = json!({"agent": "agent:test/1", "tool": "Edit", "target": format!("{}/{rel}", root.display()),
+                   "args_sha256": SHA, "call_id": call, "task": task});
+    assert_eq!(post(port, "/v1/decide", &b.to_string()).0, 200);
+    let ran =
+        json!({"call_id": call, "verifier": "host", "result": "unknown", "evidence_sha256": SHA});
+    assert_eq!(post(port, "/v1/outcome", &ran.to_string()).0, 200);
+}
+
+fn verify_task(port: u16, task: &str) -> Value {
+    let (s, v) = post(
+        port,
+        "/v1/verify",
+        &json!({"agent": "agent:test/1", "task": task}).to_string(),
+    );
+    assert_eq!(s, 200, "{v}");
+    v
+}
+
+fn last_kind_and_result(dir: &Path) -> (String, String) {
+    let log = std::fs::read_to_string(dir.join("receipts.jsonl")).expect("log");
+    let r: Value = serde_json::from_str(log.lines().last().expect("line")).expect("json");
+    (
+        r["verification"]["kind"].as_str().unwrap_or("").into(),
+        r["verification"]["result"].as_str().unwrap_or("").into(),
+    )
+}
+
+#[test]
+fn the_tests_verifier_records_a_pass() {
+    let dir = verifying_log("v-pass", json!([BIN, "--version"]), 60);
+    let root = dir.parent().expect("root").to_path_buf();
+    let d = Daemon::start(&dir, &[]);
+    edit_that_ran(d.port, &root, "src/a.rs", "t1");
+    edit_that_ran(d.port, &root, "src/b.rs", "t1");
+    let v = verify_task(d.port, "t1");
+    assert_eq!(
+        (v["verified"].as_u64(), v["result"].as_str()),
+        (Some(2), Some("pass"))
+    );
+    assert_eq!(
+        verify_task(d.port, "t1")["verified"],
+        0,
+        "a task is verified once"
+    );
+    d.stop();
+    assert_eq!(last_kind_and_result(&dir), ("tests".into(), "pass".into()));
+    verify(&dir);
+}
+
+#[test]
+fn the_tests_verifier_records_a_fail() {
+    let dir = verifying_log("v-fail", json!([BIN, "--dir", "no-such-log", "verify"]), 60);
+    let root = dir.parent().expect("root").to_path_buf();
+    let d = Daemon::start(&dir, &[]);
+    edit_that_ran(d.port, &root, "src/a.rs", "t1");
+    assert_eq!(verify_task(d.port, "t1")["result"], "fail");
+    d.stop();
+    assert_eq!(last_kind_and_result(&dir), ("tests".into(), "fail".into()));
+}
+
+#[test]
+fn the_tests_verifier_says_unknown_when_it_cannot_tell() {
+    // A command that never finishes, cut off at its timeout.
+    let busy = fresh_log("v-busy");
+    let dir = verifying_log(
+        "v-unknown",
+        json!([
+            BIN,
+            "--dir",
+            busy.to_string_lossy(),
+            "daemon",
+            "--addr",
+            "127.0.0.1:0"
+        ]),
+        1,
+    );
+    let root = dir.parent().expect("root").to_path_buf();
+    let d = Daemon::start(&dir, &[]);
+    edit_that_ran(d.port, &root, "src/a.rs", "t1");
+    assert_eq!(verify_task(d.port, "t1")["result"], "unknown");
+    // And a program that doesn't exist.
+    d.stop();
+    let dir2 = verifying_log("v-missing", json!(["mohar-no-such-program"]), 60);
+    let d = Daemon::start(&dir2, &[]);
+    edit_that_ran(d.port, dir2.parent().expect("root"), "src/a.rs", "t1");
+    assert_eq!(verify_task(d.port, "t1")["result"], "unknown");
+}
+
+#[test]
+fn changing_test_files_in_the_task_fails_it_even_when_the_tests_pass() {
+    let dir = verifying_log("v-own-tests", json!([BIN, "--version"]), 60);
+    let root = dir.parent().expect("root").to_path_buf();
+    let d = Daemon::start(&dir, &[]);
+    edit_that_ran(d.port, &root, "src/a.rs", "t1");
+    edit_that_ran(d.port, &root, "tests/verify_a.rs", "t1");
+    let v = verify_task(d.port, "t1");
+    assert_eq!(
+        (v["verified"].as_u64(), v["result"].as_str()),
+        (Some(2), Some("fail"))
+    );
+    // Another task that leaves the tests alone passes.
+    edit_that_ran(d.port, &root, "src/b.rs", "t2");
+    assert_eq!(verify_task(d.port, "t2")["result"], "pass");
+}
+
+#[test]
+fn only_actions_that_ran_and_changed_something_are_verified() {
+    let dir = verifying_log("v-scope", json!([BIN, "--version"]), 60);
+    let root = dir.parent().expect("root").to_path_buf();
+    let d = Daemon::start(&dir, &[]);
+    // Decided but never run (a person said no, or the host never reported it).
+    let b = json!({"agent": "agent:test/1", "tool": "Edit", "target": format!("{}/src/x.rs", root.display()),
+                   "args_sha256": SHA, "task": "t1"});
+    assert_eq!(post(d.port, "/v1/decide", &b.to_string()).0, 200);
+    assert_eq!(verify_task(d.port, "t1")["verified"], 0);
+    assert_eq!(verify_task(d.port, "never-seen")["verified"], 0);
+}
+
+#[test]
+fn a_stop_event_verifies_the_session_through_the_hook() {
+    let dir = verifying_log("v-hook", json!([BIN, "--version"]), 60);
+    let root = dir.parent().expect("root").to_path_buf();
+    let d = Daemon::start(&dir, &[]);
+    let file = format!("{}/src/a.rs", root.display());
+    let pre_edit = pre(
+        "Edit",
+        json!({"file_path": file, "old_string": "a", "new_string": "b"}),
+        None,
+    );
+    assert_eq!(decision(&run_hook(&d.url(), &pre_edit)), "ask");
+    let post_edit = json!({"session_id": "s1", "hook_event_name": "PostToolUse", "tool_name": "Edit",
+                           "tool_use_id": "toolu_Edit", "tool_input": {"file_path": file}, "tool_response": {}});
+    run_hook(&d.url(), &post_edit);
+    let stop = json!({"session_id": "s1", "hook_event_name": "Stop", "stop_hook_active": false});
+    assert_eq!(run_hook(&d.url(), &stop), Value::Null);
+    d.stop();
+    assert_eq!(last_kind_and_result(&dir), ("tests".into(), "pass".into()));
+}
+
+#[test]
+fn reads_are_never_verified_because_they_change_nothing() {
+    let dir = fresh_log("v-reads");
+    let policy = json!({"version": 1,
+        "capabilities": {"fs.read": {"risk": "none", "reversible": true, "ceiling": 2}},
+        "rules": [{"tools": ["Read"], "paths": ["**"], "capability": "fs.read"}],
+        "verify": {"tests": {"command": [BIN, "--version"]}}});
+    std::fs::write(dir.join("policy.json"), policy.to_string()).expect("policy");
+    let root = dir.parent().expect("root").to_path_buf();
+    let d = Daemon::start(&dir, &[]);
+    let b = json!({"agent": "agent:test/1", "tool": "Read", "target": format!("{}/src/a.rs", root.display()),
+                   "args_sha256": SHA, "task": "t1"});
+    let (_, a) = post(d.port, "/v1/decide", &b.to_string());
+    assert_eq!(a["result"], "allow", "a read runs");
+    assert_eq!(verify_task(d.port, "t1")["verified"], 0);
 }

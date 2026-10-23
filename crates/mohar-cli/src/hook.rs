@@ -16,6 +16,8 @@ use sha2::{Digest, Sha256};
 const MAX_STDIN: u64 = 8 * 1024 * 1024;
 /// How long the hook waits for the daemon before it denies.
 const DAEMON_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long the hook waits for a task's tests, matching the hook timeout in hooks.json.
+const VERIFY_TIMEOUT: Duration = Duration::from_secs(890);
 
 /// Run the hook. Returns the text for stdout; the process always exits 0 so Claude Code reads it.
 pub fn claude_code(daemon: &str, input: &mut dyn Read) -> String {
@@ -30,6 +32,11 @@ pub fn claude_code(daemon: &str, input: &mut dyn Read) -> String {
         Some("PreToolUse") => pre_tool_use(daemon, &payload),
         Some("PostToolUse") => {
             post_tool_use(daemon, &payload);
+            String::new()
+        }
+        // The task (or a subagent's part of it) is done: verify what it changed.
+        Some("Stop") | Some("SubagentStop") => {
+            task_done(daemon, &payload);
             String::new()
         }
         // Nothing to decide for other events; say nothing so Claude Code carries on.
@@ -51,6 +58,9 @@ fn pre_tool_use(daemon: &str, p: &Value) -> String {
     });
     if let Some(call) = p["tool_use_id"].as_str().filter(|c| !c.is_empty()) {
         req["call_id"] = json!(call);
+    }
+    if let Some(task) = p["session_id"].as_str().filter(|t| !t.is_empty()) {
+        req["task"] = json!(task);
     }
     let answer = match post(daemon, "/v1/decide", &req) {
         Ok((200, body)) => body,
@@ -100,6 +110,26 @@ fn post_tool_use(daemon: &str, p: &Value) {
     });
     if let Err(e) = post(daemon, "/v1/outcome", &req) {
         eprintln!("mohar: could not record the outcome of {call}: {e}");
+    }
+}
+
+/// Ask the daemon to verify the finished task. Verification failing to start can't undo anything, so
+/// it is reported on stderr and the session carries on.
+fn task_done(daemon: &str, p: &Value) {
+    let Some(task) = p["session_id"].as_str().filter(|t| !t.is_empty()) else {
+        return;
+    };
+    let req = json!({ "agent": agent_id(p), "task": task });
+    match post_waiting(daemon, "/v1/verify", &req, VERIFY_TIMEOUT) {
+        Ok((200, body)) => {
+            if let Some(r) = body["result"].as_str() {
+                eprintln!("mohar: verified {} actions: {r}", body["verified"]);
+            }
+        }
+        Ok((status, body)) => {
+            eprintln!("mohar: verification refused ({status}): {}", body["error"])
+        }
+        Err(e) => eprintln!("mohar: could not verify the task: {e}"),
     }
 }
 
@@ -157,6 +187,15 @@ fn sha256_jcs(v: &Value) -> String {
 /// POST JSON to the daemon. Only loopback addresses are accepted, so the hook never sends tool
 /// arguments off the machine.
 fn post(daemon: &str, path: &str, body: &Value) -> Result<(u16, Value), String> {
+    post_waiting(daemon, path, body, DAEMON_TIMEOUT)
+}
+
+fn post_waiting(
+    daemon: &str,
+    path: &str,
+    body: &Value,
+    wait: Duration,
+) -> Result<(u16, Value), String> {
     let hostport = daemon
         .strip_prefix("http://")
         .unwrap_or(daemon)
@@ -170,8 +209,7 @@ fn post(daemon: &str, path: &str, body: &Value) -> Result<(u16, Value), String> 
         return Err(format!("{addr} is not a loopback address"));
     }
     let mut s = TcpStream::connect_timeout(&addr, DAEMON_TIMEOUT).map_err(|e| e.to_string())?;
-    s.set_read_timeout(Some(DAEMON_TIMEOUT))
-        .map_err(|e| e.to_string())?;
+    s.set_read_timeout(Some(wait)).map_err(|e| e.to_string())?;
     s.set_write_timeout(Some(DAEMON_TIMEOUT))
         .map_err(|e| e.to_string())?;
     let text = body.to_string();

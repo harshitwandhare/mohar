@@ -9,6 +9,12 @@ receipt format; each such change is called out.
 
 ### Added
 
+- The tests verifier: when a Claude Code task stops, the daemon runs the project's test command once
+  (`verify.tests` in the policy, run with no shell from the root) and records a `tests` outcome for every
+  decision in the task that ran and changes something: `pass` on exit 0, `fail` otherwise, `unknown` with
+  no command, a command that can't start, or a timeout. An agent that changed a test file in the task
+  fails, whatever the tests say. `POST /v1/verify` and the hook's `Stop`/`SubagentStop` handling drive it,
+  and a `host` report no longer closes a decision (#45).
 - Hard gates in the policy, checked before any trust score: writes outside the project root, denied
   capabilities (the built-in policy denies pushing the default branch), hosts outside an allowlist in a
   fetched URL or a command line, and protected paths (the built-in policy protects `.mohar/`). A gate that

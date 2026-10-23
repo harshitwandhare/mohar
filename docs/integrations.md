@@ -22,7 +22,8 @@ and lands in Phase 6.
    are denied.
 2. Load the plugin from `integrations/claude-code` in this repository, for example with
    `claude --plugin-dir path/to/mohar/integrations/claude-code`. Its `hooks/hooks.json` runs
-   `mohar hook claude-code` on every `PreToolUse` and `PostToolUse`, with `onFailure: "block"` (Claude Code
+   `mohar hook claude-code` on every `PreToolUse` and `PostToolUse`, and on `Stop` and `SubagentStop` to
+   verify the finished task, with `onFailure: "block"` (Claude Code
    2.1.295 or later) so a hook that can't run blocks the call instead of letting it through.
 3. Without the plugin system, put the same `hooks` object in `~/.claude/settings.json` (for you) or
    `.claude/settings.json` (for a project).
