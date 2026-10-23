@@ -512,6 +512,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#gates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gates
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1192,6 +1203,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#gates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gates
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1351,6 +1373,25 @@ list of rules; the first rule that matches an action's tool and target wins:</p>
   irreversible, ceiling 0.</li>
 <li>Unknown fields, unknown capability names in rules and the reserved name <code>unclassified</code> are refused.</li>
 </ul>
+<h3 id="gates">Gates<a class="headerlink" href="#gates" title="Permanent link">&para;</a></h3>
+<p>Gates are checked before any trust score, and no record outweighs them. A gate stop is a <code>deny</code> receipt
+with <code>by: gate</code>, and the answer names the gate and the reason, which the Claude Code hook shows the
+person. A gate that can't decide (a write with no path, a URL it can't parse) refuses.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">"gates"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"deny_capabilities"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"git.push.main"</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">"allowed_hosts"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"api.github.com"</span><span class="p">,</span><span class="w"> </span><span class="s2">"*.example.com"</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">"protected_paths"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">".mohar/**"</span><span class="p">,</span><span class="w"> </span><span class="s2">"tests/**"</span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+<ul>
+<li>Writes (<code>Edit</code>, <code>MultiEdit</code>, <code>Write</code>, <code>NotebookEdit</code>) outside the project root are always refused.</li>
+<li><code>deny_capabilities</code>: capabilities no agent may use at any level; each must be defined.</li>
+<li><code>allowed_hosts</code>: when set, a <code>WebFetch</code> URL or any URL in a command line must go to a listed host;
+  <code>*.example.com</code> matches subdomains only. When absent, this gate is off.</li>
+<li><code>protected_paths</code>: globs (relative to the root) no agent may write to.</li>
+</ul>
+<p>The built-in policy denies <code>git.push.main</code> and protects <code>.mohar/**</code>, so an agent can't rewrite its own
+policy or log.</p>
 <p>The built-in policy (<code>mohar_core::policy::BUILTIN</code>) is a fuller example: reads, docs, tests, code and
 config edits, read-only shell commands, pushes to a branch and to the default branch.</p>
 <p>After a crash, decisions without an outcome are rebuilt from the log on the next start and can still be
