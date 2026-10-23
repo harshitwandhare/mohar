@@ -30,8 +30,11 @@ targets for the first production-ready release and are measured, not assumed.
 
 ## Performance
 
-Targets on a single core of a mid-range laptop, measured by benchmarks (criterion) in CI with a
-regression gate:
+Targets on a single core of a mid-range laptop. Append, verify and checkpoint signing are measured by
+criterion benchmarks (`crates/mohar-core/benches`), and CI fails a pull request that makes one more
+than 20% slower than main, judged by the lower end of the confidence interval and confirmed by a
+second run. Criterion reports means; the p99 targets still need a latency histogram (the daemon
+metrics work).
 
 | Operation | Target |
 |---|---|

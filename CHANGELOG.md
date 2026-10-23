@@ -9,6 +9,8 @@ receipt format; each such change is called out.
 
 ### Added
 
+- Criterion benchmarks for appending and syncing a receipt, verifying receipts and signing a
+  checkpoint, with a CI job that fails a pull request clearly more than 20% slower than main (#60).
 - Checkpoints published outside the log directory. `mohar checkpoint --publish <file>` appends the new
   checkpoint to a file that must live outside the log directory, and `mohar verify --checkpoints <file>`
   (repeatable) checks the log against those as well, so a log cut short together with its own

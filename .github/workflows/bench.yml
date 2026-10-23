@@ -1,0 +1,51 @@
+name: Benchmarks
+
+# Runs the criterion benchmarks for main and for the pull request on the same runner, one after the
+# other, and fails when a benchmark is clearly more than 20% slower than main twice in a row.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  compare:
+    name: Benchmarks against main (20% gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+      - name: Toolchain
+        run: rustup toolchain install 1.95 --profile minimal && rustup default 1.95
+      - name: Benchmark main
+        run: |
+          if [ -d base/crates/mohar-core/benches ]; then
+            cd base && CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target" cargo bench --locked -p mohar-core --bench core -- --save-baseline main
+          else
+            echo "main has no benchmarks yet; every result will be new"
+          fi
+      - name: Benchmark this pull request and gate
+        # A shared runner can stall for a whole run, so a failure is measured once more before it counts.
+        run: |
+          cargo bench --locked -p mohar-core --bench core -- --baseline-lenient main
+          if ! python3 scripts/bench-gate.py target/criterion 0.20; then
+            echo "slower than main; measuring again"
+            cargo bench --locked -p mohar-core --bench core -- --baseline-lenient main
+            python3 scripts/bench-gate.py target/criterion 0.20
+          fi
