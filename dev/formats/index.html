@@ -1138,7 +1138,8 @@ Ed25519 over the canonical JSON without <code>sig</code>. A verifier fails if th
 checkpoint vouched for, or a different receipt at that position.</p>
 <h2 id="test-vectors">Test vectors<a class="headerlink" href="#test-vectors" title="Permanent link">&para;</a></h2>
 <p><a href="https://github.com/harshitwandhare/mohar/blob/main/spec/vectors/v1.json"><code>spec/vectors/v1.json</code></a> holds
-a fixed test-only key, three receipts with their canonical bytes, hashes and signatures, and a
+a fixed test-only key, four receipts (three decisions and the outcome of the first) with their canonical
+bytes, hashes and signatures, and a
 checkpoint. The Rust tests regenerate it byte for byte, and
 <a href="https://github.com/harshitwandhare/mohar/blob/main/spec/vectors/check.py"><code>spec/vectors/check.py</code></a>
 checks it in Python with no code shared with the Rust implementation. To test another implementation:</p>
