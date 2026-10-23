@@ -424,12 +424,20 @@ fn with_extra(extra: &str) -> Result<Policy, PolicyError> {
 
 #[test]
 fn a_root_in_the_file_is_taken_as_is_or_relative_to_the_file() {
-    let relative = with_extra(r#", "root": "sub""#).expect("valid");
-    assert_eq!(relative.root(), Path::new(ROOT).join("sub"));
-    let absolute = std::env::temp_dir();
-    let json = serde_json::to_string(&absolute).expect("path as json");
-    let p = with_extra(&format!(r#", "root": {json}"#)).expect("valid");
-    assert_eq!(p.root(), absolute);
+    // Real directories, because the root is resolved (symlinks, /private/var on macOS, \\?\ on
+    // Windows) and the expected paths must be resolved the same way.
+    let base = std::env::temp_dir().join(format!("mohar-policy-root-{}", std::process::id()));
+    let sub = base.join("sub");
+    std::fs::create_dir_all(&sub).expect("mkdir");
+    let doc =
+        |extra: &str| format!(r#"{{"version": 1, "capabilities": {{}}, "rules": [] {extra}}}"#);
+    let relative = Policy::from_json(&doc(r#", "root": "sub""#), &base).expect("valid");
+    assert_eq!(relative.root(), std::fs::canonicalize(&sub).expect("sub"));
+    let json = serde_json::to_string(&sub).expect("path as json");
+    let elsewhere = std::env::temp_dir();
+    let absolute =
+        Policy::from_json(&doc(&format!(r#", "root": {json}"#)), &elsewhere).expect("valid");
+    assert_eq!(absolute.root(), std::fs::canonicalize(&sub).expect("sub"));
 }
 
 #[test]
