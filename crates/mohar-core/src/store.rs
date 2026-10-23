@@ -146,7 +146,15 @@ impl FileLog {
 
         let path = dir.join(LOG_FILE);
         let checkpoint_path = dir.join(CHECKPOINT_FILE);
-        let stats = verify_log(&path, &checkpoint_path, &key.verifying_key())?;
+        // The daemon's own log, signed with the key it just read: receipts its checkpoints cover are
+        // checked by hash, the rest in full. `mohar verify` checks every signature.
+        let stats = verify_log_with(
+            &path,
+            &checkpoint_path,
+            &[],
+            &key.verifying_key(),
+            SignatureChecks::AfterLastCheckpoint,
+        )?;
         let file = OpenOptions::new()
             .append(true)
             .open(&path)
@@ -284,14 +292,20 @@ struct Job {
     reply: mpsc::Sender<Reply>,
 }
 
-fn work(job: Job, key: &VerifyingKey) {
+fn work(job: Job, key: &VerifyingKey, signed_from: u64) {
     let done = job
         .lines
         .into_iter()
         .map(
             |(number, line)| match serde_json::from_str::<Receipt>(&line) {
                 Ok(r) => {
-                    let checked = Prechecked::of(&r, key);
+                    // A receipt claiming a position it doesn't hold fails the sequence check in the
+                    // chain, so deciding by its own `seq` here can't skip a signature that counts.
+                    let checked = if r.seq < signed_from {
+                        Prechecked::hash_only(&r)
+                    } else {
+                        Prechecked::of(&r, key)
+                    };
                     Ok((r, checked))
                 }
                 Err(_) => Err(number),
@@ -308,6 +322,7 @@ fn work(job: Job, key: &VerifyingKey) {
 fn verify_lines(
     path: &Path,
     key: &VerifyingKey,
+    signed_from: u64,
     mut f: impl FnMut(Outcome) -> Result<(), OpenError>,
 ) -> Result<(), OpenError> {
     let mut reader = BufReader::new(File::open(path).map_err(io(path))?);
@@ -321,7 +336,7 @@ fn verify_lines(
                 loop {
                     let next = queue.lock().ok().and_then(|q| q.recv().ok());
                     match next {
-                        Some(job) => work(job, key),
+                        Some(job) => work(job, key, signed_from),
                         None => break,
                     }
                 }
@@ -410,9 +425,21 @@ pub fn read_receipts(path: &Path) -> Result<Vec<Receipt>, OpenError> {
     Ok(out)
 }
 
+/// Which receipts get their signature checked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignatureChecks {
+    /// Every receipt. The default, and what an auditor should use.
+    Every,
+    /// Only receipts after the furthest checkpoint, once every checkpoint's signature has verified.
+    /// The receipts before it are still parsed, hashed and linked, and that checkpoint signs the
+    /// hash they lead to, so changing one without the key still fails. What this can't catch is a
+    /// receipt the key holder wrote with a bad signature before a checkpoint.
+    AfterLastCheckpoint,
+}
+
 /// Verify the chain in a receipts file line by line. Memory use doesn't depend on the log's length.
 pub fn verify_file(path: &Path, key: &VerifyingKey) -> Result<Stats, VerifyFileError> {
-    verify_stream(path, Vec::new(), key)
+    verify_stream(path, Vec::new(), key, SignatureChecks::Every)
 }
 
 /// Verify the chain in `receipts`, and every checkpoint in `checkpoints` (which may not exist yet)
@@ -422,7 +449,7 @@ pub fn verify_log(
     checkpoints: &Path,
     key: &VerifyingKey,
 ) -> Result<Stats, VerifyFileError> {
-    verify_log_against(receipts, checkpoints, &[], key)
+    verify_log_with(receipts, checkpoints, &[], key, SignatureChecks::Every)
 }
 
 /// [`verify_log`], plus the checkpoints in each `external` file, kept somewhere the log's operator
@@ -434,6 +461,17 @@ pub fn verify_log_against(
     external: &[&Path],
     key: &VerifyingKey,
 ) -> Result<Stats, VerifyFileError> {
+    verify_log_with(receipts, checkpoints, external, key, SignatureChecks::Every)
+}
+
+/// [`verify_log_against`], choosing which receipts get their signature checked.
+pub fn verify_log_with(
+    receipts: &Path,
+    checkpoints: &Path,
+    external: &[&Path],
+    key: &VerifyingKey,
+    checks: SignatureChecks,
+) -> Result<Stats, VerifyFileError> {
     let mut all = if checkpoints.exists() {
         read_checkpoints(checkpoints)?
     } else {
@@ -442,7 +480,7 @@ pub fn verify_log_against(
     for path in external {
         all.extend(read_checkpoints(path)?);
     }
-    verify_stream(receipts, all, key)
+    verify_stream(receipts, all, key, checks)
 }
 
 /// Append `checkpoint` to `path`, outside the log directory, and sync it to disk. Existing lines are
@@ -463,10 +501,18 @@ fn verify_stream(
     path: &Path,
     checkpoints: Vec<Checkpoint>,
     key: &VerifyingKey,
+    checks: SignatureChecks,
 ) -> Result<Stats, VerifyFileError> {
+    // Every checkpoint's signature is checked here, before any of them is trusted.
     let mut watcher = CheckpointWatcher::new(&checkpoints, key).map_err(OpenError::Checkpoint)?;
+    let signed_from = match checks {
+        SignatureChecks::Every => 0,
+        SignatureChecks::AfterLastCheckpoint => {
+            checkpoints.iter().map(|c| c.count).max().unwrap_or(0)
+        }
+    };
     let mut chain = ChainVerifier::new(key);
-    verify_lines(path, key, |outcome| match outcome {
+    verify_lines(path, key, signed_from, |outcome| match outcome {
         Outcome::Line(r, checked) => {
             let seq = chain.count();
             chain

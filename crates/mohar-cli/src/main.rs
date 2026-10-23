@@ -11,7 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::{Parser, Subcommand, ValueEnum};
 use mohar_core::store::{
-    FileLog, OpenError, for_each_receipt, publish_checkpoint, verify_log_against,
+    FileLog, OpenError, SignatureChecks, for_each_receipt, publish_checkpoint, verify_log_with,
 };
 use mohar_core::{Action, Decision, Entry, Receipt, parse_public_key};
 
@@ -100,6 +100,10 @@ enum Command {
         /// Checkpoints published outside the log directory to check as well. Repeatable.
         #[arg(long)]
         checkpoints: Vec<PathBuf>,
+        /// Check signatures only after the furthest checkpoint whose signature verifies; receipts
+        /// before it are checked by their hash chain. Faster on large logs; see docs/cli.md.
+        #[arg(long)]
+        trust_checkpoints: bool,
     },
 }
 
@@ -226,6 +230,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
         Command::Verify {
             public_key,
             checkpoints,
+            trust_checkpoints,
         } => {
             let key_path = public_key.unwrap_or_else(|| cli.dir.join("public.key"));
             let text = std::fs::read_to_string(&key_path)
@@ -234,11 +239,17 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
                 .ok_or_else(|| format!("{} is not an ed25519 public key", key_path.display()))?;
             let external: Vec<&std::path::Path> =
                 checkpoints.iter().map(PathBuf::as_path).collect();
-            match verify_log_against(
+            let checks = if trust_checkpoints {
+                SignatureChecks::AfterLastCheckpoint
+            } else {
+                SignatureChecks::Every
+            };
+            match verify_log_with(
                 &cli.dir.join("receipts.jsonl"),
                 &cli.dir.join("checkpoints.jsonl"),
                 &external,
                 &key,
+                checks,
             ) {
                 Ok(stats) => println!(
                     "ok: {} receipts and {} checkpoints verified",

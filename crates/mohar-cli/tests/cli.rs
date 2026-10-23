@@ -250,3 +250,26 @@ fn publish_takes_a_bare_file_name_relative_to_where_it_runs() {
         1
     );
 }
+
+#[test]
+fn verify_can_trust_checkpoints_and_still_catches_a_cut_tail() {
+    let dir = temp_dir("trust");
+    assert!(mohar(&dir, &["init"]).status.success());
+    for t in ["a", "b", "c"] {
+        assert!(append(&dir, t).status.success());
+    }
+    assert!(mohar(&dir, &["checkpoint"]).status.success());
+    assert!(append(&dir, "d").status.success());
+    let ok = mohar(&dir, &["verify", "--trust-checkpoints"]);
+    assert!(
+        String::from_utf8_lossy(&ok.stdout).contains("ok: 4 receipts and 1 checkpoints verified"),
+        "{}",
+        String::from_utf8_lossy(&ok.stdout)
+    );
+    let path = dir.join("receipts.jsonl");
+    let text = fs::read_to_string(&path).expect("read");
+    let kept: Vec<&str> = text.lines().take(2).collect();
+    fs::write(&path, kept.join("\n") + "\n").expect("write");
+    let v = mohar(&dir, &["verify", "--trust-checkpoints"]);
+    assert_eq!(v.status.code(), Some(1));
+}

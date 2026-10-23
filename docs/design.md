@@ -236,6 +236,14 @@ before hashing and signing.
   names the decision receipt by `seq`.
 - Every 1,000 receipts, or every hour, the daemon signs a checkpoint (`seq` and head hash). Checkpoints
   can be published to an external transparency log so a deleted tail of the local log can be detected.
+- A checkpoint also stands in for the signatures before it. It signs the hash of the receipt at its
+  position, that hash covers the receipt's own `prev` and signature, and so on back to the first
+  receipt. Changing any earlier receipt without the key means breaking SHA-256 or forging the checkpoint.
+  So once every checkpoint's signature verifies, a verifier may check signatures only after the furthest
+  one and check the receipts before it by hash and link alone: about five times faster. What this gives
+  up: a receipt the key holder itself wrote with a bad signature before a checkpoint would pass. The
+  daemon uses this mode when it opens its own log, signed with the key it holds; `mohar verify` checks
+  every signature unless asked with `--trust-checkpoints`, and an auditor should leave it that way.
 
 Receipt format work is aligned with the IETF drafts on attenuating agent tokens and delegation rather
 than inventing a competing token format. Receipts will also export as a superset of the individual draft
