@@ -9,6 +9,10 @@ receipt format; each such change is called out.
 
 ### Added
 
+- Checkpoints can be published to git: `mohar checkpoint --publish git:<clone>` pulls, appends, commits
+  and pushes, and `mohar verify --checkpoints git:<clone>` pulls before checking. A log cut short together
+  with every local copy of its checkpoints still fails against the remote. Any git step that fails is an
+  error, never a silent skip (#108).
 - `mohar verify --trust-checkpoints` checks signatures only after the furthest checkpoint whose signature
   verifies, and checks the receipts before it by their hash chain: about five times faster on a covered
   log. The daemon opens its own log this way. Plain `mohar verify` still checks every signature (#117).

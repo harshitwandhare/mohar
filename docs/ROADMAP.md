@@ -11,7 +11,7 @@ to the [engineering bar](engineering-bar.md). Each phase ships as small pull req
 - Landing page and docs site.
 - Design notes for the receipt format, the trust model and the escalation flow.
 
-## Phase 1: receipts (Nov to Dec 2026)
+## Phase 1: receipts (Nov to Dec 2026), done
 
 - Rust core: Ed25519 keys, a hash-chained append-only log, signed receipts for each action.
 - `mohar` CLI: `init`, `log`, `verify`.

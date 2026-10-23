@@ -32,29 +32,43 @@ the command returns.
 Opening the log verifies the whole chain and its checkpoints first; a log that doesn't verify is
 refused rather than extended. Only one process may write to a log at a time.
 
-## `mohar checkpoint [--publish <file>]`
+## `mohar checkpoint [--publish <file | git:<clone>>]`
 
 Signs a checkpoint over the log as it stands (how many receipts, and the hash of the last one). A
 checkpoint is also written automatically every 1,000 receipts.
 
 A checkpoint kept only beside the log can be deleted along with the receipts it covers. `--publish`
-also appends the new checkpoint to `<file>`, which must live outside the log directory (the command
-refuses otherwise, and refuses URLs for now). Put that file somewhere the log's operator can't
-rewrite: another machine, an append-only share, or a repository someone else controls.
+also sends the new checkpoint somewhere outside the log directory (the command refuses a target inside
+it):
+
+- a file: the checkpoint is appended to it. This only helps if the file lives where the log's operator
+  can't rewrite it, such as another machine or an append-only share.
+- `git:<clone>`: a clone of a git repository. Mohar pulls (fast-forward only), appends the checkpoint to
+  `checkpoints.jsonl` at the top of the clone, commits and pushes, using git's own configuration for
+  the commit author and credentials. If any step fails the command exits 2 and says the checkpoint was
+  not published; it is still signed and kept in the log directory.
+
+What a git target protects against: an operator who can write to the machine with the log but not to
+the remote's history. That holds when the remote is a branch they can't force-push or delete, in a
+repository someone else administers. What it doesn't protect against: anyone who can rewrite that
+branch, an operator who stops publishing (the remote then shows the last checkpoint that reached it,
+which is still enough to catch receipts removed before it), or a stolen signing key. Other URLs are
+refused rather than written as local paths.
 
 ## `mohar log [--last N]`
 
 Prints receipts, oldest first, one per line. Doesn't need the signing key or the writer lock.
 
-## `mohar verify [--public-key <file>] [--checkpoints <file>]... [--trust-checkpoints]`
+## `mohar verify [--public-key <file>] [--checkpoints <file | git:<clone>>]... [--trust-checkpoints]`
 
 Checks every receipt and every checkpoint against the public key (`public.key` in the log directory
 by default). Prints `ok: ...` or the first break with its index and reason. Doesn't need the signing
 key, so anyone can verify a log they were given.
 
-`--checkpoints` adds published checkpoints to the check and can be given more than once. A log that
+`--checkpoints` adds published checkpoints to the check and can be given more than once. A `git:` source
+is pulled first, so an auditor's own clone sees what was pushed. A log that
 lost receipts and its own checkpoints together still fails against them. A file named here that can't
-be read is an error.
+be read, or a clone that can't be pulled, is an error (exit 2), never an empty list.
 
 `--trust-checkpoints` checks signatures only on receipts after the furthest checkpoint, once every
 checkpoint's own signature has verified. Receipts before it are still parsed, hashed and linked, so a
