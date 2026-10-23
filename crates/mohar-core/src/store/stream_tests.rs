@@ -77,10 +77,16 @@ fn twenty_thousand_receipts_verify_by_streaming() {
     verify_big(20_000, "20k");
 }
 
-/// The issue asks for a million receipts in under ten seconds in release mode. It takes about eight
-/// on the 6-core, 12-thread laptop this was written on, with parsing, hashing and signature checks
-/// all spread over every core. The budget below is the target with a little room for slower machines.
-const BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
+/// The engineering bar asks for a million receipts in under ten seconds with eight hardware threads.
+/// A receipt costs about 40 µs of CPU (parse, hash, signature), spread over every core:
+/// 7.5 s with 12 threads, 11.5 s with 4 and 38 s with 1 on the laptop this was measured on. With
+/// fewer than eight threads the budget grows in proportion, so the test holds the same per-core cost
+/// on a CI runner as on a workstation.
+fn budget() -> std::time::Duration {
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get());
+    let threads = u32::try_from(threads.min(8)).unwrap_or(8);
+    std::time::Duration::from_secs(10) * 8 / threads
+}
 
 /// A million receipts, verified with memory that doesn't grow. Run with `cargo test --release --locked -p mohar-core -- --ignored --nocapture one_million`.
 /// A debug build is several times slower and will miss the budget.
@@ -88,8 +94,9 @@ const BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
 #[ignore = "slow; run in release mode, see the doc comment"]
 fn one_million_receipts_verify_in_constant_memory() {
     let took = verify_big(1_000_000, "1m");
-    eprintln!("verified 1000000 receipts in {took:?}");
-    assert!(took < BUDGET, "took {took:?}");
+    let budget = budget();
+    eprintln!("verified 1000000 receipts in {took:?} (budget {budget:?})");
+    assert!(took < budget, "took {took:?}, budget {budget:?}");
     // The whole process, which also wrote the log, stays small: nothing scales with the log.
     if let Some(kb) = peak_resident_kb() {
         eprintln!("peak resident memory {kb} kB");

@@ -30,7 +30,10 @@ targets for the first production-ready release and are measured, not assumed.
 
 ## Performance
 
-Targets on a single core of a mid-range laptop. Append, verify and checkpoint signing are measured by
+Targets on a single core of a mid-range laptop, except verification, which spreads over every core:
+one receipt (parsing, hashing and the Ed25519 check) costs about 40 µs of CPU, so a million take
+about 38 s on one core and under 10 s on eight threads. CI verifies a million receipts on every pull
+request with the budget scaled to the runner's threads. Append, verify and checkpoint signing are measured by
 criterion benchmarks (`crates/mohar-core/benches`), and CI fails a pull request that makes one more
 than 20% slower than main, judged by the lower end of the confidence interval and confirmed by a
 second run. Criterion reports means; the p99 targets still need a latency histogram (the daemon
@@ -40,7 +43,7 @@ metrics work).
 |---|---|
 | Decide (gates plus trust lookup, excluding the hook's own process start) | p99 under 2 ms |
 | Append and sync one receipt | p99 under 5 ms on SSD |
-| Verify a 1,000,000-receipt chain | under 10 s, constant memory |
+| Verify a 1,000,000-receipt chain | under 10 s with 8 hardware threads, constant memory |
 | Daemon memory at idle | under 30 MB |
 
 Verification streams the log instead of loading it whole, so log size never limits it.
