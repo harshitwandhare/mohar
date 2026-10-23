@@ -1173,6 +1173,10 @@ correctness is high, and that applies to everyone.</p>
 cargo<span class="w"> </span>clippy<span class="w"> </span>--all-targets<span class="w"> </span>--locked<span class="w"> </span>--<span class="w"> </span>-D<span class="w"> </span>warnings
 cargo<span class="w"> </span><span class="nb">test</span><span class="w"> </span>--locked
 </code></pre></div>
+<p>Benchmarks, for changes to the receipt log, verification or checkpoints. CI runs them against main on
+every pull request and fails when one is clearly more than 20% slower:</p>
+<div class="highlight"><pre><span></span><code>cargo<span class="w"> </span>bench<span class="w"> </span>-p<span class="w"> </span>mohar-core<span class="w"> </span>--bench<span class="w"> </span>core
+</code></pre></div>
 <p>Fuzzing (nightly toolchain, <code>cargo install --locked cargo-fuzz</code>), from the <code>fuzz</code> directory:</p>
 <div class="highlight"><pre><span></span><code>cargo<span class="w"> </span>+nightly<span class="w"> </span>fuzz<span class="w"> </span>run<span class="w"> </span>chain_mutation<span class="w"> </span>--<span class="w"> </span>-max_total_time<span class="o">=</span><span class="m">60</span>
 </code></pre></div>

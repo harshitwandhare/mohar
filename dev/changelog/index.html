@@ -1253,6 +1253,8 @@ receipt format; each such change is called out.</p>
 <h2 id="unreleased"><a href="https://github.com/harshitwandhare/mohar/compare/v0.1.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
+<li>Criterion benchmarks for appending and syncing a receipt, verifying receipts and signing a
+  checkpoint, with a CI job that fails a pull request clearly more than 20% slower than main (#60).</li>
 <li>Checkpoints published outside the log directory. <code>mohar checkpoint --publish &lt;file&gt;</code> appends the new
   checkpoint to a file that must live outside the log directory, and <code>mohar verify --checkpoints &lt;file&gt;</code>
   (repeatable) checks the log against those as well, so a log cut short together with its own

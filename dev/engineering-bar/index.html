@@ -1228,8 +1228,11 @@ targets for the first production-ready release and are measured, not assumed.</p
   rather than queueing without bound.</li>
 </ul>
 <h2 id="performance">Performance<a class="headerlink" href="#performance" title="Permanent link">&para;</a></h2>
-<p>Targets on a single core of a mid-range laptop, measured by benchmarks (criterion) in CI with a
-regression gate:</p>
+<p>Targets on a single core of a mid-range laptop. Append, verify and checkpoint signing are measured by
+criterion benchmarks (<code>crates/mohar-core/benches</code>), and CI fails a pull request that makes one more
+than 20% slower than main, judged by the lower end of the confidence interval and confirmed by a
+second run. Criterion reports means; the p99 targets still need a latency histogram (the daemon
+metrics work).</p>
 <table>
 <thead>
 <tr>
