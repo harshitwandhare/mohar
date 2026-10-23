@@ -61,6 +61,8 @@ receipt format; each such change is called out.
 
 ### Changed
 
+- The CI line coverage floor is 95%, up from 85%. Every line in the daemon, the hook and the core is run by a
+  test, apart from branches no input can reach today, which say so beside them (#113, #114).
 - Verifying a log of a million receipts now takes about 8 seconds instead of about 15.5 on a 6-core
   laptop. Receipts are parsed, canonicalised, hashed and signature-checked on a worker pool that lives
   for the whole walk, and canonical JSON is written by a fixed template that tests compare against

@@ -377,14 +377,13 @@ fn drain(stream: &mut TcpStream) {
     }
 }
 
-fn respond(stream: &mut TcpStream, status: u16, body: &serde_json::Value) {
-    let reason = match status {
+fn reason_phrase(status: u16) -> &'static str {
+    match status {
         200 => "OK",
         400 => "Bad Request",
         404 => "Not Found",
         405 => "Method Not Allowed",
         408 => "Request Timeout",
-        409 => "Conflict",
         411 => "Length Required",
         413 => "Content Too Large",
         415 => "Unsupported Media Type",
@@ -392,7 +391,11 @@ fn respond(stream: &mut TcpStream, status: u16, body: &serde_json::Value) {
         501 => "Not Implemented",
         503 => "Service Unavailable",
         _ => "Internal Server Error",
-    };
+    }
+}
+
+fn respond(stream: &mut TcpStream, status: u16, body: &serde_json::Value) {
+    let reason = reason_phrase(status);
     let text = body.to_string();
     let _ = write!(
         stream,
@@ -435,6 +438,15 @@ struct OutcomeRequest {
     verifier: String,
     result: String,
     evidence_sha256: String,
+}
+
+/// The log, or a 500 if a thread panicked while holding it: its state can't be trusted, so nothing is
+/// decided or recorded until the daemon restarts and rebuilds it from the signed log.
+fn lock(state: &State) -> Result<std::sync::MutexGuard<'_, Inner>, (u16, serde_json::Value)> {
+    state
+        .log
+        .lock()
+        .map_err(|_| (500, json!({"error": "log lock poisoned"})))
 }
 
 fn bad(msg: &str) -> (u16, serde_json::Value) {
@@ -481,9 +493,9 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         target: req.target,
         args_sha256: req.args_sha256,
     };
-    let mut inner = match state.log.lock() {
+    let mut inner = match lock(state) {
         Ok(g) => g,
-        Err(_) => return (500, json!({"error": "log lock poisoned"})),
+        Err(e) => return e,
     };
     let now = now_secs();
     // Hard gates come first; no record outweighs them.
@@ -522,6 +534,7 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     };
     let receipt = match inner.log.append(entry) {
         Ok(r) => r,
+        // The disk refused the write: nothing is acknowledged that isn't on disk.
         Err(e) => return (500, json!({ "error": e.to_string() })),
     };
     inner.pending.insert(
@@ -576,9 +589,9 @@ fn outcome(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     if !is_sha256_hex(&req.evidence_sha256) {
         return bad("evidence_sha256 must be 64 lowercase hex characters");
     }
-    let mut inner = match state.log.lock() {
+    let mut inner = match lock(state) {
         Ok(g) => g,
-        Err(_) => return (500, json!({"error": "log lock poisoned"})),
+        Err(e) => return e,
     };
     let seq = match (req.receipt_seq, req.call_id) {
         (Some(seq), None) => seq,
@@ -608,6 +621,7 @@ fn outcome(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         req.evidence_sha256,
     ) {
         Ok(r) => (200, json!({ "receipt_seq": r })),
+        // As in `decide`: a write the disk refused is never acknowledged.
         Err(e) => (500, json!({ "error": e })),
     }
 }
@@ -667,8 +681,9 @@ fn verify_task(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     }
     // Take the task's decisions, then let go of the lock while the tests run.
     let (targets, seqs, granted, baseline) = {
-        let Ok(mut inner) = state.log.lock() else {
-            return (500, json!({"error": "log lock poisoned"}));
+        let mut inner = match lock(state) {
+            Ok(g) => g,
+            Err(e) => return e,
         };
         let key = (req.agent.clone(), req.task.clone());
         let all = inner.tasks.remove(&key).unwrap_or_default();
@@ -734,8 +749,10 @@ fn verify_task(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         let (result, evidence) = run_tests(&state.policy);
         ("tests", result, evidence)
     };
-    let Ok(mut inner) = state.log.lock() else {
-        return (500, json!({"error": "log lock poisoned"}));
+    // Another handler may have panicked while the tests ran; then nothing is recorded.
+    let mut inner = match lock(state) {
+        Ok(g) => g,
+        Err(e) => return e,
     };
     let mut recorded = 0;
     for seq in seqs {
@@ -748,10 +765,12 @@ fn verify_task(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
                 result,
                 evidence.clone(),
             ) {
+                // As in `decide`: a write the disk refused is never acknowledged.
                 return (500, json!({ "error": e }));
             }
             recorded += 1;
         }
+        // Otherwise a verifier closed the decision while the tests ran; it already has its outcome.
     }
     (
         200,
@@ -834,6 +853,7 @@ fn run_tests(policy: &Policy) -> (&'static str, String) {
     let Some(t) = policy.tests_verifier() else {
         return ("unknown", sha256_hex(b"no test command configured"));
     };
+    // The policy refuses an empty command, so this only keeps an empty one from running anything.
     let Some((program, args)) = t.command.split_first() else {
         return ("unknown", sha256_hex(b"empty test command"));
     };
@@ -903,8 +923,234 @@ fn run_tests(policy: &Policy) -> (&'static str, String) {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
-    use super::parse_rfc3339;
+    use super::*;
+
+    /// A daemon's state over a fresh log, with the built-in policy rooted at the log's directory.
+    fn state(name: &str) -> State {
+        let dir = std::env::temp_dir().join(format!("mohar-unit-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let log = FileLog::init(&dir).expect("init");
+        State {
+            log: Mutex::new(Inner {
+                log,
+                pending: HashMap::new(),
+                calls: HashMap::new(),
+                tasks: HashMap::new(),
+                ran: HashSet::new(),
+                baselines: HashMap::new(),
+                ledger: Ledger::new(),
+            }),
+            policy: Policy::builtin(&dir),
+            log_dir: dir,
+            inflight: AtomicUsize::new(0),
+            max_inflight: 1,
+        }
+    }
+
+    const SHA: &str = "c41b77d0c41b77d0c41b77d0c41b77d0c41b77d0c41b77d0c41b77d0c41b77d0";
+
+    /// Feed `send` to `read_request` over a real loopback connection. Each part is written after a
+    /// short pause; `close` shuts the client's side once everything is sent.
+    fn read(send: &[&[u8]], close: bool) -> Result<(String, Vec<u8>), Failure> {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let parts: Vec<Vec<u8>> = send.iter().map(|p| p.to_vec()).collect();
+        let client = std::thread::spawn(move || {
+            let mut c = TcpStream::connect(addr).expect("connect");
+            for part in parts {
+                // The server may already have refused the request and closed; that is the point.
+                let _ = c.write_all(&part);
+                let _ = c.flush();
+                std::thread::sleep(Duration::from_millis(30));
+            }
+            if close {
+                let _ = c.shutdown(std::net::Shutdown::Write);
+            }
+            // Hold the connection open until the server has given up on it.
+            std::thread::sleep(Duration::from_millis(400));
+        });
+        let (mut server, _) = listener.accept().expect("accept");
+        server
+            .set_read_timeout(Some(Duration::from_millis(200)))
+            .expect("timeout");
+        let got = read_request(&mut server);
+        client.join().expect("client");
+        got
+    }
+
+    fn head(length: usize) -> Vec<u8> {
+        format!(
+            "POST /v1/decide HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: {length}\r\n\r\n"
+        )
+        .into_bytes()
+    }
+
+    #[test]
+    fn a_body_that_arrives_in_pieces_is_read_whole() {
+        let (path, body) = read(&[&head(4), b"ab", b"cd"], false).expect("complete request");
+        assert_eq!(path, "/v1/decide");
+        assert_eq!(body, b"abcd");
+    }
+
+    #[test]
+    fn requests_that_break_the_framing_are_refused() {
+        let err = |send: &[&[u8]], close| read(send, close).expect_err("must be refused");
+        let huge = vec![b'a'; MAX_HEAD + 2048];
+        assert_eq!(err(&[&huge], false).0, 431);
+        assert_eq!(
+            err(&[b"POST /v1/decide HTTP/1.1\r\n"], true),
+            (400, "connection closed before the request was complete")
+        );
+        assert_eq!(
+            err(&[b"POST /v1/decide HTTP/1.1\r\n"], false),
+            (408, "timed out reading the request")
+        );
+        assert_eq!(
+            err(&[b"GARBAGE\r\n\r\n"], false),
+            (400, "not an HTTP request")
+        );
+        assert_eq!(
+            err(&[b"POST /x HTTP/1.1\r\nno colon here\r\n\r\n"], false),
+            (400, "malformed header")
+        );
+        let mut extra = head(2);
+        extra.extend_from_slice(b"abcd");
+        assert_eq!(
+            err(&[&extra], false),
+            (400, "more bytes than Content-Length")
+        );
+        assert_eq!(
+            err(&[&head(2), b"abcd"], false),
+            (400, "more bytes than Content-Length")
+        );
+        assert_eq!(
+            err(&[&head(10), b"ab"], true),
+            (400, "connection closed before the body was complete")
+        );
+        assert_eq!(
+            err(&[&head(10), b"ab"], false),
+            (408, "timed out reading the body")
+        );
+    }
+
+    #[test]
+    fn every_status_the_daemon_sends_has_its_reason_phrase() {
+        for (status, phrase) in [
+            (200, "OK"),
+            (400, "Bad Request"),
+            (404, "Not Found"),
+            (405, "Method Not Allowed"),
+            (408, "Request Timeout"),
+            (411, "Length Required"),
+            (413, "Content Too Large"),
+            (415, "Unsupported Media Type"),
+            (431, "Request Header Fields Too Large"),
+            (500, "Internal Server Error"),
+            (501, "Not Implemented"),
+            (503, "Service Unavailable"),
+        ] {
+            assert_eq!(reason_phrase(status), phrase);
+        }
+    }
+
+    fn error_of(answer: &serde_json::Value) -> String {
+        answer["error"].as_str().unwrap_or("").to_string()
+    }
+
+    #[test]
+    fn decide_refuses_fields_outside_their_limits_and_records_nothing() {
+        let s = state("decide-limits");
+        let ok =
+            json!({"agent": "agent:t/1", "tool": "Edit", "target": "a.md", "args_sha256": SHA});
+        let with = |k: &str, v: serde_json::Value| {
+            let mut b = ok.clone();
+            b[k] = v;
+            b
+        };
+        let long = "x".repeat(MAX_FIELD + 1);
+        for (body, why) in [
+            (with("agent", json!("")), "agent and tool"),
+            (with("tool", json!(long)), "agent and tool"),
+            (
+                with("target", json!("t".repeat(MAX_TARGET + 1))),
+                "target is longer",
+            ),
+            (with("args_sha256", json!("C41B")), "args_sha256"),
+            (with("call_id", json!("")), "call_id"),
+            (with("task", json!(long)), "task"),
+            (json!({"agent": 1}), "not a valid decide request"),
+        ] {
+            let (status, answer) = decide(&s, body.to_string().as_bytes());
+            assert_eq!(status, 400);
+            assert!(error_of(&answer).contains(why), "{answer}");
+        }
+        assert!(lock(&s).expect("lock").log.is_empty());
+    }
+
+    #[test]
+    fn outcome_and_verify_refuse_malformed_requests() {
+        let s = state("outcome-limits");
+        let good = json!({"receipt_seq": 0, "verifier": "tests", "result": "pass", "evidence_sha256": SHA});
+        let mut bad_result = good.clone();
+        bad_result["result"] = json!("maybe");
+        let mut bad_evidence = good.clone();
+        bad_evidence["evidence_sha256"] = json!("abc");
+        for (body, why) in [
+            (json!([]), "not a valid outcome request"),
+            (bad_result, "result must be"),
+            (bad_evidence, "evidence_sha256"),
+        ] {
+            let (status, answer) = outcome(&s, body.to_string().as_bytes());
+            assert_eq!(status, 400);
+            assert!(error_of(&answer).contains(why), "{answer}");
+        }
+        for (body, why) in [
+            (b"{".to_vec(), "not a valid verify request"),
+            (
+                json!({"agent": "", "task": "t"}).to_string().into_bytes(),
+                "agent and task",
+            ),
+        ] {
+            let (status, answer) = verify_task(&s, &body);
+            assert_eq!(status, 400);
+            assert!(error_of(&answer).contains(why), "{answer}");
+        }
+    }
+
+    #[test]
+    fn after_a_panic_with_the_log_held_nothing_is_decided_or_recorded() {
+        let s = state("poisoned");
+        std::thread::scope(|scope| {
+            let _ = scope
+                .spawn(|| {
+                    let _held = s.log.lock();
+                    panic!("a handler dies holding the log");
+                })
+                .join();
+        });
+        let decide_body =
+            json!({"agent": "agent:t/1", "tool": "Edit", "target": "a.md", "args_sha256": SHA});
+        let outcome_body = json!({"receipt_seq": 0, "verifier": "tests", "result": "pass", "evidence_sha256": SHA});
+        let verify_body = json!({"agent": "agent:t/1", "task": "t"});
+        for (status, answer) in [
+            decide(&s, decide_body.to_string().as_bytes()),
+            outcome(&s, outcome_body.to_string().as_bytes()),
+            verify_task(&s, verify_body.to_string().as_bytes()),
+        ] {
+            assert_eq!(status, 500);
+            assert_eq!(error_of(&answer), "log lock poisoned");
+        }
+    }
+
+    #[test]
+    fn without_a_test_command_the_tests_verifier_cannot_tell() {
+        let s = state("no-tests");
+        let (result, evidence) = run_tests(&s.policy);
+        assert_eq!(result, "unknown");
+        assert_eq!(evidence, sha256_hex(b"no test command configured"));
+    }
 
     #[test]
     fn timestamps_round_trip_through_the_log_format() {
