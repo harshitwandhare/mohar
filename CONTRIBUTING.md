@@ -29,6 +29,13 @@ cargo clippy --all-targets --locked -- -D warnings
 cargo test --locked
 ```
 
+Benchmarks, for changes to the receipt log, verification or checkpoints. CI runs them against main on
+every pull request and fails when one is clearly more than 20% slower:
+
+```bash
+cargo bench -p mohar-core --bench core
+```
+
 Fuzzing (nightly toolchain, `cargo install --locked cargo-fuzz`), from the `fuzz` directory:
 
 ```bash
