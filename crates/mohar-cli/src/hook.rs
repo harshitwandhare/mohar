@@ -45,7 +45,6 @@ fn pre_tool_use(daemon: &str, p: &Value) -> String {
     let input = &p["tool_input"];
     let mut req = json!({
         "agent": agent_id(p),
-        "capability": capability(tool),
         "tool": tool,
         "target": target(input),
         "args_sha256": sha256_jcs(input),
@@ -123,21 +122,6 @@ fn agent_id(p: &Value) -> String {
         .filter(|t| !t.is_empty())
         .unwrap_or("main");
     format!("agent:claude-code/{role}")
-}
-
-/// Map a Claude Code tool to a Mohar capability.
-pub fn capability(tool: &str) -> String {
-    match tool {
-        "Read" | "Glob" | "Grep" | "LS" | "NotebookRead" => "fs.read".into(),
-        "Edit" | "MultiEdit" | "Write" | "NotebookEdit" => "fs.edit".into(),
-        "Bash" | "PowerShell" => "shell.exec".into(),
-        "WebFetch" | "WebSearch" => "net.fetch".into(),
-        "Task" | "Agent" => "agent.spawn".into(),
-        _ => match tool.strip_prefix("mcp__") {
-            Some(rest) => format!("mcp.{}", rest.replace("__", ".")),
-            None => format!("tool.{tool}"),
-        },
-    }
 }
 
 /// What the tool acts on, as the receipt's target.
