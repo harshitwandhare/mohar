@@ -46,7 +46,7 @@ rewrite: another machine, an append-only share, or a repository someone else con
 
 Prints receipts, oldest first, one per line. Doesn't need the signing key or the writer lock.
 
-## `mohar verify [--public-key <file>] [--checkpoints <file>]...`
+## `mohar verify [--public-key <file>] [--checkpoints <file>]... [--trust-checkpoints]`
 
 Checks every receipt and every checkpoint against the public key (`public.key` in the log directory
 by default). Prints `ok: ...` or the first break with its index and reason. Doesn't need the signing
@@ -55,6 +55,12 @@ key, so anyone can verify a log they were given.
 `--checkpoints` adds published checkpoints to the check and can be given more than once. A log that
 lost receipts and its own checkpoints together still fails against them. A file named here that can't
 be read is an error.
+
+`--trust-checkpoints` checks signatures only on receipts after the furthest checkpoint, once every
+checkpoint's own signature has verified. Receipts before it are still parsed, hashed and linked, so a
+change to any of them still fails; this is about five times faster on a log that is mostly covered by
+checkpoints. It can't catch a receipt the key holder wrote with a bad signature before a checkpoint, so
+leave it off when auditing someone else's log. The design notes (receipt format) give the argument.
 
 ## `mohar daemon [--addr <host:port>] [--max-inflight <n>]`
 

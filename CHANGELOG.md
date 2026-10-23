@@ -9,6 +9,9 @@ receipt format; each such change is called out.
 
 ### Added
 
+- `mohar verify --trust-checkpoints` checks signatures only after the furthest checkpoint whose signature
+  verifies, and checks the receipts before it by their hash chain: about five times faster on a covered
+  log. The daemon opens its own log this way. Plain `mohar verify` still checks every signature (#117).
 - Criterion benchmarks for appending and syncing a receipt, verifying receipts and signing a
   checkpoint, with a CI job that fails a pull request clearly more than 20% slower than main (#60).
 - Checkpoints published outside the log directory. `mohar checkpoint --publish <file>` appends the new

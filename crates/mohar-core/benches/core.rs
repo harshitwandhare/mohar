@@ -6,7 +6,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
-use mohar_core::store::{FileLog, verify_file};
+use mohar_core::store::{FileLog, SignatureChecks, verify_file, verify_log_with};
 use mohar_core::{Action, Decision, Entry, parse_public_key};
 
 /// Receipts in the log that the verify benchmark reads, per iteration.
@@ -65,6 +65,24 @@ fn verify(c: &mut Criterion) {
     group.throughput(Throughput::Elements(VERIFY_RECEIPTS));
     group.bench_function("1000_receipts", |b| {
         b.iter(|| verify_file(&receipts, &key).expect("verifies"));
+    });
+    // The same log with a checkpoint over all of it: signatures are skipped, hashes and links kept.
+    let mut log = FileLog::open(&dir).expect("reopen");
+    log.checkpoint("2026-10-14T15:00:00.000Z")
+        .expect("checkpoint");
+    drop(log);
+    let checkpoints = dir.join("checkpoints.jsonl");
+    group.bench_function("1000_receipts_trusting_checkpoint", |b| {
+        b.iter(|| {
+            verify_log_with(
+                &receipts,
+                &checkpoints,
+                &[],
+                &key,
+                SignatureChecks::AfterLastCheckpoint,
+            )
+            .expect("verifies")
+        });
     });
     group.finish();
     let _ = fs::remove_dir_all(&dir);

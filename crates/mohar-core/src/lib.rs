@@ -428,6 +428,15 @@ impl Prechecked {
             hash: receipt_hash(r).ok(),
         }
     }
+
+    /// The hash alone, for a receipt that a checkpoint with a verified signature covers. The chain of
+    /// hashes from it up to that checkpoint's signed head stands in for its own signature.
+    pub(crate) fn hash_only(r: &Receipt) -> Self {
+        Self {
+            signature_ok: true,
+            hash: receipt_hash(r).ok(),
+        }
+    }
 }
 
 /// Checks a chain one receipt at a time, holding only what the next receipt must match.
