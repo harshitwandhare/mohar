@@ -49,3 +49,6 @@ jobs:
             cargo bench --locked -p mohar-core --bench core -- --baseline-lenient main
             python3 scripts/bench-gate.py target/criterion 0.20
           fi
+      - name: Verify a million receipts
+        # Release build, budget scaled to the runner's threads (see stream_tests.rs). Prints the time.
+        run: cargo test --release --locked -p mohar-core --lib -- --ignored --nocapture one_million
