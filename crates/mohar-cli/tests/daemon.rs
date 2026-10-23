@@ -629,3 +629,41 @@ fn trust_earned_in_the_log_changes_what_the_daemon_decides() {
         "decided from the record"
     );
 }
+
+#[test]
+fn a_gate_stop_is_a_signed_deny_by_gate_and_the_hook_says_why() {
+    let dir = fresh_log("gates");
+    let d = Daemon::start(&dir, &[]);
+    let (_, a) = decide(d.port, "Bash", "git push origin main", None);
+    assert_eq!(
+        (a["result"].as_str(), a["gate"].as_str()),
+        (Some("deny"), Some("denied_capability"))
+    );
+    let (_, b) = decide(d.port, "Write", "/etc/hosts", None);
+    assert_eq!(b["gate"], "outside_root");
+    let out = run_hook(
+        &d.url(),
+        &pre("Edit", json!({"file_path": "/etc/passwd"}), None),
+    );
+    assert_eq!(decision(&out), "deny");
+    assert!(
+        out["hookSpecificOutput"]["permissionDecisionReason"]
+            .as_str()
+            .unwrap_or("")
+            .contains("refused by a gate"),
+        "the person sees why"
+    );
+    d.stop();
+    let log = std::fs::read_to_string(dir.join("receipts.jsonl")).expect("log");
+    for line in log.lines() {
+        let r: Value = serde_json::from_str(line).expect("json");
+        assert_eq!(
+            (
+                r["decision"]["result"].as_str(),
+                r["decision"]["by"].as_str()
+            ),
+            (Some("deny"), Some("gate"))
+        );
+    }
+    assert!(verify(&dir).contains("3 receipts"));
+}

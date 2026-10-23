@@ -450,20 +450,33 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         Ok(g) => g,
         Err(_) => return (500, json!({"error": "log lock poisoned"})),
     };
+    let now = now_secs();
+    // Hard gates come first; no record outweighs them.
+    let stop = state
+        .policy
+        .gate(&action.tool, &action.target, &action.capability);
     let suspended = inner.ledger.is_suspended(&req.agent);
     let verdict = inner
         .ledger
-        .decide(&req.agent, &action.capability, &classified.spec, now_secs());
-    // A fixed rule (a suspension, an action with no effect) is a gate; anything else came from the record.
-    let by = if suspended || classified.spec.risk == Risk::None {
-        "gate"
-    } else {
-        "score"
-    };
-    let decision = Decision {
-        result: verdict.result.to_string(),
-        level: verdict.level,
-        by: by.to_string(),
+        .decide(&req.agent, &action.capability, &classified.spec, now);
+    let decision = match &stop {
+        Some(_) => Decision {
+            result: "deny".to_string(),
+            level: verdict.level,
+            by: "gate".to_string(),
+        },
+        // A fixed rule (a suspension, an action with no effect) is a gate; anything else came from
+        // the record.
+        None => Decision {
+            result: verdict.result.to_string(),
+            level: verdict.level,
+            by: if suspended || classified.spec.risk == Risk::None {
+                "gate"
+            } else {
+                "score"
+            }
+            .to_string(),
+        },
     };
     let entry = Entry {
         ts: crate::now_rfc3339(),
@@ -489,7 +502,13 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     }
     (
         200,
-        json!({ "result": decision.result, "level": decision.level, "receipt_seq": receipt.seq }),
+        json!({
+            "result": decision.result,
+            "level": decision.level,
+            "receipt_seq": receipt.seq,
+            "gate": stop.as_ref().map(|g| g.gate),
+            "reason": stop.map(|g| g.reason),
+        }),
     )
 }
 
