@@ -23,7 +23,7 @@ One JSON object per line in `receipts.jsonl`. The full field list and the reason
 One JSON object per line in `checkpoints.jsonl`:
 
 ```json
-{"v": 1, "count": 3, "head": "sha256:...", "ts": "2026-11-03T15:00:00.000Z", "sig": "ed25519:..."}
+{"v": 1, "count": 3, "head": "sha256:...", "ts": "2026-10-14T15:00:00.000Z", "sig": "ed25519:..."}
 ```
 
 `count` is how many receipts the log held, `head` is the hash of the receipt at `count - 1`, and `sig` is

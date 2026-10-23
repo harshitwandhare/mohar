@@ -217,7 +217,7 @@ before hashing and signing.
   "v": 1,
   "seq": 4182,
   "prev": "sha256:9f2c...e01a",
-  "ts": "2026-11-03T14:22:07.311Z",
+  "ts": "2026-10-14T14:22:07.311Z",
   "agent": { "id": "agent:claude-code/host-4b1d/7c1e", "key": "ed25519:Mx3f...Q" },
   "authority": [
     { "principal": "human:7f3a09c2", "granted": ["fs.edit.*", "git.push.branch"], "expires": "2026-12-01" }
