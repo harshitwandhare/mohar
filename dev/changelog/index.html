@@ -1253,6 +1253,10 @@ receipt format; each such change is called out.</p>
 <h2 id="unreleased"><a href="https://github.com/harshitwandhare/mohar/compare/v0.1.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
+<li>Checkpoints can be published to git: <code>mohar checkpoint --publish git:&lt;clone&gt;</code> pulls, appends, commits
+  and pushes, and <code>mohar verify --checkpoints git:&lt;clone&gt;</code> pulls before checking. A log cut short together
+  with every local copy of its checkpoints still fails against the remote. Any git step that fails is an
+  error, never a silent skip (#108).</li>
 <li><code>mohar verify --trust-checkpoints</code> checks signatures only after the furthest checkpoint whose signature
   verifies, and checks the receipts before it by their hash chain: about five times faster on a covered
   log. The daemon opens its own log this way. Plain <code>mohar verify</code> still checks every signature (#117).</li>
