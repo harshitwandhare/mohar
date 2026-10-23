@@ -1,3 +1,4 @@
+import { readdirSync, readFileSync } from 'node:fs';
 import { test, expect } from '@playwright/test';
 
 test('first screen says what Mohar is and offers one action', async ({ page }) => {
@@ -142,4 +143,18 @@ test('the trust meter fills as passes are verified, under the production CSP', a
   // One pass of the eight needed to reach the top: an eighth of the meter, not empty and not full.
   await expect.poll(ratio).toBeGreaterThan(0.1);
   await expect.poll(ratio).toBeLessThan(0.15);
+});
+
+test('no example on the site or in the docs is dated after today', () => {
+  // A receipt stamped in the future reads as made up, and honesty is the whole product.
+  const today = new Date().toISOString().slice(0, 10);
+  const files = [
+    ...readdirSync('site').filter(f => f.endsWith('.html')).map(f => `site/${f}`),
+    ...readdirSync('docs').filter(f => f.endsWith('.md')).map(f => `docs/${f}`),
+  ];
+  const late = files.flatMap(f =>
+    (readFileSync(f, 'utf8').match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/g) ?? [])
+      .filter(stamp => stamp.slice(0, 10) > today)
+      .map(stamp => `${f}: ${stamp}`));
+  expect(late).toEqual([]);
 });
