@@ -1253,6 +1253,11 @@ receipt format; each such change is called out.</p>
 <h2 id="unreleased"><a href="https://github.com/harshitwandhare/mohar/compare/v0.1.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
+<li>A capability policy (<code>.mohar/policy.json</code>): named capabilities with a risk tier, a reversibility flag
+  and a ceiling, and ordered rules mapping a host tool and a path or command glob onto them. The first
+  match wins; anything unmatched or outside the project root is <code>unclassified</code> and treated as the
+  highest risk. Invalid files are refused with the reason. The daemon now classifies every action
+  itself, so a decide request no longer carries a capability (#47).</li>
 <li><code>mohar daemon</code>: a local service on a loopback address that answers <code>POST /v1/decide</code> and
   <code>POST /v1/outcome</code>, signs every answer into the log, refuses malformed or oversized requests, answers 503
   past a limit of requests in flight, and rebuilds decisions still waiting for an outcome after a crash (#43).</li>
