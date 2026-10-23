@@ -273,3 +273,134 @@ fn verify_can_trust_checkpoints_and_still_catches_a_cut_tail() {
     let v = mohar(&dir, &["verify", "--trust-checkpoints"]);
     assert_eq!(v.status.code(), Some(1));
 }
+
+/// Run git in `dir` with a fixed identity, and fail the test if it fails.
+fn git(dir: &Path, args: &[&str]) {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(["-c", "user.name=t", "-c", "user.email=t@example.com"])
+        .args(args)
+        .output()
+        .expect("git");
+    assert!(
+        out.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// A bare repository standing in for the remote, with one commit, and two clones of it: the
+/// operator's, which publishes, and an auditor's, which only reads.
+fn git_remote(name: &str) -> (PathBuf, PathBuf, PathBuf) {
+    let root = temp_dir(name);
+    let remote = root.join("remote.git");
+    fs::create_dir_all(&remote).expect("mkdir");
+    git(&remote, &["init", "-q", "--bare", "-b", "main"]);
+    let seed = root.join("seed");
+    fs::create_dir_all(&seed).expect("mkdir");
+    git(&seed, &["init", "-q", "-b", "main"]);
+    fs::write(seed.join("README"), "checkpoints\n").expect("write");
+    git(&seed, &["add", "README"]);
+    git(&seed, &["commit", "-q", "-m", "start"]);
+    git(
+        &seed,
+        &["remote", "add", "origin", remote.to_str().expect("utf8")],
+    );
+    git(&seed, &["push", "-q", "-u", "origin", "main"]);
+    let clone = |to: &str| {
+        let path = root.join(to);
+        git(&root, &["clone", "-q", remote.to_str().expect("utf8"), to]);
+        path
+    };
+    (remote.clone(), clone("operator"), clone("auditor"))
+}
+
+/// mohar with a git identity, so the publishing commit works on a machine with none configured.
+fn mohar_git(dir: &Path, args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_mohar"))
+        .arg("--dir")
+        .arg(dir)
+        .args(args)
+        .env("GIT_AUTHOR_NAME", "t")
+        .env("GIT_AUTHOR_EMAIL", "t@example.com")
+        .env("GIT_COMMITTER_NAME", "t")
+        .env("GIT_COMMITTER_EMAIL", "t@example.com")
+        .output()
+        .expect("run mohar")
+}
+
+fn arg(prefix: &str, p: &Path) -> String {
+    format!("{prefix}{}", p.to_str().expect("utf8 path"))
+}
+
+#[test]
+fn a_checkpoint_pushed_to_git_catches_a_log_cut_with_every_local_copy() {
+    let dir = temp_dir("git-cut");
+    let (_remote, operator, auditor) = git_remote("git-cut-remote");
+    assert!(mohar(&dir, &["init"]).status.success());
+    for t in ["a", "b", "c"] {
+        assert!(append(&dir, t).status.success());
+    }
+    let out = mohar_git(&dir, &["checkpoint", "--publish", &arg("git:", &operator)]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let ok = mohar_git(&dir, &["verify", "--checkpoints", &arg("git:", &auditor)]);
+    assert!(
+        String::from_utf8_lossy(&ok.stdout).contains("ok: 3 receipts and 2 checkpoints verified"),
+        "{}{}",
+        String::from_utf8_lossy(&ok.stdout),
+        String::from_utf8_lossy(&ok.stderr)
+    );
+
+    // The operator cuts the log, empties its own checkpoints and deletes its clone.
+    let path = dir.join("receipts.jsonl");
+    let text = fs::read_to_string(&path).expect("read");
+    let kept: Vec<&str> = text.lines().take(2).collect();
+    fs::write(&path, kept.join("\n") + "\n").expect("write");
+    fs::write(dir.join("checkpoints.jsonl"), "").expect("write");
+    let _ = fs::remove_dir_all(&operator);
+    assert!(mohar(&dir, &["verify"]).status.success());
+
+    let v = mohar_git(&dir, &["verify", "--checkpoints", &arg("git:", &auditor)]);
+    assert_eq!(v.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&v.stdout).contains("should hold 3 receipts, holds 2"));
+}
+
+#[test]
+fn a_checkpoint_that_cannot_be_pushed_is_reported_as_not_published() {
+    let dir = temp_dir("git-push-fails");
+    let (remote, operator, _) = git_remote("git-push-fails-remote");
+    assert!(mohar(&dir, &["init"]).status.success());
+    assert!(append(&dir, "a").status.success());
+    fs::remove_dir_all(&remote).expect("the remote goes away");
+    let out = mohar_git(&dir, &["checkpoint", "--publish", &arg("git:", &operator)]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("not published"));
+}
+
+#[test]
+fn a_git_source_that_cannot_be_brought_up_to_date_is_not_counted_as_checked() {
+    let dir = temp_dir("git-pull-fails");
+    let (remote, _, auditor) = git_remote("git-pull-fails-remote");
+    assert!(mohar(&dir, &["init"]).status.success());
+    fs::remove_dir_all(&remote).expect("the remote goes away");
+    let v = mohar_git(&dir, &["verify", "--checkpoints", &arg("git:", &auditor)]);
+    assert_eq!(v.status.code(), Some(2));
+    assert!(!String::from_utf8_lossy(&v.stdout).contains("ok:"));
+}
+
+#[test]
+fn a_git_clone_inside_the_log_directory_is_refused() {
+    let dir = temp_dir("git-inside");
+    assert!(mohar(&dir, &["init"]).status.success());
+    let inside = dir.join("clone");
+    fs::create_dir_all(&inside).expect("mkdir");
+    let out = mohar_git(&dir, &["checkpoint", "--publish", &arg("git:", &inside)]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("outside the log directory"));
+}

@@ -453,18 +453,9 @@ pub fn verify_log(
 }
 
 /// [`verify_log`], plus the checkpoints in each `external` file, kept somewhere the log's operator
-/// can't rewrite. A log cut short together with its own checkpoints still fails against them. Each
-/// external file must exist: one that was named but can't be read is an error, never an empty list.
-pub fn verify_log_against(
-    receipts: &Path,
-    checkpoints: &Path,
-    external: &[&Path],
-    key: &VerifyingKey,
-) -> Result<Stats, VerifyFileError> {
-    verify_log_with(receipts, checkpoints, external, key, SignatureChecks::Every)
-}
-
-/// [`verify_log_against`], choosing which receipts get their signature checked.
+/// can't rewrite, and choosing which receipts get their signature checked. A log cut short together
+/// with its own checkpoints still fails against the external ones. Each external file must exist: one
+/// that was named but can't be read is an error, never an empty list.
 pub fn verify_log_with(
     receipts: &Path,
     checkpoints: &Path,
