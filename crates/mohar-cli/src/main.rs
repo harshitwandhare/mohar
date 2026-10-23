@@ -10,7 +10,9 @@ use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::{Parser, Subcommand, ValueEnum};
-use mohar_core::store::{FileLog, OpenError, for_each_receipt, verify_log};
+use mohar_core::store::{
+    FileLog, OpenError, for_each_receipt, publish_checkpoint, verify_log_against,
+};
 use mohar_core::{Action, Decision, Entry, Receipt, parse_public_key};
 
 #[derive(Parser)]
@@ -65,7 +67,11 @@ enum Command {
         last: Option<usize>,
     },
     /// Sign a checkpoint for the log as it stands.
-    Checkpoint,
+    Checkpoint {
+        /// Also append it to this file, which must live outside the log directory.
+        #[arg(long)]
+        publish: Option<PathBuf>,
+    },
     /// Serve decisions and outcomes to agent hosts on this machine.
     Daemon {
         /// Loopback address to listen on.
@@ -91,6 +97,9 @@ enum Command {
         /// Public key file to check against instead of the one in the log directory.
         #[arg(long)]
         public_key: Option<PathBuf>,
+        /// Checkpoints published outside the log directory to check as well. Repeatable.
+        #[arg(long)]
+        checkpoints: Vec<PathBuf>,
     },
 }
 
@@ -164,10 +173,22 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
         } => {
             print!("{}", hook::claude_code(&daemon, &mut std::io::stdin()));
         }
-        Command::Checkpoint => {
+        Command::Checkpoint { publish } => {
+            if let Some(target) = &publish {
+                check_publish_target(&cli.dir, target)?;
+            }
             let mut log = FileLog::open(&cli.dir).map_err(|e| e.to_string())?;
             let c = log.checkpoint(&now_rfc3339()).map_err(|e| e.to_string())?;
-            println!("checkpoint at {} receipts", c.count);
+            if let Some(target) = &publish {
+                publish_checkpoint(target, &c).map_err(|e| e.to_string())?;
+                println!(
+                    "checkpoint at {} receipts, published to {}",
+                    c.count,
+                    target.display()
+                );
+            } else {
+                println!("checkpoint at {} receipts", c.count);
+            }
         }
         Command::Log { last } => {
             let print = |r: &Receipt| {
@@ -202,15 +223,21 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             }
             .map_err(|e| e.to_string())?;
         }
-        Command::Verify { public_key } => {
+        Command::Verify {
+            public_key,
+            checkpoints,
+        } => {
             let key_path = public_key.unwrap_or_else(|| cli.dir.join("public.key"));
             let text = std::fs::read_to_string(&key_path)
                 .map_err(|e| format!("{}: {e}", key_path.display()))?;
             let key = parse_public_key(&text)
                 .ok_or_else(|| format!("{} is not an ed25519 public key", key_path.display()))?;
-            match verify_log(
+            let external: Vec<&std::path::Path> =
+                checkpoints.iter().map(PathBuf::as_path).collect();
+            match verify_log_against(
                 &cli.dir.join("receipts.jsonl"),
                 &cli.dir.join("checkpoints.jsonl"),
+                &external,
                 &key,
             ) {
                 Ok(stats) => println!(
@@ -233,6 +260,26 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
         }
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// A published checkpoint only helps if it lives where deleting the log doesn't delete it too.
+/// Remote targets come later; until then a URL is refused rather than written as a local path.
+fn check_publish_target(dir: &std::path::Path, target: &std::path::Path) -> Result<(), String> {
+    let shown = target.display();
+    if target.to_string_lossy().contains("://") {
+        return Err(format!("{shown}: only a file can be published to for now"));
+    }
+    let parent = match target.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p,
+        _ => std::path::Path::new("."),
+    };
+    // Both sides resolved the same way, so symlinks and Windows path forms can't sneak past.
+    let parent = std::fs::canonicalize(parent).map_err(|e| format!("{shown}: {e}"))?;
+    let dir = std::fs::canonicalize(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    if parent.starts_with(&dir) {
+        return Err(format!("{shown}: must be outside the log directory"));
+    }
+    Ok(())
 }
 
 /// UTC now as RFC 3339 with milliseconds, without a date-time dependency.

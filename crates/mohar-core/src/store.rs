@@ -64,9 +64,11 @@ pub enum OpenError {
     /// The log no longer holds what a signed checkpoint vouched for.
     #[error("checkpoints do not match: {0}")]
     Checkpoint(CheckpointBreak),
-    /// A line of checkpoints.jsonl isn't a complete checkpoint.
-    #[error("checkpoints.jsonl line {line} is not a complete checkpoint")]
+    /// A line of a checkpoints file isn't a complete checkpoint.
+    #[error("{} line {line} is not a complete checkpoint", path.display())]
     UnreadableCheckpoint {
+        /// The checkpoints file.
+        path: PathBuf,
         /// 1-based line number.
         line: usize,
     },
@@ -406,7 +408,7 @@ pub fn read_receipts(path: &Path) -> Result<Vec<Receipt>, OpenError> {
 
 /// Verify the chain in a receipts file line by line. Memory use doesn't depend on the log's length.
 pub fn verify_file(path: &Path, key: &VerifyingKey) -> Result<Stats, VerifyFileError> {
-    verify_stream(path, None, key)
+    verify_stream(path, Vec::new(), key)
 }
 
 /// Verify the chain in `receipts`, and every checkpoint in `checkpoints` (which may not exist yet)
@@ -416,18 +418,48 @@ pub fn verify_log(
     checkpoints: &Path,
     key: &VerifyingKey,
 ) -> Result<Stats, VerifyFileError> {
-    verify_stream(receipts, Some(checkpoints), key)
+    verify_log_against(receipts, checkpoints, &[], key)
+}
+
+/// [`verify_log`], plus the checkpoints in each `external` file, kept somewhere the log's operator
+/// can't rewrite. A log cut short together with its own checkpoints still fails against them. Each
+/// external file must exist: one that was named but can't be read is an error, never an empty list.
+pub fn verify_log_against(
+    receipts: &Path,
+    checkpoints: &Path,
+    external: &[&Path],
+    key: &VerifyingKey,
+) -> Result<Stats, VerifyFileError> {
+    let mut all = if checkpoints.exists() {
+        read_checkpoints(checkpoints)?
+    } else {
+        Vec::new()
+    };
+    for path in external {
+        all.extend(read_checkpoints(path)?);
+    }
+    verify_stream(receipts, all, key)
+}
+
+/// Append `checkpoint` to `path`, outside the log directory, and sync it to disk. Existing lines are
+/// never rewritten.
+pub fn publish_checkpoint(path: &Path, checkpoint: &Checkpoint) -> Result<(), OpenError> {
+    let mut line = serde_json::to_vec(checkpoint).map_err(|e| Error::Canonical(e.to_string()))?;
+    line.push(b'\n');
+    let mut f = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(io(path))?;
+    f.write_all(&line).map_err(io(path))?;
+    f.sync_data().map_err(io(path))
 }
 
 fn verify_stream(
     path: &Path,
-    checkpoint_path: Option<&Path>,
+    checkpoints: Vec<Checkpoint>,
     key: &VerifyingKey,
 ) -> Result<Stats, VerifyFileError> {
-    let checkpoints = match checkpoint_path {
-        Some(p) if p.exists() => read_checkpoints(p)?,
-        _ => Vec::new(),
-    };
     let mut watcher = CheckpointWatcher::new(&checkpoints, key).map_err(OpenError::Checkpoint)?;
     let mut chain = ChainVerifier::new(key);
     verify_lines(path, key, |outcome| match outcome {
@@ -467,8 +499,10 @@ pub fn read_checkpoints(path: &Path) -> Result<Vec<Checkpoint>, OpenError> {
             continue;
         }
         out.push(
-            serde_json::from_str(&line)
-                .map_err(|_| OpenError::UnreadableCheckpoint { line: i + 1 })?,
+            serde_json::from_str(&line).map_err(|_| OpenError::UnreadableCheckpoint {
+                path: path.to_path_buf(),
+                line: i + 1,
+            })?,
         );
     }
     Ok(out)

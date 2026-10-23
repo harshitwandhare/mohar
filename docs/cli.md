@@ -32,20 +32,29 @@ the command returns.
 Opening the log verifies the whole chain and its checkpoints first; a log that doesn't verify is
 refused rather than extended. Only one process may write to a log at a time.
 
-## `mohar checkpoint`
+## `mohar checkpoint [--publish <file>]`
 
 Signs a checkpoint over the log as it stands (how many receipts, and the hash of the last one). A
 checkpoint is also written automatically every 1,000 receipts.
+
+A checkpoint kept only beside the log can be deleted along with the receipts it covers. `--publish`
+also appends the new checkpoint to `<file>`, which must live outside the log directory (the command
+refuses otherwise, and refuses URLs for now). Put that file somewhere the log's operator can't
+rewrite: another machine, an append-only share, or a repository someone else controls.
 
 ## `mohar log [--last N]`
 
 Prints receipts, oldest first, one per line. Doesn't need the signing key or the writer lock.
 
-## `mohar verify [--public-key <file>]`
+## `mohar verify [--public-key <file>] [--checkpoints <file>]...`
 
 Checks every receipt and every checkpoint against the public key (`public.key` in the log directory
 by default). Prints `ok: ...` or the first break with its index and reason. Doesn't need the signing
 key, so anyone can verify a log they were given.
+
+`--checkpoints` adds published checkpoints to the check and can be given more than once. A log that
+lost receipts and its own checkpoints together still fails against them. A file named here that can't
+be read is an error.
 
 ## `mohar daemon [--addr <host:port>] [--max-inflight <n>]`
 

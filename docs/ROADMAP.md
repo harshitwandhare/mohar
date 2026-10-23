@@ -5,7 +5,7 @@ criteria: see [milestones](https://github.com/harshitwandhare/mohar/milestones).
 to the [engineering bar](engineering-bar.md). Each phase ships as small pull requests against issues that say what
 "done" means.
 
-## Phase 0: foundation (Oct to Nov 2026)
+## Phase 0: foundation (Oct to Nov 2026), done
 
 - Repository standards: CI, security scanning, contribution rules for humans and agents.
 - Landing page and docs site.
