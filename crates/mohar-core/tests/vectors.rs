@@ -43,18 +43,21 @@ fn entries() -> Vec<Entry> {
                 "c41b77d0",
             ),
             decision: decision("allow", 1, "score"),
+            verification: None,
         },
         Entry {
             ts: "2026-11-03T14:22:09.020Z".into(),
             agent_id: "agent:claude-code/host-4b1d/7c1e".into(),
             action: action("git.push.main", "Bash", "main", "9a01e5f3"),
             decision: decision("escalate", 0, "gate"),
+            verification: None,
         },
         Entry {
             ts: "2026-11-03T14:23:41.555Z".into(),
             agent_id: "agent:claude-code/host-4b1d/7c1e".into(),
             action: action("git.push.main", "Bash", "main", "9a01e5f3"),
             decision: decision("allow", 0, "human"),
+            verification: None,
         },
     ]
 }

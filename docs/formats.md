@@ -11,6 +11,12 @@ One JSON object per line in `receipts.jsonl`. The full field list and the reason
   signature included. The first receipt's `prev` is `sha256:` followed by 64 zeros.
 - **Sequence**: `seq` is the receipt's position, starting at 0.
 - **Version**: `v` is `1`. A verifier refuses versions it doesn't know.
+- **Outcome**: a follow-up receipt that records the outcome of an earlier decision carries a
+  `verification` object, `{"evidence_sha256", "kind", "of", "result"}`, where `of` is the `seq` of the
+  decision, `kind` is the verifier (`tests`, `diff`, `replay`, `human`, or `host` for the host's own report
+  that a tool ran) and `result` is `pass`, `fail` or `unknown`. It repeats the decision's agent, action
+  and decision. Receipts without an outcome have no `verification` key at all, so their bytes, and every
+  existing test vector, are unchanged; `verification` sorts last in the canonical form.
 
 ## Checkpoint
 

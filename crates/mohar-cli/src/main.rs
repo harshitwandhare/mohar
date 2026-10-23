@@ -1,11 +1,15 @@
-//! `mohar`: create, append to, read and verify a receipt log.
+//! `mohar`: create, append to, read and verify a receipt log, serve decisions to agent hosts, and run
+//! as a host's hook.
+
+mod daemon;
+mod hook;
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use mohar_core::store::{FileLog, OpenError, for_each_receipt, verify_log};
 use mohar_core::{Action, Decision, Entry, Receipt, parse_public_key};
 
@@ -62,12 +66,35 @@ enum Command {
     },
     /// Sign a checkpoint for the log as it stands.
     Checkpoint,
+    /// Serve decisions and outcomes to agent hosts on this machine.
+    Daemon {
+        /// Loopback address to listen on.
+        #[arg(long, default_value = "127.0.0.1:7878")]
+        addr: std::net::SocketAddr,
+        /// Requests handled at once; past this the daemon answers 503.
+        #[arg(long, default_value_t = 64)]
+        max_inflight: usize,
+    },
+    /// Run as an agent host's hook: read its payload on stdin, ask the daemon, print the answer.
+    Hook {
+        /// The host calling this hook.
+        host: Host,
+        /// The daemon to ask.
+        #[arg(long, default_value = "http://127.0.0.1:7878")]
+        daemon: String,
+    },
     /// Check the whole chain and every checkpoint against the log's public key. Exits 1 on the first break.
     Verify {
         /// Public key file to check against instead of the one in the log directory.
         #[arg(long)]
         public_key: Option<PathBuf>,
     },
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum Host {
+    /// Claude Code PreToolUse and PostToolUse hooks.
+    ClaudeCode,
 }
 
 fn main() -> ExitCode {
@@ -108,9 +135,26 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
                         args_sha256,
                     },
                     decision: Decision { result, level, by },
+                    verification: None,
                 })
                 .map_err(|e| e.to_string())?;
             println!("{}", r.seq);
+        }
+        Command::Daemon { addr, max_inflight } => {
+            daemon::serve(
+                &cli.dir,
+                daemon::Config {
+                    addr,
+                    max_inflight,
+                    io_timeout: std::time::Duration::from_secs(5),
+                },
+            )?;
+        }
+        Command::Hook {
+            host: Host::ClaudeCode,
+            daemon,
+        } => {
+            print!("{}", hook::claude_code(&daemon, &mut std::io::stdin()));
         }
         Command::Checkpoint => {
             let mut log = FileLog::open(&cli.dir).map_err(|e| e.to_string())?;
@@ -184,7 +228,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
 }
 
 /// UTC now as RFC 3339 with milliseconds, without a date-time dependency.
-fn now_rfc3339() -> String {
+pub(crate) fn now_rfc3339() -> String {
     let d = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default();

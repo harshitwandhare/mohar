@@ -11,8 +11,27 @@ How strong that is depends on the host. This page labels each one honestly:
 - **Advisory**: the host's hooks fail open on errors or timeouts, so Mohar records and warns but can't
   guarantee a block.
 
-Status for every row: designed, not built. The roadmap puts Claude Code first (Phase 2) and the rest in
-Phase 6.
+Status: the Claude Code adapter and the local daemon are built (Phase 2); until the trust engine ships,
+the daemon allows reads and sends everything else to a person. Every other row is designed, not built,
+and lands in Phase 6.
+
+## Install the Claude Code plugin
+
+1. Install `mohar` ([getting started](getting-started.md)), create a log with `mohar init` and start the
+   daemon with `mohar daemon`. Keep it running: every tool call waits on it, and if it's down, tool calls
+   are denied.
+2. Load the plugin from `integrations/claude-code` in this repository, for example with
+   `claude --plugin-dir path/to/mohar/integrations/claude-code`. Its `hooks/hooks.json` runs
+   `mohar hook claude-code` on every `PreToolUse` and `PostToolUse`, with `onFailure: "block"` (Claude Code
+   2.1.295 or later) so a hook that can't run blocks the call instead of letting it through.
+3. Without the plugin system, put the same `hooks` object in `~/.claude/settings.json` (for you) or
+   `.claude/settings.json` (for a project).
+
+For a team, deliver the hooks through managed settings so users can't remove them: put the `hooks` object
+and `"allowManagedHooksOnly": true` in `managed-settings.json` (`/etc/claude-code/` on Linux and WSL,
+`/Library/Application Support/ClaudeCode/` on macOS, `C:\Program Files\ClaudeCode\` on Windows), or set
+them in the admin console. A user hook is advisory, because the person running Claude Code can turn it off.
+A managed one is not.
 
 ## Coding agent hosts
 
