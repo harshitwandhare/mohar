@@ -2,8 +2,8 @@
 //!
 //! It listens on a loopback address only, speaks just enough HTTP/1.1 for two JSON endpoints, and
 //! signs every decision and outcome into the log through `FileLog`, which holds the writer lock for
-//! as long as the daemon runs. Until the trust engine lands, the policy is fixed: reads run, everything
-//! else goes to a person. Every answer is still a signed receipt.
+//! as long as the daemon runs. Answers come from the trust ledger, which is rebuilt from the log on
+//! start: trust exists only as signed receipts.
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -13,8 +13,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use mohar_core::policy::{Capability, Policy, Risk};
+use mohar_core::policy::{Policy, Risk};
 use mohar_core::store::{FileLog, for_each_receipt};
+use mohar_core::trust::{Ledger, Outcome, Severity};
 use mohar_core::{Action, Decision, Entry, Receipt, Verification};
 use serde::Deserialize;
 use serde_json::json;
@@ -58,6 +59,8 @@ struct Inner {
     pending: HashMap<u64, Pending>,
     /// Host call ids (Claude Code's tool_use_id) to the decision they belong to, for this run only.
     calls: HashMap<String, u64>,
+    /// Trust per agent and capability, rebuilt from the log on start.
+    ledger: Ledger,
 }
 
 /// Serve until the process is stopped. Prints `listening on ADDR` once bound, so callers that ask
@@ -71,7 +74,7 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
     }
     let policy = load_policy(dir)?;
     let log = FileLog::open(dir).map_err(|e| e.to_string())?;
-    let pending = pending_decisions(&dir.join("receipts.jsonl"))?;
+    let (pending, ledger) = replay(&dir.join("receipts.jsonl"), &policy)?;
     let listener = TcpListener::bind(cfg.addr).map_err(|e| format!("{}: {e}", cfg.addr))?;
     let local = listener.local_addr().map_err(|e| e.to_string())?;
     // Nobody may be reading stdout (a closed pipe on Windows); the daemon must not die over that.
@@ -98,6 +101,7 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
         log: Mutex::new(Inner {
             log,
             pending,
+            ledger,
             calls: HashMap::new(),
         }),
         inflight: AtomicUsize::new(0),
@@ -149,12 +153,23 @@ fn load_policy(dir: &Path) -> Result<Policy, String> {
     }
 }
 
-/// Decisions in the log that no later receipt has recorded an outcome for.
-fn pending_decisions(receipts: &Path) -> Result<HashMap<u64, Pending>, String> {
+/// Read the log once: decisions still waiting for an outcome, and the trust ledger rebuilt from every
+/// verified outcome. Trust lives nowhere but the signed log.
+fn replay(receipts: &Path, policy: &Policy) -> Result<(HashMap<u64, Pending>, Ledger), String> {
     let mut pending = HashMap::new();
+    let mut ledger = Ledger::new();
     for_each_receipt(receipts, |r: Receipt| match r.verification {
         Some(v) => {
             pending.remove(&v.of);
+            if let Some(o) = verified(
+                &v.kind,
+                &v.result,
+                &r.action.capability,
+                policy,
+                parse_rfc3339(&r.ts),
+            ) {
+                ledger.record(&r.agent.id, &r.action.capability, &o);
+            }
         }
         None => {
             pending.insert(
@@ -168,7 +183,64 @@ fn pending_decisions(receipts: &Path) -> Result<HashMap<u64, Pending>, String> {
         }
     })
     .map_err(|e| e.to_string())?;
-    Ok(pending)
+    Ok((pending, ledger))
+}
+
+/// The trust outcome an outcome receipt stands for, if it counts. The host's own report that a tool
+/// ran never counts, and neither does an `unknown` result. Until remediation plans name what a pass
+/// must exercise (#87), every verified pass counts as exercising the failure.
+fn verified(
+    kind: &str,
+    result: &str,
+    capability: &str,
+    policy: &Policy,
+    at: u64,
+) -> Option<Outcome> {
+    if kind == "host" {
+        return None;
+    }
+    let passed = match result {
+        "pass" => true,
+        "fail" => false,
+        _ => return None,
+    };
+    Some(Outcome {
+        at,
+        passed,
+        severity: Severity::for_capability(&policy.spec(capability)),
+        exercises_failure: true,
+        related: Vec::new(),
+    })
+}
+
+/// Seconds since the Unix epoch for an RFC 3339 UTC timestamp as the log writes it; 0 if malformed.
+fn parse_rfc3339(ts: &str) -> u64 {
+    let num = |a: usize, b: usize| ts.get(a..b).and_then(|s| s.parse::<i64>().ok());
+    let (Some(y), Some(m), Some(d), Some(hh), Some(mm), Some(ss)) = (
+        num(0, 4),
+        num(5, 7),
+        num(8, 10),
+        num(11, 13),
+        num(14, 16),
+        num(17, 19),
+    ) else {
+        return 0;
+    };
+    // Days from civil date, Howard Hinnant's algorithm.
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    u64::try_from(days * 86_400 + hh * 3_600 + mm * 60 + ss).unwrap_or(0)
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 fn handle(stream: &mut TcpStream, state: &State) {
@@ -345,15 +417,6 @@ fn field_ok(s: &str, max: usize) -> bool {
     !s.is_empty() && s.len() <= max
 }
 
-/// The answer until the trust engine exists: actions with no effect run, everything else asks a person.
-fn answer(spec: &Capability) -> &'static str {
-    if spec.risk == Risk::None {
-        "allow"
-    } else {
-        "escalate"
-    }
-}
-
 fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     let req: DecideRequest = match serde_json::from_slice(body) {
         Ok(r) => r,
@@ -383,14 +446,24 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         target: req.target,
         args_sha256: req.args_sha256,
     };
-    let decision = Decision {
-        result: answer(&classified.spec).to_string(),
-        level: 0,
-        by: "gate".to_string(),
-    };
     let mut inner = match state.log.lock() {
         Ok(g) => g,
         Err(_) => return (500, json!({"error": "log lock poisoned"})),
+    };
+    let suspended = inner.ledger.is_suspended(&req.agent);
+    let verdict = inner
+        .ledger
+        .decide(&req.agent, &action.capability, &classified.spec, now_secs());
+    // A fixed rule (a suspension, an action with no effect) is a gate; anything else came from the record.
+    let by = if suspended || classified.spec.risk == Risk::None {
+        "gate"
+    } else {
+        "score"
+    };
+    let decision = Decision {
+        result: verdict.result.to_string(),
+        level: verdict.level,
+        by: by.to_string(),
     };
     let entry = Entry {
         ts: crate::now_rfc3339(),
@@ -461,6 +534,14 @@ fn outcome(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
             json!({"error": "no pending decision with that receipt_seq"}),
         );
     };
+    let counted = verified(
+        &req.verifier,
+        &req.result,
+        &p.action.capability,
+        &state.policy,
+        now_secs(),
+    );
+    let (agent, capability) = (p.agent_id.clone(), p.action.capability.clone());
     let entry = Entry {
         ts: crate::now_rfc3339(),
         agent_id: p.agent_id,
@@ -476,8 +557,35 @@ fn outcome(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     match inner.log.append(entry) {
         Ok(r) => {
             inner.pending.remove(&seq);
+            // Only after the receipt is on disk does the outcome change trust.
+            if let Some(o) = counted {
+                inner.ledger.record(&agent, &capability, &o);
+            }
             (200, json!({ "receipt_seq": r.seq }))
         }
         Err(e) => (500, json!({ "error": e.to_string() })),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_rfc3339;
+
+    #[test]
+    fn timestamps_round_trip_through_the_log_format() {
+        assert_eq!(parse_rfc3339("1970-01-01T00:00:00.000Z"), 0);
+        assert_eq!(parse_rfc3339("2026-10-22T13:45:07.311Z"), 1_792_676_707);
+        assert_eq!(
+            parse_rfc3339("2000-02-29T00:00:00.000Z"),
+            951_782_400,
+            "a leap day"
+        );
+        let now = crate::now_rfc3339();
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        assert!(parse_rfc3339(&now).abs_diff(secs) <= 1);
+        assert_eq!(parse_rfc3339("garbage"), 0);
     }
 }
