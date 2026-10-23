@@ -190,6 +190,14 @@ impl Policy {
         Self::from_json(BUILTIN, root).unwrap_or_else(|e| unreachable!("built-in policy: {e}"))
     }
 
+    /// What a capability is, by name; an unknown name (a policy changed since) is unclassified.
+    pub fn spec(&self, capability: &str) -> Capability {
+        self.capabilities
+            .get(capability)
+            .cloned()
+            .unwrap_or(UNCLASSIFIED_SPEC)
+    }
+
     /// Classify an action by host tool and target. Path targets are resolved against the root.
     pub fn classify(&self, tool: &str, target: &str) -> Classified {
         let rel = self.relative(target);

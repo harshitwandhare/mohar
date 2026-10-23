@@ -67,8 +67,17 @@ and oversized bodies are refused with a 4xx and recorded nowhere. Past `--max-in
 (default 64) the daemon answers 503 rather than queueing.
 
 The daemon decides which capability an action falls under from its policy (below); a request can't name
-one. Until the trust engine ships, capabilities with risk `none` (reads) are allowed and everything else
-is escalated to a person. Every answer is a signed receipt either way.
+one. The trust engine then answers from the agent's verified record on that capability (design, section
+4): actions with risk `none` run; at Ask first everything else goes to a person; at Supervised low-risk
+reversible actions run; at Trusted actions run inside the capability's gates; an irreversible high-risk
+action always goes to a person; a suspended agent is denied. Every answer is a signed receipt.
+
+Trust is rebuilt from the log each time the daemon starts, by replaying every verified outcome; it is
+stored nowhere else. An outcome counts only from a real verifier (`tests`, `diff`, `replay`, `human`)
+with a `pass` or `fail` result; a `host` report or an `unknown` result never does. A failure's severity
+comes from its capability: low-risk reversible failures are minor, medium-risk ones meaningful, and
+high-risk or irreversible ones serious. Until remediation plans can name what a pass must exercise
+(#87), every verified pass counts toward ending remediation.
 
 ### The policy file
 

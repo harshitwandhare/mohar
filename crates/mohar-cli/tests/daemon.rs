@@ -527,3 +527,105 @@ fn a_project_policy_is_used_and_an_invalid_one_stops_the_daemon() {
     assert_eq!(out.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&out.stderr).contains("names capability \"x\""));
 }
+
+/// RFC 3339 UTC for a Unix time, so test logs can be backdated relative to now and never go stale.
+fn rfc3339(secs: u64) -> String {
+    let days = (secs / 86_400) as i64;
+    let rem = secs % 86_400;
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}.000Z",
+        rem / 3_600,
+        rem % 3_600 / 60,
+        rem % 60
+    )
+}
+
+#[test]
+fn trust_earned_in_the_log_changes_what_the_daemon_decides() {
+    use mohar_core::store::FileLog;
+    use mohar_core::{Action, Decision, Entry, Verification};
+
+    let dir = fresh_log("earned");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_secs();
+    let ts = rfc3339(now - 20 * 86_400);
+    let worker = "agent:claude-code/docs-writer";
+    {
+        // 40 docs edits, each verified by tests, 20 days ago.
+        let mut log = FileLog::open(&dir).expect("open");
+        let action = Action {
+            capability: "fs.edit.docs".into(),
+            tool: "Edit".into(),
+            target: "docs/a.md".into(),
+            args_sha256: SHA.into(),
+        };
+        let decision = Decision {
+            result: "escalate".into(),
+            level: 0,
+            by: "score".into(),
+        };
+        for _ in 0..40 {
+            let d = log
+                .append(Entry {
+                    ts: ts.clone(),
+                    agent_id: worker.into(),
+                    action: action.clone(),
+                    decision: decision.clone(),
+                    verification: None,
+                })
+                .expect("decision");
+            log.append(Entry {
+                ts: ts.clone(),
+                agent_id: worker.into(),
+                action: action.clone(),
+                decision: decision.clone(),
+                verification: Some(Verification {
+                    evidence_sha256: SHA.into(),
+                    kind: "tests".into(),
+                    of: d.seq,
+                    result: "pass".into(),
+                }),
+            })
+            .expect("outcome");
+        }
+    }
+    let d = Daemon::start(&dir, &[]);
+    let ask = |agent: &str| {
+        let b = json!({"agent": agent, "tool": "Edit", "target": "docs/a.md", "args_sha256": SHA});
+        post(d.port, "/v1/decide", &b.to_string()).1
+    };
+    let earned = ask(worker);
+    assert_eq!(
+        (earned["result"].as_str(), earned["level"].as_u64()),
+        (Some("allow"), Some(1)),
+        "Supervised, low risk"
+    );
+    let stranger = ask("agent:claude-code/new");
+    assert_eq!(
+        (stranger["result"].as_str(), stranger["level"].as_u64()),
+        (Some("escalate"), Some(0))
+    );
+    d.stop();
+    let log = std::fs::read_to_string(dir.join("receipts.jsonl")).expect("log");
+    let last_two: Vec<Value> = log
+        .lines()
+        .rev()
+        .take(2)
+        .map(|l| serde_json::from_str(l).expect("json"))
+        .collect();
+    assert_eq!(
+        last_two[1]["decision"]["by"], "score",
+        "decided from the record"
+    );
+}

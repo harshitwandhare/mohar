@@ -11,8 +11,8 @@ How strong that is depends on the host. This page labels each one honestly:
 - **Advisory**: the host's hooks fail open on errors or timeouts, so Mohar records and warns but can't
   guarantee a block.
 
-Status: the Claude Code adapter and the local daemon are built (Phase 2); until the trust engine ships,
-the daemon allows reads and sends everything else to a person. Every other row is designed, not built,
+Status: the Claude Code adapter, the local daemon and the trust engine are built: the daemon answers from
+each agent's verified record per capability. Every other row is designed, not built,
 and lands in Phase 6.
 
 ## Install the Claude Code plugin

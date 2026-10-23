@@ -12,6 +12,7 @@ use sha2::{Digest, Sha256};
 pub mod checkpoint;
 pub mod policy;
 pub mod store;
+pub mod trust;
 
 pub use ed25519_dalek::VerifyingKey;
 

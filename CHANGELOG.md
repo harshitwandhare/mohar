@@ -9,6 +9,15 @@ receipt format; each such change is called out.
 
 ### Added
 
+- The trust engine (`mohar_core::trust`): trust per agent per capability from verified outcomes weighted
+  by a 30-day half-life, promotion one level at a time on the 95% Wilson lower bound with minimum counts,
+  7 days at a level and 14 quiet days after a serious failure, never above the capability's ceiling.
+  Failures are classed S0 to S4: near misses and minor slips change no level, three minor slips in 14
+  days count as one meaningful failure, a meaningful failure drops one level, a serious one drops the
+  capability and those sharing its scope to Ask first, and an integrity failure suspends the agent until
+  a person reinstates it. Demotions start a remediation that blocks promotion until five consecutive
+  verified passes. An irreversible high-risk action goes to a person at every level. The daemon decides
+  from this ledger and rebuilds it from the signed log on start (#48).
 - A capability policy (`.mohar/policy.json`): named capabilities with a risk tier, a reversibility flag
   and a ceiling, and ordered rules mapping a host tool and a path or command glob onto them. The first
   match wins; anything unmatched or outside the project root is `unclassified` and treated as the
