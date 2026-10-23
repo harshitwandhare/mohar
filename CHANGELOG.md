@@ -9,6 +9,14 @@ receipt format; each such change is called out.
 
 ### Added
 
+- `mohar daemon`: a local service on a loopback address that answers `POST /v1/decide` and
+  `POST /v1/outcome`, signs every answer into the log, refuses malformed or oversized requests, answers 503
+  past a limit of requests in flight, and rebuilds decisions still waiting for an outcome after a crash (#43).
+- `mohar hook claude-code` and a Claude Code plugin in `integrations/claude-code`: every tool call asks the
+  daemon first and is allowed, sent to the person, or denied; the hook denies when the daemon is unreachable
+  and only talks to loopback addresses. Until the trust engine ships, reads run and everything else asks (#44).
+- Receipts can carry an optional `verification` object recording the outcome of an earlier decision.
+  Receipts without it are byte-for-byte unchanged.
 - Fuzz targets for receipt parsing and verification, checkpoint parsing, the log file readers, and a
   mutation check that any edited log which still parses fails verification. They run for 60 seconds on
   pull requests that touch `crates/` or `fuzz/`, and for 15 minutes each week (#58).

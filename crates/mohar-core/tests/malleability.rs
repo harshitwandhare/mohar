@@ -25,6 +25,7 @@ fn log_of(n: u64) -> (Log, SigningKey) {
                 level: 1,
                 by: "score".into(),
             },
+            verification: None,
         })
         .expect("append");
     }

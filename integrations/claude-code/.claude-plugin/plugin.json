@@ -1,0 +1,11 @@
+{
+  "name": "mohar",
+  "displayName": "Mohar",
+  "version": "0.1.0",
+  "description": "Every tool call asks the local Mohar daemon first: allowed, sent to you, or denied, with a signed receipt for each decision. Denies when the daemon isn't running.",
+  "author": { "name": "Harshit Wandhare" },
+  "homepage": "https://mohar-liard.vercel.app",
+  "repository": "https://github.com/harshitwandhare/mohar",
+  "license": "Apache-2.0",
+  "keywords": ["security", "audit", "permissions", "receipts"]
+}

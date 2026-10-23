@@ -44,6 +44,19 @@ pub struct Decision {
     pub by: String,
 }
 
+/// The checked outcome of an earlier decision, carried by a follow-up receipt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Verification {
+    /// SHA-256 of the evidence the verifier looked at (a test log, a diff, a review).
+    pub evidence_sha256: String,
+    /// The verifier: `tests`, `diff`, `replay` or `human`.
+    pub kind: String,
+    /// `seq` of the decision receipt this outcome belongs to.
+    pub of: u64,
+    /// `pass`, `fail` or `unknown`.
+    pub result: String,
+}
+
 /// The agent that acted.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Agent {
@@ -73,6 +86,10 @@ pub struct Receipt {
     /// Ed25519 signature over the canonical bytes without this field.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub sig: String,
+    /// Present only on a follow-up receipt that records an outcome. Absent fields leave the bytes of
+    /// every earlier receipt unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verification: Option<Verification>,
 }
 
 /// The fields a caller supplies; the log fills in the rest.
@@ -86,6 +103,8 @@ pub struct Entry {
     pub action: Action,
     /// What was decided.
     pub decision: Decision,
+    /// The outcome this receipt records, if it is a follow-up.
+    pub verification: Option<Verification>,
 }
 
 /// Errors from building or signing receipts.
@@ -193,7 +212,11 @@ fn signing_bytes(r: &Receipt) -> Result<Vec<u8>, Error> {
 const MAX_PLAIN_INT: u64 = 1 << 53;
 
 fn canonical_with(r: &Receipt, with_sig: bool) -> Result<Vec<u8>, Error> {
-    if r.seq > MAX_PLAIN_INT {
+    if r.seq > MAX_PLAIN_INT
+        || r.verification
+            .as_ref()
+            .is_some_and(|v| v.of > MAX_PLAIN_INT)
+    {
         let mut copy = r.clone();
         if !with_sig {
             copy.sig.clear();
@@ -233,7 +256,20 @@ fn fast_canonical(r: &Receipt, with_sig: bool) -> Vec<u8> {
         s(&mut o, r#","sig":"#, &r.sig);
     }
     s(&mut o, r#","ts":"#, &r.ts);
-    let _ = write!(o, r#","v":{}}}"#, r.v);
+    let _ = write!(o, r#","v":{}"#, r.v);
+    // "verification" sorts after "v", so it closes the object when present.
+    if let Some(v) = &r.verification {
+        s(
+            &mut o,
+            r#","verification":{"evidence_sha256":"#,
+            &v.evidence_sha256,
+        );
+        s(&mut o, r#","kind":"#, &v.kind);
+        let _ = write!(o, r#","of":{}"#, v.of);
+        s(&mut o, r#","result":"#, &v.result);
+        o.push(b'}');
+    }
+    o.push(b'}');
     o
 }
 
@@ -295,6 +331,7 @@ pub(crate) fn seal(
         action: entry.action,
         decision: entry.decision,
         sig: String::new(),
+        verification: entry.verification,
     };
     let sig = key.0.sign(&signing_bytes(&r)?);
     r.sig = format!("{SIG_PREFIX}{}", hex(&sig.to_bytes()));
@@ -468,10 +505,17 @@ pub fn verify(receipts: &[Receipt], key: &VerifyingKey) -> Result<(), ChainBreak
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 mod tests {
-    use super::{Action, Agent, Decision, Receipt, canonical, hex, signing_bytes, unhex};
+    use super::{
+        Action, Agent, Decision, Receipt, Verification, canonical, hex, signing_bytes, unhex,
+    };
     use proptest::prelude::*;
 
-    fn receipt(s: [String; 8], (v, seq, level): (u32, u64, u8), sig: String) -> Receipt {
+    fn receipt(
+        s: [String; 8],
+        (v, seq, level): (u32, u64, u8),
+        sig: String,
+        verification: Option<Verification>,
+    ) -> Receipt {
         let [prev, ts, id, key, capability, tool, target, by] = s;
         Receipt {
             v,
@@ -491,6 +535,7 @@ mod tests {
                 by,
             },
             sig,
+            verification,
         }
     }
 
@@ -502,8 +547,10 @@ mod tests {
             s in proptest::array::uniform8(any::<String>()),
             n in (any::<u32>(), any::<u64>(), any::<u8>()),
             sig in prop_oneof![Just(String::new()), any::<String>()],
+            verification in proptest::option::of((any::<String>(), any::<String>(), any::<u64>(), any::<String>())
+                .prop_map(|(evidence_sha256, kind, of, result)| Verification { evidence_sha256, kind, of, result })),
         ) {
-            let r = receipt(s, n, sig);
+            let r = receipt(s, n, sig, verification);
             let general = serde_jcs::to_vec(&r).expect("jcs");
             prop_assert_eq!(canonical(&r).expect("fast"), general);
             let mut unsigned = r.clone();

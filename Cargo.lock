@@ -394,6 +394,10 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "mohar-core",
+ "serde",
+ "serde_jcs",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]
