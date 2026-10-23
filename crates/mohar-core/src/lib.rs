@@ -172,13 +172,15 @@ impl SigningKey {
     }
 }
 
+/// Lowercase hex digits, for `hex` and for control-character escapes in canonical JSON.
+const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
+
 /// Lowercase hex, without a dependency for twenty lines of work.
 fn hex(bytes: &[u8]) -> String {
-    const DIGITS: &[u8; 16] = b"0123456789abcdef";
     let mut out = String::with_capacity(bytes.len() * 2);
     for b in bytes {
-        out.push(DIGITS[(b >> 4) as usize] as char);
-        out.push(DIGITS[(b & 0x0f) as usize] as char);
+        out.push(HEX_DIGITS[(b >> 4) as usize] as char);
+        out.push(HEX_DIGITS[(b & 0x0f) as usize] as char);
     }
     out
 }
@@ -291,8 +293,8 @@ fn json_string(o: &mut Vec<u8>, s: &str) {
             0..=0x1f => {
                 o.extend_from_slice(&bytes[start..i]);
                 o.extend_from_slice(br"\u00");
-                o.push(b"0123456789abcdef"[(b >> 4) as usize]);
-                o.push(b"0123456789abcdef"[(b & 0xf) as usize]);
+                o.push(HEX_DIGITS[(b >> 4) as usize]);
+                o.push(HEX_DIGITS[(b & 0xf) as usize]);
                 start = i + 1;
                 continue;
             }
