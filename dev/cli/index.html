@@ -457,10 +457,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mohar-checkpoint" class="md-nav__link">
+  <a href="#mohar-checkpoint-publish-file" class="md-nav__link">
     <span class="md-ellipsis">
       
-        mohar checkpoint
+        mohar checkpoint [--publish &lt;file&gt;]
       
     </span>
   </a>
@@ -479,10 +479,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mohar-verify-public-key-file" class="md-nav__link">
+  <a href="#mohar-verify-public-key-file-checkpoints-file" class="md-nav__link">
     <span class="md-ellipsis">
       
-        mohar verify [--public-key &lt;file&gt;]
+        mohar verify [--public-key &lt;file&gt;] [--checkpoints &lt;file&gt;]...
       
     </span>
   </a>
@@ -1159,10 +1159,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mohar-checkpoint" class="md-nav__link">
+  <a href="#mohar-checkpoint-publish-file" class="md-nav__link">
     <span class="md-ellipsis">
       
-        mohar checkpoint
+        mohar checkpoint [--publish &lt;file&gt;]
       
     </span>
   </a>
@@ -1181,10 +1181,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mohar-verify-public-key-file" class="md-nav__link">
+  <a href="#mohar-verify-public-key-file-checkpoints-file" class="md-nav__link">
     <span class="md-ellipsis">
       
-        mohar verify [--public-key &lt;file&gt;]
+        mohar verify [--public-key &lt;file&gt;] [--checkpoints &lt;file&gt;]...
       
     </span>
   </a>
@@ -1333,15 +1333,22 @@ the command returns.</p>
 </table>
 <p>Opening the log verifies the whole chain and its checkpoints first; a log that doesn't verify is
 refused rather than extended. Only one process may write to a log at a time.</p>
-<h2 id="mohar-checkpoint"><code>mohar checkpoint</code><a class="headerlink" href="#mohar-checkpoint" title="Permanent link">&para;</a></h2>
+<h2 id="mohar-checkpoint-publish-file"><code>mohar checkpoint [--publish &lt;file&gt;]</code><a class="headerlink" href="#mohar-checkpoint-publish-file" title="Permanent link">&para;</a></h2>
 <p>Signs a checkpoint over the log as it stands (how many receipts, and the hash of the last one). A
 checkpoint is also written automatically every 1,000 receipts.</p>
+<p>A checkpoint kept only beside the log can be deleted along with the receipts it covers. <code>--publish</code>
+also appends the new checkpoint to <code>&lt;file&gt;</code>, which must live outside the log directory (the command
+refuses otherwise, and refuses URLs for now). Put that file somewhere the log's operator can't
+rewrite: another machine, an append-only share, or a repository someone else controls.</p>
 <h2 id="mohar-log-last-n"><code>mohar log [--last N]</code><a class="headerlink" href="#mohar-log-last-n" title="Permanent link">&para;</a></h2>
 <p>Prints receipts, oldest first, one per line. Doesn't need the signing key or the writer lock.</p>
-<h2 id="mohar-verify-public-key-file"><code>mohar verify [--public-key &lt;file&gt;]</code><a class="headerlink" href="#mohar-verify-public-key-file" title="Permanent link">&para;</a></h2>
+<h2 id="mohar-verify-public-key-file-checkpoints-file"><code>mohar verify [--public-key &lt;file&gt;] [--checkpoints &lt;file&gt;]...</code><a class="headerlink" href="#mohar-verify-public-key-file-checkpoints-file" title="Permanent link">&para;</a></h2>
 <p>Checks every receipt and every checkpoint against the public key (<code>public.key</code> in the log directory
 by default). Prints <code>ok: ...</code> or the first break with its index and reason. Doesn't need the signing
 key, so anyone can verify a log they were given.</p>
+<p><code>--checkpoints</code> adds published checkpoints to the check and can be given more than once. A log that
+lost receipts and its own checkpoints together still fails against them. A file named here that can't
+be read is an error.</p>
 <h2 id="mohar-daemon-addr-hostport-max-inflight-n"><code>mohar daemon [--addr &lt;host:port&gt;] [--max-inflight &lt;n&gt;]</code><a class="headerlink" href="#mohar-daemon-addr-hostport-max-inflight-n" title="Permanent link">&para;</a></h2>
 <p>Serves decisions and outcomes to agent hosts on this machine, from the log in <code>--dir</code>, which it holds
 open for writing while it runs. It listens on <code>127.0.0.1:7878</code> by default and refuses any address that

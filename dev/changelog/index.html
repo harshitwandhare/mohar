@@ -1253,6 +1253,11 @@ receipt format; each such change is called out.</p>
 <h2 id="unreleased"><a href="https://github.com/harshitwandhare/mohar/compare/v0.1.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
+<li>Checkpoints published outside the log directory. <code>mohar checkpoint --publish &lt;file&gt;</code> appends the new
+  checkpoint to a file that must live outside the log directory, and <code>mohar verify --checkpoints &lt;file&gt;</code>
+  (repeatable) checks the log against those as well, so a log cut short together with its own
+  checkpoints still fails. A named file that can't be read fails verification. Remote targets come
+  later (#42).</li>
 <li>The diff verifier: in a git repository, the files a task changed (since its first decision, renames under
   both names, the log directory excluded) must fall under capabilities the agent was given in that task;
   any that don't fail the task with the list returned as <code>out_of_scope</code>. It runs before the tests, and each
