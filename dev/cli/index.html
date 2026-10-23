@@ -1352,8 +1352,16 @@ waiting for an outcome.</p>
 POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256}  -&gt;  {receipt_seq}
 POST /v1/verify   {agent, task}  -&gt;  {verified, result}
 </code></pre></div>
-<p><code>/v1/verify</code> verifies a finished task: it runs the project's test command (below) once and records the
-result as a <code>tests</code> outcome for every decision in the task that ran and changes something. <code>decide</code>
+<p><code>/v1/verify</code> verifies a finished task and records one outcome for every decision in the task that ran and
+changes something, from the first verifier that fails:</p>
+<ol>
+<li><code>diff</code>: in a git repository, the files that changed since the task began (renames under both names,
+   the log directory excluded) must all fall under capabilities the agent was given in the task. Any that
+   don't are returned as <code>out_of_scope</code> and the task fails. Outside a git repository this check is
+   skipped.</li>
+<li><code>tests</code>: the project's test command (below), run once.</li>
+</ol>
+<p>One outcome per decision, so a single action never counts twice. <code>decide</code>
 requests name their task with <code>task</code> (the Claude Code hook sends the session id). If the agent changed one
 of the project's test files in the task, the result is <code>fail</code> whatever the tests say. No command, a
 command that can't start, or one that runs past its timeout gives <code>unknown</code>, which never counts.</p>
