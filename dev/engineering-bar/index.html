@@ -1228,7 +1228,10 @@ targets for the first production-ready release and are measured, not assumed.</p
   rather than queueing without bound.</li>
 </ul>
 <h2 id="performance">Performance<a class="headerlink" href="#performance" title="Permanent link">&para;</a></h2>
-<p>Targets on a single core of a mid-range laptop. Append, verify and checkpoint signing are measured by
+<p>Targets on a single core of a mid-range laptop, except verification, which spreads over every core:
+one receipt (parsing, hashing and the Ed25519 check) costs about 40 µs of CPU, so a million take
+about 38 s on one core and under 10 s on eight threads. CI verifies a million receipts on every pull
+request with the budget scaled to the runner's threads. Append, verify and checkpoint signing are measured by
 criterion benchmarks (<code>crates/mohar-core/benches</code>), and CI fails a pull request that makes one more
 than 20% slower than main, judged by the lower end of the confidence interval and confirmed by a
 second run. Criterion reports means; the p99 targets still need a latency histogram (the daemon
@@ -1251,7 +1254,7 @@ metrics work).</p>
 </tr>
 <tr>
 <td>Verify a 1,000,000-receipt chain</td>
-<td>under 10 s, constant memory</td>
+<td>under 10 s with 8 hardware threads, constant memory</td>
 </tr>
 <tr>
 <td>Daemon memory at idle</td>
