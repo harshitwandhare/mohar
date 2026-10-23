@@ -849,3 +849,168 @@ fn reads_are_never_verified_because_they_change_nothing() {
     assert_eq!(a["result"], "allow", "a read runs");
     assert_eq!(verify_task(d.port, "t1")["verified"], 0);
 }
+
+/// A git repository with one commit and a Mohar log in `.mohar`, whose policy gives docs, config and
+/// code their own capabilities and runs a passing test command. Returns (project, log directory).
+fn git_project(name: &str) -> (PathBuf, PathBuf) {
+    let proj = std::env::temp_dir().join(format!("mohar-git-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&proj);
+    std::fs::create_dir_all(proj.join("docs")).expect("mkdir");
+    std::fs::write(proj.join("docs/old.md"), "old\n").expect("write");
+    let git = |args: &[&str]| {
+        let ok = Command::new("git")
+            .arg("-C")
+            .arg(&proj)
+            .args(["-c", "user.name=t", "-c", "user.email=t@example.com"])
+            .args(args)
+            .output()
+            .expect("git");
+        assert!(
+            ok.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&ok.stderr)
+        );
+    };
+    git(&["init", "-q"]);
+    git(&["add", "-A"]);
+    git(&["commit", "-q", "-m", "start"]);
+    let log = proj.join(".mohar");
+    assert!(
+        Command::new(BIN)
+            .arg("--dir")
+            .arg(&log)
+            .arg("init")
+            .status()
+            .expect("init")
+            .success()
+    );
+    let policy = json!({"version": 1,
+        "capabilities": {
+            "fs.edit.docs":   {"risk": "low",    "reversible": true, "ceiling": 2},
+            "fs.edit.config": {"risk": "high",   "reversible": true, "ceiling": 1},
+            "fs.edit.code":   {"risk": "medium", "reversible": true, "ceiling": 2}},
+        "rules": [
+            {"tools": ["Edit", "Write"], "paths": ["docs/**"], "capability": "fs.edit.docs"},
+            {"tools": ["Edit", "Write"], "paths": [".github/**"], "capability": "fs.edit.config"},
+            {"tools": ["Edit", "Write"], "paths": ["src/**", ".mohar/**"], "capability": "fs.edit.code"}],
+        "verify": {"tests": {"command": [BIN, "--version"]}}});
+    std::fs::write(log.join("policy.json"), policy.to_string()).expect("policy");
+    (proj, log)
+}
+
+#[test]
+fn the_diff_verifier_passes_changes_inside_the_task_s_capabilities() {
+    let (proj, log) = git_project("in-scope");
+    let d = Daemon::start(&log, &[]);
+    edit_that_ran(d.port, &proj, "docs/a.md", "t1");
+    std::fs::write(proj.join("docs/a.md"), "new\n").expect("write");
+    let v = verify_task(d.port, "t1");
+    assert_eq!(
+        (v["result"].as_str(), v["verifier"].as_str()),
+        (Some("pass"), Some("tests"))
+    );
+    assert_eq!(v["out_of_scope"], json!([]));
+}
+
+#[test]
+fn the_diff_verifier_fails_a_change_outside_the_task_s_capabilities() {
+    let (proj, log) = git_project("out-of-scope");
+    let d = Daemon::start(&log, &[]);
+    edit_that_ran(d.port, &proj, "docs/a.md", "t1");
+    std::fs::write(proj.join("docs/a.md"), "new\n").expect("write");
+    // Changed some other way, say through a shell command, with only docs rights.
+    std::fs::create_dir_all(proj.join(".github")).expect("mkdir");
+    std::fs::write(proj.join(".github/ci.yml"), "on: push\n").expect("write");
+    let v = verify_task(d.port, "t1");
+    assert_eq!(
+        (v["result"].as_str(), v["verifier"].as_str()),
+        (Some("fail"), Some("diff"))
+    );
+    assert_eq!(v["out_of_scope"], json!([".github/ci.yml"]));
+    d.stop();
+    let r: Value = serde_json::from_str(
+        std::fs::read_to_string(log.join("receipts.jsonl"))
+            .expect("log")
+            .lines()
+            .last()
+            .expect("line"),
+    )
+    .expect("json");
+    assert_eq!(
+        (
+            r["verification"]["kind"].as_str(),
+            r["verification"]["result"].as_str()
+        ),
+        (Some("diff"), Some("fail"))
+    );
+}
+
+#[test]
+fn the_diff_verifier_follows_a_rename_out_of_scope() {
+    let (proj, log) = git_project("rename");
+    let d = Daemon::start(&log, &[]);
+    edit_that_ran(d.port, &proj, "docs/old.md", "t1");
+    std::fs::create_dir_all(proj.join(".github")).expect("mkdir");
+    let mv = Command::new("git")
+        .arg("-C")
+        .arg(&proj)
+        .args(["mv", "docs/old.md", ".github/new.md"])
+        .status()
+        .expect("git mv");
+    assert!(mv.success());
+    let v = verify_task(d.port, "t1");
+    assert_eq!(v["result"], "fail");
+    assert_eq!(
+        v["out_of_scope"],
+        json!([".github/new.md"]),
+        "the old name was in scope, the new one isn't"
+    );
+}
+
+#[test]
+fn the_diff_verifier_does_not_blame_a_task_for_what_changed_before_it() {
+    let (proj, log) = git_project("baseline");
+    std::fs::create_dir_all(proj.join(".github")).expect("mkdir");
+    std::fs::write(proj.join(".github/earlier.yml"), "x\n").expect("write");
+    let d = Daemon::start(&log, &[]);
+    edit_that_ran(d.port, &proj, "docs/a.md", "t1");
+    std::fs::write(proj.join("docs/a.md"), "new\n").expect("write");
+    let v = verify_task(d.port, "t1");
+    assert_eq!(v["result"], "pass", "{v}");
+}
+
+#[test]
+fn the_daemon_s_own_log_is_never_counted_as_a_change_the_task_made() {
+    let (proj, log) = git_project("own-log");
+    let d = Daemon::start(&log, &[]);
+    edit_that_ran(d.port, &proj, "docs/a.md", "t1");
+    std::fs::write(proj.join("docs/a.md"), "new\n").expect("write");
+    // A file the daemon's directory gains mid-task, as a new checkpoint file would be.
+    std::fs::write(log.join("checkpoints.extra"), "x\n").expect("write");
+    let v = verify_task(d.port, "t1");
+    assert_eq!(
+        (v["result"].as_str(), &v["out_of_scope"]),
+        (Some("pass"), &json!([])),
+        "{v}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn the_own_log_is_recognised_when_the_project_is_reached_through_a_symlink() {
+    // As on macOS, where the temp directory is reached through /var, a link to /private/var.
+    let (proj, _log) = git_project("own-log-link");
+    let alias = proj.with_extension("alias");
+    let _ = std::fs::remove_file(&alias);
+    std::os::unix::fs::symlink(&proj, &alias).expect("symlink");
+    let d = Daemon::start(&alias.join(".mohar"), &[]);
+    edit_that_ran(d.port, &alias, "docs/a.md", "t1");
+    std::fs::write(proj.join("docs/a.md"), "new\n").expect("write");
+    std::fs::write(proj.join(".mohar/checkpoints.extra"), "x\n").expect("write");
+    let v = verify_task(d.port, "t1");
+    assert_eq!(
+        (v["result"].as_str(), &v["out_of_scope"]),
+        (Some("pass"), &json!([])),
+        "{v}"
+    );
+}

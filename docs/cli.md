@@ -62,8 +62,16 @@ POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256}  ->
 POST /v1/verify   {agent, task}  ->  {verified, result}
 ```
 
-`/v1/verify` verifies a finished task: it runs the project's test command (below) once and records the
-result as a `tests` outcome for every decision in the task that ran and changes something. `decide`
+`/v1/verify` verifies a finished task and records one outcome for every decision in the task that ran and
+changes something, from the first verifier that fails:
+
+1. `diff`: in a git repository, the files that changed since the task began (renames under both names,
+   the log directory excluded) must all fall under capabilities the agent was given in the task. Any that
+   don't are returned as `out_of_scope` and the task fails. Outside a git repository this check is
+   skipped.
+2. `tests`: the project's test command (below), run once.
+
+One outcome per decision, so a single action never counts twice. `decide`
 requests name their task with `task` (the Claude Code hook sends the session id). If the agent changed one
 of the project's test files in the task, the result is `fail` whatever the tests say. No command, a
 command that can't start, or one that runs past its timeout gives `unknown`, which never counts.

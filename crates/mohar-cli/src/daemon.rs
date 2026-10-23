@@ -8,7 +8,7 @@
 use std::collections::{HashMap, HashSet};
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -50,6 +50,9 @@ struct Pending {
 struct State {
     log: Mutex<Inner>,
     policy: Policy,
+    /// The log directory, absolute. The daemon writes there during every task, so it is never part of
+    /// what a task changed.
+    log_dir: PathBuf,
     inflight: AtomicUsize,
     max_inflight: usize,
 }
@@ -64,6 +67,9 @@ struct Inner {
     tasks: HashMap<(String, String), Vec<u64>>,
     /// Decisions the host reported as having run (allowed, or approved by a person).
     ran: HashSet<u64>,
+    /// Files git already showed as changed when each task began, so earlier work isn't blamed on it.
+    /// `None` when the root isn't a git repository.
+    baselines: HashMap<(String, String), Option<HashSet<String>>>,
     /// Trust per agent and capability, rebuilt from the log on start.
     ledger: Ledger,
 }
@@ -102,13 +108,18 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
         });
     }
 
+    // Resolved the way the policy resolves its root (following symlinks, and in the long-path form on
+    // Windows), so the two can be compared.
+    let log_dir = std::fs::canonicalize(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let state = Arc::new(State {
+        log_dir,
         log: Mutex::new(Inner {
             log,
             pending,
             ledger,
             tasks: HashMap::new(),
             ran: HashSet::new(),
+            baselines: HashMap::new(),
             calls: HashMap::new(),
         }),
         inflight: AtomicUsize::new(0),
@@ -525,11 +536,12 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         inner.calls.insert(call, receipt.seq);
     }
     if let Some(task) = req.task {
-        inner
-            .tasks
-            .entry((req.agent.clone(), task))
-            .or_default()
-            .push(receipt.seq);
+        let key = (req.agent.clone(), task);
+        if !inner.baselines.contains_key(&key) {
+            let before = changed_files(state.policy.root());
+            inner.baselines.insert(key.clone(), before);
+        }
+        inner.tasks.entry(key).or_default().push(receipt.seq);
     }
     if decision.result == "allow" {
         inner.ran.insert(receipt.seq);
@@ -654,14 +666,13 @@ fn verify_task(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         return bad("agent and task must be non-empty and at most 512 bytes");
     }
     // Take the task's decisions, then let go of the lock while the tests run.
-    let (targets, seqs) = {
+    let (targets, seqs, granted, baseline) = {
         let Ok(mut inner) = state.log.lock() else {
             return (500, json!({"error": "log lock poisoned"}));
         };
-        let all = inner
-            .tasks
-            .remove(&(req.agent.clone(), req.task.clone()))
-            .unwrap_or_default();
+        let key = (req.agent.clone(), req.task.clone());
+        let all = inner.tasks.remove(&key).unwrap_or_default();
+        let baseline = inner.baselines.remove(&key).flatten();
         let seqs: Vec<u64> = all
             .into_iter()
             .filter(|seq| inner.ran.contains(seq))
@@ -677,7 +688,13 @@ fn verify_task(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
             .filter_map(|seq| inner.pending.get(seq))
             .map(|p| (p.action.tool.clone(), p.action.target.clone()))
             .collect();
-        (targets, seqs)
+        // The capabilities the agent was given in this task: those of the actions that ran.
+        let granted: HashSet<String> = seqs
+            .iter()
+            .filter_map(|seq| inner.pending.get(seq))
+            .map(|p| p.action.capability.clone())
+            .collect();
+        (targets, seqs, granted, baseline)
     };
     if seqs.is_empty() {
         return (200, json!({ "verified": 0, "result": null }));
@@ -689,15 +706,33 @@ fn verify_task(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         })
         .map(|(_, target)| target.as_str())
         .collect();
-    let (result, evidence) = if !changed_tests.is_empty() {
+    // One outcome per decision, from the first verifier that fails: scope, then the tests' own files,
+    // then the tests. Recording each verifier separately would count one action's success twice.
+    let out_of_scope =
+        diff_out_of_scope(&state.policy, &state.log_dir, baseline.as_ref(), &granted);
+    let (kind, result, evidence) = if !out_of_scope.is_empty() {
         (
+            "diff",
+            "fail",
+            sha256_hex(
+                format!(
+                    "changed outside the task's capabilities: {}",
+                    out_of_scope.join(", ")
+                )
+                .as_bytes(),
+            ),
+        )
+    } else if !changed_tests.is_empty() {
+        (
+            "tests",
             "fail",
             sha256_hex(
                 format!("the agent changed test files: {}", changed_tests.join(", ")).as_bytes(),
             ),
         )
     } else {
-        run_tests(&state.policy)
+        let (result, evidence) = run_tests(&state.policy);
+        ("tests", result, evidence)
     };
     let Ok(mut inner) = state.log.lock() else {
         return (500, json!({"error": "log lock poisoned"}));
@@ -709,7 +744,7 @@ fn verify_task(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
                 &mut inner,
                 &state.policy,
                 seq,
-                "tests",
+                kind,
                 result,
                 evidence.clone(),
             ) {
@@ -718,7 +753,66 @@ fn verify_task(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
             recorded += 1;
         }
     }
-    (200, json!({ "verified": recorded, "result": result }))
+    (
+        200,
+        json!({ "verified": recorded, "result": result, "verifier": kind, "out_of_scope": out_of_scope }),
+    )
+}
+
+/// Files git shows as changed under `root`, relative to it, renames counted under both names. `None`
+/// when git can't say (not a repository, git missing).
+fn changed_files(root: &Path) -> Option<HashSet<String>> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["status", "--porcelain=v1", "-z", "--untracked-files=all"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let mut files = HashSet::new();
+    let mut entries = out.stdout.split(|b| *b == 0).filter(|e| !e.is_empty());
+    while let Some(entry) = entries.next() {
+        let text = String::from_utf8_lossy(entry);
+        let (status, path) = (text.get(..2).unwrap_or(""), text.get(3..).unwrap_or(""));
+        files.insert(path.to_string());
+        // A rename or copy is followed by its original name.
+        if (status.starts_with('R') || status.starts_with('C'))
+            && let Some(from) = entries.next()
+        {
+            files.insert(String::from_utf8_lossy(from).into_owned());
+        }
+    }
+    Some(files)
+}
+
+/// The files changed since the task began whose capability the agent wasn't given in it, sorted.
+/// Empty when git can't say, so the tests still decide.
+fn diff_out_of_scope(
+    policy: &Policy,
+    log_dir: &Path,
+    baseline: Option<&HashSet<String>>,
+    granted: &HashSet<String>,
+) -> Vec<String> {
+    let (Some(before), Some(now)) = (baseline, changed_files(policy.root())) else {
+        return Vec::new();
+    };
+    let mut out: Vec<String> = now
+        .difference(before)
+        .filter(|rel| !policy.root().join(rel).starts_with(log_dir))
+        .filter(|rel| {
+            let cap = policy
+                .classify("Edit", &policy.root().join(rel).to_string_lossy())
+                .capability;
+            !granted.contains(&cap)
+        })
+        .cloned()
+        .collect();
+    out.sort();
+    out
 }
 
 /// Host tools that change files.
