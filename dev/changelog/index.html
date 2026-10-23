@@ -1253,6 +1253,12 @@ receipt format; each such change is called out.</p>
 <h2 id="unreleased"><a href="https://github.com/harshitwandhare/mohar/compare/v0.1.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
+<li>The tests verifier: when a Claude Code task stops, the daemon runs the project's test command once
+  (<code>verify.tests</code> in the policy, run with no shell from the root) and records a <code>tests</code> outcome for every
+  decision in the task that ran and changes something: <code>pass</code> on exit 0, <code>fail</code> otherwise, <code>unknown</code> with
+  no command, a command that can't start, or a timeout. An agent that changed a test file in the task
+  fails, whatever the tests say. <code>POST /v1/verify</code> and the hook's <code>Stop</code>/<code>SubagentStop</code> handling drive it,
+  and a <code>host</code> report no longer closes a decision (#45).</li>
 <li>Hard gates in the policy, checked before any trust score: writes outside the project root, denied
   capabilities (the built-in policy denies pushing the default branch), hosts outside an allowlist in a
   fetched URL or a command line, and protected paths (the built-in policy protects <code>.mohar/</code>). A gate that

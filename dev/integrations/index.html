@@ -1276,7 +1276,8 @@ and lands in Phase 6.</p>
    are denied.</li>
 <li>Load the plugin from <code>integrations/claude-code</code> in this repository, for example with
    <code>claude --plugin-dir path/to/mohar/integrations/claude-code</code>. Its <code>hooks/hooks.json</code> runs
-   <code>mohar hook claude-code</code> on every <code>PreToolUse</code> and <code>PostToolUse</code>, with <code>onFailure: "block"</code> (Claude Code
+   <code>mohar hook claude-code</code> on every <code>PreToolUse</code> and <code>PostToolUse</code>, and on <code>Stop</code> and <code>SubagentStop</code> to
+   verify the finished task, with <code>onFailure: "block"</code> (Claude Code
    2.1.295 or later) so a hook that can't run blocks the call instead of letting it through.</li>
 <li>Without the plugin system, put the same <code>hooks</code> object in <code>~/.claude/settings.json</code> (for you) or
    <code>.claude/settings.json</code> (for a project).</li>

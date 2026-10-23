@@ -513,6 +513,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verification
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#gates" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1204,6 +1215,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verification
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#gates" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1328,7 +1350,13 @@ waiting for an outcome.</p>
 <p>Two endpoints, JSON in and out:</p>
 <div class="highlight"><pre><span></span><code>POST /v1/decide   {agent, tool, target, args_sha256, call_id?}  -&gt;  {result, level, receipt_seq}
 POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256}  -&gt;  {receipt_seq}
+POST /v1/verify   {agent, task}  -&gt;  {verified, result}
 </code></pre></div>
+<p><code>/v1/verify</code> verifies a finished task: it runs the project's test command (below) once and records the
+result as a <code>tests</code> outcome for every decision in the task that ran and changes something. <code>decide</code>
+requests name their task with <code>task</code> (the Claude Code hook sends the session id). If the agent changed one
+of the project's test files in the task, the result is <code>fail</code> whatever the tests say. No command, a
+command that can't start, or one that runs past its timeout gives <code>unknown</code>, which never counts.</p>
 <p><code>result</code> is <code>allow</code>, <code>escalate</code> or <code>deny</code>. <code>verifier</code> is <code>tests</code>, <code>diff</code>, <code>replay</code>, <code>human</code> or <code>host</code>;
 <code>host</code> is the host's own report that a tool ran and never counts toward trust. Unknown fields, bad hashes
 and oversized bodies are refused with a 4xx and recorded nowhere. Past <code>--max-inflight</code> requests at once
@@ -1373,6 +1401,17 @@ list of rules; the first rule that matches an action's tool and target wins:</p>
   irreversible, ceiling 0.</li>
 <li>Unknown fields, unknown capability names in rules and the reserved name <code>unclassified</code> are refused.</li>
 </ul>
+<h3 id="verification">Verification<a class="headerlink" href="#verification" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="nt">"verify"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"tests"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"command"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"cargo"</span><span class="p">,</span><span class="w"> </span><span class="s2">"test"</span><span class="p">,</span><span class="w"> </span><span class="s2">"--locked"</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">"timeout_secs"</span><span class="p">:</span><span class="w"> </span><span class="mi">600</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"test_paths"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"tests/**"</span><span class="p">,</span><span class="w"> </span><span class="s2">"**/*_test.*"</span><span class="p">]</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>command</code> is run directly from the root, with no shell, so nothing in it is interpreted. The evidence
+recorded is the SHA-256 of the exit status and everything the command printed.</p>
 <h3 id="gates">Gates<a class="headerlink" href="#gates" title="Permanent link">&para;</a></h3>
 <p>Gates are checked before any trust score, and no record outweighs them. A gate stop is a <code>deny</code> receipt
 with <code>by: gate</code>, and the answer names the gate and the reason, which the Claude Code hook shows the
@@ -1401,7 +1440,9 @@ given one by <code>receipt_seq</code>; <code>call_id</code>s live only for the l
 the daemon, and prints Claude Code's <code>permissionDecision</code>: <code>allow</code>, <code>ask</code> (for <code>escalate</code>) or <code>deny</code>. It
 denies when the daemon can't be reached, answers with an error, or the payload can't be read, and it only
 ever talks to a loopback address. <code>PostToolUse</code> is recorded as a <code>host</code> outcome matched by <code>tool_use_id</code>.
-Subagents are identified as <code>agent:claude-code/&lt;agent_type&gt;</code>, the main agent as <code>agent:claude-code/main</code>.</p>
+Subagents are identified as <code>agent:claude-code/&lt;agent_type&gt;</code>, the main agent as <code>agent:claude-code/main</code>.
+On <code>Stop</code> and <code>SubagentStop</code> it asks the daemon to verify the session's task, and reports the result on
+stderr.</p>
 
 
 
