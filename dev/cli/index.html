@@ -1312,8 +1312,16 @@ POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256}  -&
 and oversized bodies are refused with a 4xx and recorded nowhere. Past <code>--max-inflight</code> requests at once
 (default 64) the daemon answers 503 rather than queueing.</p>
 <p>The daemon decides which capability an action falls under from its policy (below); a request can't name
-one. Until the trust engine ships, capabilities with risk <code>none</code> (reads) are allowed and everything else
-is escalated to a person. Every answer is a signed receipt either way.</p>
+one. The trust engine then answers from the agent's verified record on that capability (design, section
+4): actions with risk <code>none</code> run; at Ask first everything else goes to a person; at Supervised low-risk
+reversible actions run; at Trusted actions run inside the capability's gates; an irreversible high-risk
+action always goes to a person; a suspended agent is denied. Every answer is a signed receipt.</p>
+<p>Trust is rebuilt from the log each time the daemon starts, by replaying every verified outcome; it is
+stored nowhere else. An outcome counts only from a real verifier (<code>tests</code>, <code>diff</code>, <code>replay</code>, <code>human</code>)
+with a <code>pass</code> or <code>fail</code> result; a <code>host</code> report or an <code>unknown</code> result never does. A failure's severity
+comes from its capability: low-risk reversible failures are minor, medium-risk ones meaningful, and
+high-risk or irreversible ones serious. Until remediation plans can name what a pass must exercise
+(#87), every verified pass counts toward ending remediation.</p>
 <h3 id="the-policy-file">The policy file<a class="headerlink" href="#the-policy-file" title="Permanent link">&para;</a></h3>
 <p>The daemon reads <code>&lt;dir&gt;/policy.json</code> when it starts and refuses to start if the file is invalid. Without
 one it uses a built-in policy rooted at its working directory. A policy names capabilities and an ordered
