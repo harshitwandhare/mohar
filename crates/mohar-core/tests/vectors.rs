@@ -6,7 +6,8 @@
 use std::path::PathBuf;
 
 use mohar_core::{
-    Action, Decision, Entry, Log, SigningKey, canonical_bytes, public_key_string, receipt_hash,
+    Action, Decision, Entry, Log, SigningKey, Verification, canonical_bytes, public_key_string,
+    receipt_hash,
 };
 use serde_json::{Value, json};
 
@@ -58,6 +59,25 @@ fn entries() -> Vec<Entry> {
             action: action("git.push.main", "Bash", "main", "9a01e5f3"),
             decision: decision("allow", 0, "human"),
             verification: None,
+        },
+        // The outcome of the first decision: its tests passed. It repeats that decision and names it.
+        Entry {
+            ts: "2026-11-03T14:25:02.870Z".into(),
+            agent_id: "agent:claude-code/host-4b1d/7c1e".into(),
+            action: action(
+                "fs.edit.tests",
+                "Edit",
+                "tests/test_receipts.rs",
+                "c41b77d0",
+            ),
+            decision: decision("allow", 1, "score"),
+            verification: Some(Verification {
+                evidence_sha256: "5d41402abc4b2a76b9719d911017c592ae8a2f3c1d2e6b0a4f7c9e1d3b5a7c90"
+                    .into(),
+                kind: "tests".into(),
+                of: 0,
+                result: "pass".into(),
+            }),
         },
     ]
 }

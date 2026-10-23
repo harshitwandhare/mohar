@@ -16,10 +16,19 @@ for i, item in enumerate(v["receipts"]):
     h = "sha256:" + hashlib.sha256(canon(r)).hexdigest()
     assert h == item["sha256"], f"hash differs at {i}"
     assert r["prev"] == prev, f"chain link broken at {i}"
+    if "verification" in r:
+        # An outcome names an earlier decision and repeats its agent, action and decision.
+        of = r["verification"]["of"]
+        assert of < i, f"outcome at {i} names a later receipt"
+        d = v["receipts"][of]["receipt"]
+        assert "verification" not in d, f"outcome at {i} names another outcome"
+        for k in ("agent", "action", "decision"):
+            assert r[k] == d[k], f"outcome at {i} does not repeat its decision's {k}"
     unsigned = {k: val for k, val in r.items() if k != "sig"}
     pub.verify(bytes.fromhex(r["sig"].split(":")[1]), canon(unsigned))
     prev = h
 c = v["checkpoint"]
 assert c["head"] == prev and c["count"] == len(v["receipts"])
 pub.verify(bytes.fromhex(c["sig"].split(":")[1]), canon({k: val for k, val in c.items() if k != "sig"}))
-print("independent check ok:", len(v["receipts"]), "receipts and the checkpoint")
+outcomes = sum("verification" in item["receipt"] for item in v["receipts"])
+print("independent check ok:", len(v["receipts"]), "receipts,", outcomes, "of them outcomes, and the checkpoint")
