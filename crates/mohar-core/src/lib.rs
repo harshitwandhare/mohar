@@ -406,6 +406,7 @@ fn check_signature(r: &Receipt, key: &VerifyingKey) -> bool {
     let Ok(bytes) = <[u8; 64]>::try_from(raw.as_slice()) else {
         return false;
     };
+    // Encoding a parsed receipt has no failing input today; if one appears, it doesn't verify.
     let Ok(msg) = signing_bytes(r) else {
         return false;
     };
@@ -508,9 +509,25 @@ pub fn verify(receipts: &[Receipt], key: &VerifyingKey) -> Result<(), ChainBreak
 #[allow(clippy::expect_used)]
 mod tests {
     use super::{
-        Action, Agent, Decision, Receipt, Verification, canonical, hex, signing_bytes, unhex,
+        Action, Agent, BreakKind, ChainVerifier, Decision, Prechecked, Receipt, SigningKey,
+        Verification, canonical, hex, signing_bytes, unhex,
     };
     use proptest::prelude::*;
+
+    /// Strings that reach every escaping branch: control characters, quotes and backslashes mixed
+    /// with any other character. proptest's own `String` strategy never makes control characters.
+    fn text() -> impl Strategy<Value = String> {
+        proptest::collection::vec(
+            prop_oneof![
+                any::<char>(),
+                (0u8..0x20).prop_map(char::from),
+                Just('"'),
+                Just('\\'),
+            ],
+            0..24,
+        )
+        .prop_map(String::from_iter)
+    }
 
     fn receipt(
         s: [String; 8],
@@ -546,10 +563,10 @@ mod tests {
         /// any strings (control characters, quotes, backslashes, non-ASCII) and any integers.
         #[test]
         fn fast_canonical_matches_serde_jcs(
-            s in proptest::array::uniform8(any::<String>()),
+            s in proptest::array::uniform8(text()),
             n in (any::<u32>(), any::<u64>(), any::<u8>()),
-            sig in prop_oneof![Just(String::new()), any::<String>()],
-            verification in proptest::option::of((any::<String>(), any::<String>(), any::<u64>(), any::<String>())
+            sig in prop_oneof![Just(String::new()), text()],
+            verification in proptest::option::of((text(), text(), any::<u64>(), text())
                 .prop_map(|(evidence_sha256, kind, of, result)| Verification { evidence_sha256, kind, of, result })),
         ) {
             let r = receipt(s, n, sig, verification);
@@ -562,6 +579,67 @@ mod tests {
                 serde_jcs::to_vec(&unsigned).expect("jcs")
             );
         }
+    }
+
+    /// Every ASCII byte that RFC 8785 escapes, plus the ones it leaves alone, in every string field.
+    #[test]
+    fn every_escaped_character_matches_serde_jcs_in_every_field() {
+        let all: String = (0u8..0x80).map(char::from).chain(['é', '😀']).collect();
+        for field in 0..8 {
+            let mut s: [String; 8] = Default::default();
+            s[field] = all.clone();
+            let r = receipt(
+                s,
+                (1, 0, 0),
+                all.clone(),
+                Some(Verification {
+                    evidence_sha256: all.clone(),
+                    kind: all.clone(),
+                    of: 0,
+                    result: all.clone(),
+                }),
+            );
+            assert_eq!(
+                canonical(&r).expect("fast"),
+                serde_jcs::to_vec(&r).expect("jcs")
+            );
+        }
+    }
+
+    #[test]
+    fn a_receipt_whose_hash_could_not_be_computed_breaks_the_chain() {
+        let key = SigningKey::generate().expect("key");
+        let vk = key.verifying_key();
+        let mut log = super::Log::new(key);
+        let r = log
+            .append(super::Entry {
+                ts: "2026-10-14T14:22:07.000Z".into(),
+                agent_id: "agent:test/1".into(),
+                action: Action {
+                    capability: "fs.edit.docs".into(),
+                    tool: "Edit".into(),
+                    target: "docs/a.md".into(),
+                    args_sha256: "c41b77d0".into(),
+                },
+                decision: Decision {
+                    result: "allow".into(),
+                    level: 1,
+                    by: "score".into(),
+                },
+                verification: None,
+            })
+            .expect("append")
+            .clone();
+        let mut chain = ChainVerifier::new(&vk);
+        let unhashable = Prechecked {
+            signature_ok: true,
+            hash: None,
+        };
+        let err = chain
+            .push_prechecked(&r, unhashable)
+            .expect_err("must fail");
+        assert_eq!(err.kind, BreakKind::Unreadable);
+        assert_eq!(chain.count(), 0);
     }
 
     #[test]

@@ -436,13 +436,12 @@ fn resolve(p: &Path) -> PathBuf {
             }
             return out;
         }
-        match existing.file_name() {
-            Some(name) => rest.push(name.to_os_string()),
-            None => return lexical,
-        }
-        if !existing.pop() {
+        // Nothing left to strip (an empty or root path that doesn't resolve): keep the lexical form.
+        let Some(name) = existing.file_name() else {
             return lexical;
-        }
+        };
+        rest.push(name.to_os_string());
+        existing.pop();
     }
 }
 
@@ -454,6 +453,7 @@ fn normalize(p: &Path) -> PathBuf {
             Component::ParentDir => {
                 out.pop();
             }
+            // Only a leading `.` survives `components()`; dropping it keeps the path as written.
             Component::CurDir => {}
             other => out.push(other.as_os_str()),
         }
@@ -558,7 +558,16 @@ pub const BUILTIN: &str = r#"{
 
 #[cfg(test)]
 mod tests {
-    use super::glob;
+    use super::{glob, resolve};
+
+    #[test]
+    fn a_relative_path_that_resolves_nowhere_keeps_its_lexical_form() {
+        let p = std::path::Path::new("no-such-dir-mohar/a/../b.md");
+        assert_eq!(
+            resolve(p),
+            std::path::PathBuf::from("no-such-dir-mohar/b.md")
+        );
+    }
 
     #[test]
     fn globs() {

@@ -336,3 +336,71 @@ fn a_serious_failure_from_trusted_drops_all_the_way_not_one_level() {
     l.record(A, "fs.edit.code", &fail(15 * DAY, Severity::S3));
     assert_eq!(l.level(A, "fs.edit.code", &code, 15 * DAY), ASK_FIRST);
 }
+
+#[test]
+fn a_high_risk_irreversible_capability_stops_at_supervised_whatever_its_ceiling() {
+    let drop_table = cap(Risk::High, false, 2);
+    let mut l = Ledger::new();
+    passes(&mut l, "db.migrate.prod", 500, 0);
+    for day in [7, 14, 30, 90] {
+        assert_eq!(
+            l.level(A, "db.migrate.prod", &drop_table, day * DAY),
+            SUPERVISED,
+            "day {day}"
+        );
+    }
+    // The same record on a reversible high-risk capability does reach Trusted.
+    let deploy = cap(Risk::High, true, 2);
+    passes(&mut l, "deploy.staging", 500, 0);
+    assert_eq!(l.level(A, "deploy.staging", &deploy, 7 * DAY), SUPERVISED);
+    assert_eq!(l.level(A, "deploy.staging", &deploy, 14 * DAY), TRUSTED);
+}
+
+#[test]
+fn a_suspended_agent_is_at_ask_first_everywhere() {
+    let docs = cap(Risk::Low, true, 2);
+    let mut l = Ledger::new();
+    passes(&mut l, "fs.edit.docs", 40, 0);
+    assert_eq!(l.level(A, "fs.edit.docs", &docs, 7 * DAY), SUPERVISED);
+    l.record(A, "fs.edit.other", &fail(7 * DAY, Severity::S4));
+    assert_eq!(l.level(A, "fs.edit.docs", &docs, 30 * DAY), ASK_FIRST);
+    l.reinstate(A);
+    assert_eq!(l.level(A, "fs.edit.docs", &docs, 30 * DAY), SUPERVISED);
+}
+
+#[test]
+fn a_trusted_agent_runs_medium_risk_actions_without_asking() {
+    let code = cap(Risk::Medium, true, 2);
+    let mut l = Ledger::new();
+    passes(&mut l, "fs.edit.code", 200, 0);
+    assert_eq!(
+        l.decide(A, "fs.edit.code", &code, 7 * DAY).result,
+        "escalate"
+    );
+    let v = l.decide(A, "fs.edit.code", &code, 14 * DAY);
+    assert_eq!((v.result, v.level), ("allow", TRUSTED));
+}
+
+#[test]
+fn the_default_failure_class_follows_risk_and_reversibility() {
+    assert_eq!(
+        Severity::for_capability(&cap(Risk::High, true, 2)),
+        Severity::S3
+    );
+    assert_eq!(
+        Severity::for_capability(&cap(Risk::Low, false, 2)),
+        Severity::S3
+    );
+    assert_eq!(
+        Severity::for_capability(&cap(Risk::Medium, true, 2)),
+        Severity::S2
+    );
+    assert_eq!(
+        Severity::for_capability(&cap(Risk::Low, true, 2)),
+        Severity::S1
+    );
+    assert_eq!(
+        Severity::for_capability(&cap(Risk::None, true, 2)),
+        Severity::S1
+    );
+}

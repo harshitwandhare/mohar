@@ -93,6 +93,7 @@ fn signature_ok(c: &Checkpoint, key: &VerifyingKey) -> bool {
     let Ok(bytes) = <[u8; 64]>::try_from(raw.as_slice()) else {
         return false;
     };
+    // Encoding a checkpoint has no failing input today; if one appears, the signature can't be checked.
     let Ok(msg) = signing_bytes(c) else {
         return false;
     };
@@ -122,13 +123,12 @@ pub fn verify_checkpoints(
             });
         }
         let seq = c.count - 1;
-        let Some(r) = usize::try_from(seq).ok().and_then(|i| receipts.get(i)) else {
-            return Err(CheckpointBreak::Unreadable { checkpoint });
-        };
-        match receipt_hash(r) {
-            Ok(h) if h == c.head => {}
-            Ok(_) => return Err(CheckpointBreak::HeadMismatch { checkpoint, seq }),
-            Err(_) => return Err(CheckpointBreak::Unreadable { checkpoint }),
+        // The length check above means the receipt is there. Hashing a parsed receipt has no
+        // failing input today; if one appears, the checkpoint can't be confirmed and fails.
+        match receipts.get(seq as usize).map(receipt_hash) {
+            Some(Ok(h)) if h == c.head => {}
+            Some(Ok(_)) => return Err(CheckpointBreak::HeadMismatch { checkpoint, seq }),
+            _ => return Err(CheckpointBreak::Unreadable { checkpoint }),
         }
     }
     Ok(())

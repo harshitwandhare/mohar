@@ -133,6 +133,8 @@ impl FileLog {
             Err(std::fs::TryLockError::WouldBlock) => {
                 return Err(OpenError::Locked(dir.to_path_buf()));
             }
+            // The OS refused the lock call itself (no locking on this file system): fail, never write
+            // without the lock.
             Err(std::fs::TryLockError::Error(e)) => return Err(io(&lock_path)(e)),
         }
         let key_path = dir.join(KEY_FILE);
@@ -342,6 +344,7 @@ fn feed(
 ) -> Result<(), OpenError> {
     let mut pending: VecDeque<mpsc::Receiver<Reply>> = VecDeque::new();
     let mut settle = |pending: &mut VecDeque<mpsc::Receiver<Reply>>| -> Result<(), OpenError> {
+        // Only called with jobs pending; an empty queue has nothing to settle.
         let Some(rx) = pending.pop_front() else {
             return Ok(());
         };
@@ -350,6 +353,7 @@ fn feed(
                 Ok((r, c)) => f(Outcome::Line(r, c)),
                 Err(line) => f(Outcome::Unreadable(line)),
             }),
+            // A worker that died (it can only panic) sends nothing; its receipts count as unverified.
             Err(_) => f(Outcome::Lost),
         }
     };

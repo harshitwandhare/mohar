@@ -266,6 +266,7 @@ impl Ledger {
 /// Whether the record has earned one step up from its current level.
 fn eligible(r: &Record, spec: &Capability, now: u64) -> bool {
     let next = usize::from(r.level) + 1;
+    // `level` never asks past Trusted, so this only keeps the function total.
     let Some(&(n_min, bound)) = PROMOTE_TO.get(next) else {
         return false;
     };
