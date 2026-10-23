@@ -59,7 +59,14 @@ Two endpoints, JSON in and out:
 ```
 POST /v1/decide   {agent, tool, target, args_sha256, call_id?}  ->  {result, level, receipt_seq}
 POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256}  ->  {receipt_seq}
+POST /v1/verify   {agent, task}  ->  {verified, result}
 ```
+
+`/v1/verify` verifies a finished task: it runs the project's test command (below) once and records the
+result as a `tests` outcome for every decision in the task that ran and changes something. `decide`
+requests name their task with `task` (the Claude Code hook sends the session id). If the agent changed one
+of the project's test files in the task, the result is `fail` whatever the tests say. No command, a
+command that can't start, or one that runs past its timeout gives `unknown`, which never counts.
 
 `result` is `allow`, `escalate` or `deny`. `verifier` is `tests`, `diff`, `replay`, `human` or `host`;
 `host` is the host's own report that a tool ran and never counts toward trust. Unknown fields, bad hashes
@@ -111,6 +118,21 @@ list of rules; the first rule that matches an action's tool and target wins:
   irreversible, ceiling 0.
 - Unknown fields, unknown capability names in rules and the reserved name `unclassified` are refused.
 
+### Verification
+
+```json
+"verify": {
+  "tests": {
+    "command": ["cargo", "test", "--locked"],
+    "timeout_secs": 600,
+    "test_paths": ["tests/**", "**/*_test.*"]
+  }
+}
+```
+
+`command` is run directly from the root, with no shell, so nothing in it is interpreted. The evidence
+recorded is the SHA-256 of the exit status and everything the command printed.
+
 ### Gates
 
 Gates are checked before any trust score, and no record outweighs them. A gate stop is a `deny` receipt
@@ -147,3 +169,5 @@ the daemon, and prints Claude Code's `permissionDecision`: `allow`, `ask` (for `
 denies when the daemon can't be reached, answers with an error, or the payload can't be read, and it only
 ever talks to a loopback address. `PostToolUse` is recorded as a `host` outcome matched by `tool_use_id`.
 Subagents are identified as `agent:claude-code/<agent_type>`, the main agent as `agent:claude-code/main`.
+On `Stop` and `SubagentStop` it asks the daemon to verify the session's task, and reports the result on
+stderr.

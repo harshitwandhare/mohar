@@ -5,7 +5,7 @@
 //! as long as the daemon runs. Answers come from the trust ledger, which is rebuilt from the log on
 //! start: trust exists only as signed receipts.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::Path;
@@ -59,6 +59,11 @@ struct Inner {
     pending: HashMap<u64, Pending>,
     /// Host call ids (Claude Code's tool_use_id) to the decision they belong to, for this run only.
     calls: HashMap<String, u64>,
+    /// Decisions made in each task, by (agent, task id), waiting for the task to be verified. Like
+    /// call ids, this lives for the daemon's run only.
+    tasks: HashMap<(String, String), Vec<u64>>,
+    /// Decisions the host reported as having run (allowed, or approved by a person).
+    ran: HashSet<u64>,
     /// Trust per agent and capability, rebuilt from the log on start.
     ledger: Ledger,
 }
@@ -102,6 +107,8 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
             log,
             pending,
             ledger,
+            tasks: HashMap::new(),
+            ran: HashSet::new(),
             calls: HashMap::new(),
         }),
         inflight: AtomicUsize::new(0),
@@ -160,7 +167,9 @@ fn replay(receipts: &Path, policy: &Policy) -> Result<(HashMap<u64, Pending>, Le
     let mut ledger = Ledger::new();
     for_each_receipt(receipts, |r: Receipt| match r.verification {
         Some(v) => {
-            pending.remove(&v.of);
+            if v.kind != "host" {
+                pending.remove(&v.of);
+            }
             if let Some(o) = verified(
                 &v.kind,
                 &v.result,
@@ -254,6 +263,7 @@ fn handle(stream: &mut TcpStream, state: &State) {
     let (status, answer) = match path.as_str() {
         "/v1/decide" => decide(state, &body),
         "/v1/outcome" => outcome(state, &body),
+        "/v1/verify" => verify_task(state, &body),
         _ => (404, json!({"error": "no such endpoint"})),
     };
     respond(stream, status, &answer);
@@ -391,6 +401,17 @@ struct DecideRequest {
     /// The host's id for this call, so its outcome can be matched without the receipt number.
     #[serde(default)]
     call_id: Option<String>,
+    /// The task this action belongs to (Claude Code's session id), so the task can be verified as a
+    /// whole when it ends.
+    #[serde(default)]
+    task: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VerifyRequest {
+    agent: String,
+    task: String,
 }
 
 #[derive(Deserialize)]
@@ -437,6 +458,9 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         .is_some_and(|c| !field_ok(c, MAX_FIELD))
     {
         return bad("call_id must be non-empty and at most 512 bytes");
+    }
+    if req.task.as_deref().is_some_and(|t| !field_ok(t, MAX_FIELD)) {
+        return bad("task must be non-empty and at most 512 bytes");
     }
     // The daemon classifies the action from its own policy; the agent's side never names its capability.
     let classified = state.policy.classify(&req.tool, &req.target);
@@ -492,13 +516,23 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     inner.pending.insert(
         receipt.seq,
         Pending {
-            agent_id: req.agent,
+            agent_id: req.agent.clone(),
             action,
             decision: decision.clone(),
         },
     );
     if let Some(call) = req.call_id {
         inner.calls.insert(call, receipt.seq);
+    }
+    if let Some(task) = req.task {
+        inner
+            .tasks
+            .entry((req.agent.clone(), task))
+            .or_default()
+            .push(receipt.seq);
+    }
+    if decision.result == "allow" {
+        inner.ran.insert(receipt.seq);
     }
     (
         200,
@@ -547,19 +581,41 @@ fn outcome(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         },
         _ => return bad("give exactly one of receipt_seq or call_id"),
     };
-    let Some(p) = inner.pending.get(&seq).cloned() else {
+    if !inner.pending.contains_key(&seq) {
         return (
             404,
             json!({"error": "no pending decision with that receipt_seq"}),
         );
-    };
-    let counted = verified(
+    }
+    match append_outcome(
+        &mut inner,
+        &state.policy,
+        seq,
         &req.verifier,
         &req.result,
-        &p.action.capability,
-        &state.policy,
-        now_secs(),
-    );
+        req.evidence_sha256,
+    ) {
+        Ok(r) => (200, json!({ "receipt_seq": r })),
+        Err(e) => (500, json!({ "error": e })),
+    }
+}
+
+/// Sign an outcome for a pending decision, and let it change trust once it is on disk. A `host` report
+/// only marks the decision as having run: it is recorded, but the decision stays open for a verifier.
+fn append_outcome(
+    inner: &mut Inner,
+    policy: &Policy,
+    seq: u64,
+    kind: &str,
+    result: &str,
+    evidence_sha256: String,
+) -> Result<u64, String> {
+    let p = inner
+        .pending
+        .get(&seq)
+        .cloned()
+        .ok_or("no pending decision")?;
+    let counted = verified(kind, result, &p.action.capability, policy, now_secs());
     let (agent, capability) = (p.agent_id.clone(), p.action.capability.clone());
     let entry = Entry {
         ts: crate::now_rfc3339(),
@@ -567,23 +623,189 @@ fn outcome(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         action: p.action,
         decision: p.decision,
         verification: Some(Verification {
-            evidence_sha256: req.evidence_sha256,
-            kind: req.verifier,
+            evidence_sha256,
+            kind: kind.to_string(),
             of: seq,
-            result: req.result,
+            result: result.to_string(),
         }),
     };
-    match inner.log.append(entry) {
-        Ok(r) => {
-            inner.pending.remove(&seq);
-            // Only after the receipt is on disk does the outcome change trust.
-            if let Some(o) = counted {
-                inner.ledger.record(&agent, &capability, &o);
-            }
-            (200, json!({ "receipt_seq": r.seq }))
-        }
-        Err(e) => (500, json!({ "error": e.to_string() })),
+    let r = inner.log.append(entry).map_err(|e| e.to_string())?;
+    if kind == "host" {
+        inner.ran.insert(seq);
+    } else {
+        inner.pending.remove(&seq);
+        inner.ran.remove(&seq);
     }
+    if let Some(o) = counted {
+        inner.ledger.record(&agent, &capability, &o);
+    }
+    Ok(r.seq)
+}
+
+/// Verify a finished task: run the project's tests once and record the result for every decision in
+/// the task that ran and changed something. An agent that changed a test file in the task fails,
+/// whatever the tests say, since it could have changed the tests to pass.
+fn verify_task(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
+    let req: VerifyRequest = match serde_json::from_slice(body) {
+        Ok(r) => r,
+        Err(_) => return bad("body is not a valid verify request"),
+    };
+    if !(field_ok(&req.agent, MAX_FIELD) && field_ok(&req.task, MAX_FIELD)) {
+        return bad("agent and task must be non-empty and at most 512 bytes");
+    }
+    // Take the task's decisions, then let go of the lock while the tests run.
+    let (targets, seqs) = {
+        let Ok(mut inner) = state.log.lock() else {
+            return (500, json!({"error": "log lock poisoned"}));
+        };
+        let all = inner
+            .tasks
+            .remove(&(req.agent.clone(), req.task.clone()))
+            .unwrap_or_default();
+        let seqs: Vec<u64> = all
+            .into_iter()
+            .filter(|seq| inner.ran.contains(seq))
+            .filter(|seq| {
+                inner
+                    .pending
+                    .get(seq)
+                    .is_some_and(|p| state.policy.spec(&p.action.capability).risk != Risk::None)
+            })
+            .collect();
+        let targets: Vec<(String, String)> = seqs
+            .iter()
+            .filter_map(|seq| inner.pending.get(seq))
+            .map(|p| (p.action.tool.clone(), p.action.target.clone()))
+            .collect();
+        (targets, seqs)
+    };
+    if seqs.is_empty() {
+        return (200, json!({ "verified": 0, "result": null }));
+    }
+    let changed_tests: Vec<&str> = targets
+        .iter()
+        .filter(|(tool, target)| {
+            WRITE_TOOLS.contains(&tool.as_str()) && state.policy.is_test_path(target)
+        })
+        .map(|(_, target)| target.as_str())
+        .collect();
+    let (result, evidence) = if !changed_tests.is_empty() {
+        (
+            "fail",
+            sha256_hex(
+                format!("the agent changed test files: {}", changed_tests.join(", ")).as_bytes(),
+            ),
+        )
+    } else {
+        run_tests(&state.policy)
+    };
+    let Ok(mut inner) = state.log.lock() else {
+        return (500, json!({"error": "log lock poisoned"}));
+    };
+    let mut recorded = 0;
+    for seq in seqs {
+        if inner.pending.contains_key(&seq) {
+            if let Err(e) = append_outcome(
+                &mut inner,
+                &state.policy,
+                seq,
+                "tests",
+                result,
+                evidence.clone(),
+            ) {
+                return (500, json!({ "error": e }));
+            }
+            recorded += 1;
+        }
+    }
+    (200, json!({ "verified": recorded, "result": result }))
+}
+
+/// Host tools that change files.
+const WRITE_TOOLS: [&str; 4] = ["Edit", "MultiEdit", "Write", "NotebookEdit"];
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// Run the project's test command from the root. `pass` on exit 0, `fail` on any other exit, and
+/// `unknown` when there is no command, it can't start, or it runs past its timeout. The evidence is
+/// the SHA-256 of the exit status and everything it printed.
+fn run_tests(policy: &Policy) -> (&'static str, String) {
+    use std::process::{Command, Stdio};
+    let Some(t) = policy.tests_verifier() else {
+        return ("unknown", sha256_hex(b"no test command configured"));
+    };
+    let Some((program, args)) = t.command.split_first() else {
+        return ("unknown", sha256_hex(b"empty test command"));
+    };
+    let child = Command::new(program)
+        .args(args)
+        .current_dir(policy.root())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn();
+    let mut child = match child {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                "unknown",
+                sha256_hex(format!("could not start {program}: {e}").as_bytes()),
+            );
+        }
+    };
+    // Read output on threads so a chatty test run can't fill a pipe and stall.
+    let mut out = child.stdout.take();
+    let mut err = child.stderr.take();
+    let read_out = std::thread::spawn(move || {
+        let mut b = Vec::new();
+        if let Some(o) = out.as_mut() {
+            let _ = o.read_to_end(&mut b);
+        }
+        b
+    });
+    let read_err = std::thread::spawn(move || {
+        let mut b = Vec::new();
+        if let Some(e) = err.as_mut() {
+            let _ = e.read_to_end(&mut b);
+        }
+        b
+    });
+    let deadline = std::time::Instant::now() + Duration::from_secs(t.timeout_secs);
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break Some(status),
+            Ok(None) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(50))
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break None;
+            }
+        }
+    };
+    let mut evidence = Vec::new();
+    evidence.extend_from_slice(
+        format!(
+            "{status:?}
+"
+        )
+        .as_bytes(),
+    );
+    evidence.extend(read_out.join().unwrap_or_default());
+    evidence.extend(read_err.join().unwrap_or_default());
+    let result = match status {
+        Some(s) if s.success() => "pass",
+        Some(_) => "fail",
+        None => "unknown",
+    };
+    (result, sha256_hex(&evidence))
 }
 
 #[cfg(test)]

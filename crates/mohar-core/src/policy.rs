@@ -80,6 +80,36 @@ struct File {
     rules: Vec<Rule>,
     #[serde(default)]
     gates: Gates,
+    #[serde(default)]
+    verify: Verify,
+}
+
+/// How work is verified.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Verify {
+    /// The tests verifier.
+    #[serde(default)]
+    pub tests: Option<TestsVerifier>,
+}
+
+/// The project's test command, run from the root after a task.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TestsVerifier {
+    /// Program and arguments, run directly with no shell.
+    pub command: Vec<String>,
+    /// How long the run may take before the result is `unknown`.
+    #[serde(default = "default_test_timeout")]
+    pub timeout_secs: u64,
+    /// Globs (relative to the root) for test files. An agent that changes one of these in a task
+    /// fails verification for that task, whatever the tests say.
+    #[serde(default)]
+    pub test_paths: Vec<String>,
+}
+
+fn default_test_timeout() -> u64 {
+    600
 }
 
 /// Hard gates: checked before any trust score, and no score outweighs them.
@@ -120,6 +150,7 @@ pub struct Policy {
     capabilities: BTreeMap<String, Capability>,
     rules: Vec<Rule>,
     gates: Gates,
+    verify: Verify,
 }
 
 /// Why a policy file was refused.
@@ -165,6 +196,9 @@ pub enum PolicyError {
         /// The capability.
         name: String,
     },
+    /// A test command with no program in it.
+    #[error("verify.tests.command is empty; give the program and its arguments")]
+    EmptyTestCommand,
     /// A gate names a capability that isn't defined.
     #[error("gates.deny_capabilities names {name:?}, which is not defined under capabilities")]
     UnknownGateCapability {
@@ -216,6 +250,14 @@ impl Policy {
             Some(r) => base.join(r),
             None => base.to_path_buf(),
         };
+        if file
+            .verify
+            .tests
+            .as_ref()
+            .is_some_and(|t| t.command.is_empty())
+        {
+            return Err(PolicyError::EmptyTestCommand);
+        }
         for name in &file.gates.deny_capabilities {
             if !file.capabilities.contains_key(name) {
                 return Err(PolicyError::UnknownGateCapability { name: name.clone() });
@@ -226,6 +268,7 @@ impl Policy {
             capabilities: file.capabilities,
             rules: file.rules,
             gates: file.gates,
+            verify: file.verify,
         })
     }
 
@@ -234,6 +277,28 @@ impl Policy {
     pub fn builtin(root: &Path) -> Self {
         // A fixed, valid document; a failure here is a bug caught by the tests.
         Self::from_json(BUILTIN, root).unwrap_or_else(|e| unreachable!("built-in policy: {e}"))
+    }
+
+    /// The project root every relative path is resolved against.
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// The tests verifier, if the project configured one.
+    pub fn tests_verifier(&self) -> Option<&TestsVerifier> {
+        self.verify.tests.as_ref()
+    }
+
+    /// Whether a target is one of the project's test files.
+    pub fn is_test_path(&self, target: &str) -> bool {
+        let Some(t) = &self.verify.tests else {
+            return false;
+        };
+        self.relative(target).is_some_and(|rel| {
+            t.test_paths
+                .iter()
+                .any(|g| glob(g.as_bytes(), rel.as_bytes(), true))
+        })
     }
 
     /// What a capability is, by name; an unknown name (a policy changed since) is unclassified.

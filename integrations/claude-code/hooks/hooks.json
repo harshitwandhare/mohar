@@ -7,7 +7,10 @@
           {
             "type": "command",
             "command": "mohar",
-            "args": ["hook", "claude-code"],
+            "args": [
+              "hook",
+              "claude-code"
+            ],
             "timeout": 10,
             "onFailure": "block"
           }
@@ -21,8 +24,43 @@
           {
             "type": "command",
             "command": "mohar",
-            "args": ["hook", "claude-code"],
+            "args": [
+              "hook",
+              "claude-code"
+            ],
             "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "mohar",
+            "args": [
+              "hook",
+              "claude-code"
+            ],
+            "timeout": 900
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "mohar",
+            "args": [
+              "hook",
+              "claude-code"
+            ],
+            "timeout": 900
           }
         ]
       }
