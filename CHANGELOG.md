@@ -68,6 +68,9 @@ receipt format; each such change is called out.
 
 ### Changed
 
+- On start the daemon names the decisions still waiting for an outcome (`waiting for an outcome: 2 decisions
+  (receipts 1, 5)`) instead of only counting them, and the CLI docs describe its crash safety and overload
+  behaviour (#61).
 - The CI line coverage floor is 95%, up from 85%. Every line in the daemon, the hook and the core is run by a
   test, apart from branches no input can reach today, which say so beside them (#113, #114).
 - Verifying a log of a million receipts now takes about 8 seconds instead of about 15.5 on a 6-core

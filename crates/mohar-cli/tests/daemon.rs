@@ -27,6 +27,8 @@ fn fresh_log(name: &str) -> PathBuf {
 struct Daemon {
     child: Child,
     port: u16,
+    /// Everything the daemon printed after its `listening on` line.
+    lines: std::sync::mpsc::Receiver<String>,
 }
 
 impl Daemon {
@@ -41,17 +43,32 @@ impl Daemon {
             .stdout(Stdio::piped())
             .spawn()
             .expect("spawn daemon");
+        let mut out = BufReader::new(child.stdout.take().expect("stdout"));
         let mut line = String::new();
-        BufReader::new(child.stdout.take().expect("stdout"))
-            .read_line(&mut line)
-            .expect("read listening line");
+        out.read_line(&mut line).expect("read listening line");
+        let (tx, lines) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            for l in out.lines() {
+                let Ok(l) = l else { return };
+                if tx.send(l).is_err() {
+                    return;
+                }
+            }
+        });
         let port = line
             .trim()
             .rsplit(':')
             .next()
             .and_then(|p| p.parse().ok())
             .unwrap_or_else(|| panic!("no port in {line:?}"));
-        Self { child, port }
+        Self { child, port, lines }
+    }
+
+    /// The next line the daemon printed, waiting up to five seconds.
+    fn next_line(&self) -> Option<String> {
+        self.lines
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .ok()
     }
 
     fn url(&self) -> String {
@@ -259,8 +276,32 @@ fn only_loopback_addresses_are_served() {
 #[test]
 fn past_the_in_flight_limit_requests_are_refused_not_queued() {
     let dir = fresh_log("overload");
-    let d = Daemon::start(&dir, &["--max-inflight", "0"]);
-    assert_eq!(decide(d.port, "Edit", "docs/a.md", None).0, 503);
+    let d = Daemon::start(&dir, &["--max-inflight", "1"]);
+    // A client that sends half a request holds the one slot.
+    let mut slow = TcpStream::connect(("127.0.0.1", d.port)).expect("connect");
+    slow.write_all(b"POST /v1/decide HTTP/1.1\r\n")
+        .expect("write");
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let (status, body) = decide(d.port, "Edit", "docs/a.md", None);
+    assert_eq!(status, 503);
+    assert_eq!(body["error"], "too many requests in flight");
+    // The refusal is answered at once and nothing waits behind the slot: no receipt was written.
+    assert!(verify(&dir).contains("0 receipts"));
+    // Once the slow client goes away its slot is free again.
+    drop(slow);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let (status, _) = decide(d.port, "Edit", "docs/a.md", None);
+        if status == 200 {
+            break;
+        }
+        assert_eq!(status, 503);
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the slot was never freed"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
 }
 
 #[test]
@@ -271,9 +312,13 @@ fn a_crash_between_decide_and_outcome_loses_nothing() {
     let seq = a["receipt_seq"].as_u64().expect("seq");
     d.crash();
     verify(&dir);
-    // After a restart the decision is still waiting, by its receipt number. Call ids lived only in
-    // the old process, so they are gone.
+    // After a restart the decision is still waiting, by its receipt number, and the daemon says so.
+    // Call ids lived only in the old process, so they are gone.
     let d = Daemon::start(&dir, &[]);
+    assert_eq!(
+        d.next_line().as_deref(),
+        Some(format!("waiting for an outcome: 1 decision (receipt {seq})").as_str())
+    );
     let by_call = json!({"call_id": "toolu_1", "verifier": "host", "result": "unknown", "evidence_sha256": SHA});
     assert_eq!(post(d.port, "/v1/outcome", &by_call.to_string()).0, 404);
     let by_seq =
