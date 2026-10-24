@@ -62,7 +62,7 @@
   level        ask first
   record       3 verified passes, 1 failure 6 days ago
   result       <span class="seal">escalate to the database owner</span>
-  receipt      #4183  sha256:7be1…c09a</code></pre>
+  receipt      #4183  <span class="hash">sha256:a681d4e7fbebe401f4fcedec443476f9a7db7598379b2a2c5d03ec5acb87726d</span></code></pre>
       </div>
       <div class="fig-tile ink">
         <p class="fig">93%</p>
@@ -115,18 +115,18 @@
 <pre class="receipt-json" data-ui><code>{
   "v": 1,
   "seq": 4182,
-  "prev": "sha256:9f2c…e01a",
+  "prev": "<span class="hash">sha256:8c2b54873548a6358134041eb1b70b662bf30058c50d44534d2f3eba4c210115</span>",
   "ts": "2026-10-14T14:22:07.311Z",
   "agent": { "id": "agent:claude-code/laptop/7c1e",
-             "key": "ed25519:Mx3f…Q" },
+             "key": "<span class="hash">ed25519:0310b053afb12114a1eeda05a0bcfd29fa0930c33ce58312a9c4507a3e1df2ec</span>" },
   "authority": [{ "principal": "human:7f3a09c2",
                   "granted": ["fs.edit.*"] }],
   "action": { "capability": "fs.edit.tests",
-              "args_sha256": "c41b…77d0" },
+              "args_sha256": "<span class="hash">c10c93a636daab9349a97f46f6e8a34c1c778b62781d36c0c1496a725d468044</span>" },
   "decision": { "result": "allow", "level": 1,
                 "wilson_lower": 0.83, "n": 14 },
   "verification": { "kind": "tests", "result": "pass" },
-  "sig": "ed25519:8sQ1…wA"
+  "sig": "<span class="hash">ed25519:f7842b523255408873f8df403cefdac5d3fa11eed4c5e05eec0eb60eb2c7e67a551fa089e47bf8a8f52e5f41bc1a2b294d0fefa377a30df793b1de2d981ababf</span>"
 }</code></pre>
       <div class="field-tile"><p class="key">prev</p><p>The hash of the receipt before this one. Change or delete any receipt and every later one stops matching.</p></div>
       <div class="field-tile"><p class="key">authority</p><p>Who handed this agent its rights, by pseudonymous ID, so the log holds no names. Each link can only narrow what it received.</p></div>

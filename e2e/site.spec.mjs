@@ -158,3 +158,19 @@ test('no example on the site or in the docs is dated after today', () => {
       .map(stamp => `${f}: ${stamp}`));
   expect(late).toEqual([]);
 });
+
+test('example hashes on the home page are full length and only cut by the browser', async ({ page }) => {
+  // A hash typed as "7be1…c09a" looks hand-made; the page holds the real length and CSS shortens it.
+  const html = readFileSync('site/index.html', 'utf8');
+  expect(html.match(/(sha256|ed25519):[0-9a-zA-Z]*…/g) ?? []).toEqual([]);
+  await page.goto('/');
+  const hashes = await page.locator('.hash').evaluateAll(els => els.map(e => ({
+    text: e.textContent,
+    cut: e.scrollWidth > e.clientWidth,
+  })));
+  expect(hashes.length).toBe(5);
+  for (const { text, cut } of hashes) {
+    expect(text).toMatch(/^(sha256:|ed25519:)?([0-9a-f]{64}|[0-9a-f]{128})$/);
+    expect(cut, text).toBe(true);
+  }
+});
