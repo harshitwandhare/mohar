@@ -80,8 +80,18 @@ leave it off when auditing someone else's log. The design notes (receipt format)
 
 Serves decisions and outcomes to agent hosts on this machine, from the log in `--dir`, which it holds
 open for writing while it runs. It listens on `127.0.0.1:7878` by default and refuses any address that
-isn't loopback. It prints `listening on <address>` once bound, and how many earlier decisions are still
-waiting for an outcome.
+isn't loopback. It prints `listening on <address>` once bound, then, if any earlier decisions are still
+waiting for an outcome, a line naming them: `waiting for an outcome: 2 decisions (receipts 1, 5)`
+(the first ten, then how many more).
+
+Crash safety: every receipt is synced to disk before the daemon answers, so a daemon killed between a
+decision and its outcome loses nothing. On the next start it verifies the log, rebuilds the decisions
+still waiting from it and lists them as above; each can be given its outcome by `receipt_seq`.
+
+Overload: at most `--max-inflight` requests (default 64) are handled at once. Past that the daemon
+answers 503 with `{"error": "too many requests in flight"}` straight away, writes nothing, and queues
+nothing; a slot frees as soon as its request ends or times out (5 seconds). The hook treats a 503 like
+any refusal and denies.
 
 Two endpoints, JSON in and out:
 

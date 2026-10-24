@@ -92,11 +92,9 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
     let mut out = std::io::stdout();
     let _ = writeln!(out, "listening on {local}");
     if !pending.is_empty() {
-        let _ = writeln!(
-            out,
-            "{} decisions are waiting for an outcome",
-            pending.len()
-        );
+        let mut seqs: Vec<u64> = pending.keys().copied().collect();
+        seqs.sort_unstable();
+        let _ = writeln!(out, "{}", pending_summary(&seqs));
     }
     let _ = out.flush();
     if cfg.exit_on_stdin_eof {
@@ -147,6 +145,23 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
         });
     }
     Ok(())
+}
+
+/// The startup line naming decisions a crash or restart left without an outcome, so a person can give
+/// them one by `receipt_seq`. Long lists are cut after ten.
+fn pending_summary(seqs: &[u64]) -> String {
+    const SHOWN: usize = 10;
+    let mut listed: Vec<String> = seqs.iter().take(SHOWN).map(u64::to_string).collect();
+    if seqs.len() > SHOWN {
+        listed.push(format!("and {} more", seqs.len() - SHOWN));
+    }
+    match seqs.len() {
+        1 => format!("waiting for an outcome: 1 decision (receipt {})", listed[0]),
+        n => format!(
+            "waiting for an outcome: {n} decisions (receipts {})",
+            listed.join(", ")
+        ),
+    }
 }
 
 /// The project's policy from `<dir>/policy.json`, rooted at the directory that holds the log
@@ -1142,6 +1157,23 @@ mod tests {
             assert_eq!(status, 500);
             assert_eq!(error_of(&answer), "log lock poisoned");
         }
+    }
+
+    #[test]
+    fn pending_decisions_are_listed_and_long_lists_cut() {
+        assert_eq!(
+            pending_summary(&[4]),
+            "waiting for an outcome: 1 decision (receipt 4)"
+        );
+        assert_eq!(
+            pending_summary(&[1, 5]),
+            "waiting for an outcome: 2 decisions (receipts 1, 5)"
+        );
+        let many: Vec<u64> = (0..13).collect();
+        assert_eq!(
+            pending_summary(&many),
+            "waiting for an outcome: 13 decisions (receipts 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, and 3 more)"
+        );
     }
 
     #[test]
