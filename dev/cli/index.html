@@ -1371,8 +1371,16 @@ leave it off when auditing someone else's log. The design notes (receipt format)
 <h2 id="mohar-daemon-addr-hostport-max-inflight-n"><code>mohar daemon [--addr &lt;host:port&gt;] [--max-inflight &lt;n&gt;]</code><a class="headerlink" href="#mohar-daemon-addr-hostport-max-inflight-n" title="Permanent link">&para;</a></h2>
 <p>Serves decisions and outcomes to agent hosts on this machine, from the log in <code>--dir</code>, which it holds
 open for writing while it runs. It listens on <code>127.0.0.1:7878</code> by default and refuses any address that
-isn't loopback. It prints <code>listening on &lt;address&gt;</code> once bound, and how many earlier decisions are still
-waiting for an outcome.</p>
+isn't loopback. It prints <code>listening on &lt;address&gt;</code> once bound, then, if any earlier decisions are still
+waiting for an outcome, a line naming them: <code>waiting for an outcome: 2 decisions (receipts 1, 5)</code>
+(the first ten, then how many more).</p>
+<p>Crash safety: every receipt is synced to disk before the daemon answers, so a daemon killed between a
+decision and its outcome loses nothing. On the next start it verifies the log, rebuilds the decisions
+still waiting from it and lists them as above; each can be given its outcome by <code>receipt_seq</code>.</p>
+<p>Overload: at most <code>--max-inflight</code> requests (default 64) are handled at once. Past that the daemon
+answers 503 with <code>{"error": "too many requests in flight"}</code> straight away, writes nothing, and queues
+nothing; a slot frees as soon as its request ends or times out (5 seconds). The hook treats a 503 like
+any refusal and denies.</p>
 <p>Two endpoints, JSON in and out:</p>
 <div class="highlight"><pre><span></span><code>POST /v1/decide   {agent, tool, target, args_sha256, call_id?}  -&gt;  {result, level, receipt_seq}
 POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256}  -&gt;  {receipt_seq}
