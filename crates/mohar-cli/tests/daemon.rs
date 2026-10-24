@@ -606,57 +606,59 @@ fn rfc3339(secs: u64) -> String {
     )
 }
 
-#[test]
-fn trust_earned_in_the_log_changes_what_the_daemon_decides() {
+/// Write 40 docs edits by `worker`, each verified by tests, 20 days ago, straight into the log.
+fn earn_docs_trust(dir: &Path, worker: &str) {
     use mohar_core::store::FileLog;
     use mohar_core::{Action, Decision, Entry, Verification};
 
-    let dir = fresh_log("earned");
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("clock")
         .as_secs();
     let ts = rfc3339(now - 20 * 86_400);
-    let worker = "agent:claude-code/docs-writer";
-    {
-        // 40 docs edits, each verified by tests, 20 days ago.
-        let mut log = FileLog::open(&dir).expect("open");
-        let action = Action {
-            capability: "fs.edit.docs".into(),
-            tool: "Edit".into(),
-            target: "docs/a.md".into(),
-            args_sha256: SHA.into(),
-        };
-        let decision = Decision {
-            result: "escalate".into(),
-            level: 0,
-            by: "score".into(),
-        };
-        for _ in 0..40 {
-            let d = log
-                .append(Entry {
-                    ts: ts.clone(),
-                    agent_id: worker.into(),
-                    action: action.clone(),
-                    decision: decision.clone(),
-                    verification: None,
-                })
-                .expect("decision");
-            log.append(Entry {
+    let mut log = FileLog::open(dir).expect("open");
+    let action = Action {
+        capability: "fs.edit.docs".into(),
+        tool: "Edit".into(),
+        target: "docs/a.md".into(),
+        args_sha256: SHA.into(),
+    };
+    let decision = Decision {
+        result: "escalate".into(),
+        level: 0,
+        by: "score".into(),
+    };
+    for _ in 0..40 {
+        let d = log
+            .append(Entry {
                 ts: ts.clone(),
                 agent_id: worker.into(),
                 action: action.clone(),
                 decision: decision.clone(),
-                verification: Some(Verification {
-                    evidence_sha256: SHA.into(),
-                    kind: "tests".into(),
-                    of: d.seq,
-                    result: "pass".into(),
-                }),
+                verification: None,
             })
-            .expect("outcome");
-        }
+            .expect("decision");
+        log.append(Entry {
+            ts: ts.clone(),
+            agent_id: worker.into(),
+            action: action.clone(),
+            decision: decision.clone(),
+            verification: Some(Verification {
+                evidence_sha256: SHA.into(),
+                kind: "tests".into(),
+                of: d.seq,
+                result: "pass".into(),
+            }),
+        })
+        .expect("outcome");
     }
+}
+
+#[test]
+fn trust_earned_in_the_log_changes_what_the_daemon_decides() {
+    let dir = fresh_log("earned");
+    let worker = "agent:claude-code/docs-writer";
+    earn_docs_trust(&dir, worker);
     let d = Daemon::start(&dir, &[]);
     let ask = |agent: &str| {
         let b = json!({"agent": agent, "tool": "Edit", "target": "docs/a.md", "args_sha256": SHA});
@@ -685,6 +687,65 @@ fn trust_earned_in_the_log_changes_what_the_daemon_decides() {
         last_two[1]["decision"]["by"], "score",
         "decided from the record"
     );
+}
+
+#[test]
+fn in_strict_privacy_mode_trust_still_counts_and_nothing_is_in_the_clear() {
+    let dir = std::env::temp_dir().join(format!("mohar-daemon-strict-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let ok = Command::new(BIN)
+        .arg("--dir")
+        .arg(&dir)
+        .args(["init", "--strict-privacy"])
+        .status()
+        .expect("init");
+    assert!(ok.success());
+    let worker = "agent:claude-code/docs-writer";
+    earn_docs_trust(&dir, worker);
+
+    let d = Daemon::start(&dir, &[]);
+    let ask = |agent: &str, target: &str| {
+        let b = json!({"agent": agent, "tool": "Edit", "target": target, "args_sha256": SHA});
+        post(d.port, "/v1/decide", &b.to_string())
+    };
+    // The ledger rebuilt from pseudonyms must find the worker the daemon is asked about by name.
+    let (_, earned) = ask(worker, "docs/a.md");
+    assert_eq!(
+        (earned["result"].as_str(), earned["level"].as_u64()),
+        (Some("allow"), Some(1)),
+        "{earned}"
+    );
+    let (s, _) = post(
+        d.port,
+        "/v1/outcome",
+        &json!({"receipt_seq": earned["receipt_seq"], "verifier": "tests", "result": "pass", "evidence_sha256": SHA}).to_string(),
+    );
+    assert_eq!(s, 200);
+    let ids = std::fs::read_to_string(dir.join("identities.jsonl")).expect("identities");
+    let pseudonym = ids
+        .lines()
+        .find(|l| l.contains(worker))
+        .and_then(|l| serde_json::from_str::<Value>(l).ok())
+        .and_then(|v| v["id"].as_str().map(str::to_string))
+        .expect("the worker's pseudonym");
+    // A caller can't pass a pseudonym in, as the agent or the target.
+    for (agent, target) in [
+        (pseudonym.as_str(), "docs/a.md"),
+        (worker, pseudonym.as_str()),
+    ] {
+        let (s, a) = ask(agent, target);
+        assert_eq!(s, 400, "{a}");
+    }
+    d.stop();
+
+    let log = std::fs::read_to_string(dir.join("receipts.jsonl")).expect("log");
+    assert!(!log.contains("docs-writer") && !log.contains("docs/a.md"));
+    assert_eq!(
+        log.lines().count(),
+        82,
+        "40 earned pairs, then a decision and its outcome"
+    );
+    verify(&dir);
 }
 
 #[test]

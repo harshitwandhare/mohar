@@ -9,6 +9,9 @@ receipt format; each such change is called out.
 
 ### Added
 
+- `mohar init --strict-privacy` keeps agent ids and targets out of the log in the clear: each is stored
+  as an HMAC-SHA-256 pseudonym under a per-log secret, and the mapping back lives in `identities.jsonl`
+  outside the chain, where deleting a line erases someone without breaking verification (#64).
 - `mohar daemon --otlp-endpoint <url>` exports OpenTelemetry to a collector on the same machine: a span per
   decision, decisions by result, verifier outcomes, a decision latency histogram and requests in flight,
   over OTLP/HTTP JSON with no new dependencies. Off by default; loopback only (#62).

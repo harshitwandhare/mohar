@@ -50,7 +50,9 @@ this in the design rather than later:
 
 1. **No personal data in the chained fields.** Receipts identify people and agents by pseudonymous
    identifiers (`human:7f3a...`), never by name or email. The mapping from identifier to person lives in a
-   separate, mutable directory file.
+   separate, mutable directory file. A log made with `mohar init --strict-privacy` goes further: agent
+   ids and targets, since a file path can name a patient, enter the chain only as keyed hashes, and the
+   clear values sit in `identities.jsonl` outside it.
 2. **Arguments are hashed, never stored.** `args_sha256` proves which action was approved without keeping
    its contents.
 3. **Erasure by destroying the mapping.** Deleting a person's directory entry, and any per-person key
@@ -106,9 +108,9 @@ software alone certifies nothing.
 | HIPAA 45 CFR 164.312(b) Audit controls | Record and examine activity in systems with ePHI | Every agent decision is a receipt, appended and synced before it is acknowledged | store tests, `mohar verify` | Built |
 | HIPAA 164.312(c)(1) Integrity | Protect ePHI from improper alteration or destruction | Hash chain, Ed25519 signatures, signed checkpoints catch edits, deletions, reordering and truncation | chain and checkpoint tests, test vectors | Built |
 | HIPAA 164.312(d) Person or entity authentication | Verify that a person or entity seeking access is who they claim | Agent keys and pseudonymous identities in receipts; human approvals bound to the exact action | design section 6 | Designed (Phase 4) |
-| HIPAA minimum necessary, 164.502(b) | Use the least ePHI needed | Arguments stored only as hashes; strict privacy mode hashes targets and identifiers too | #64 | Partly built |
-| GDPR Art. 5(1)(c) Data minimisation | Only the personal data needed | Pseudonymous identifiers, hashed arguments, no names in receipts | design section 8 | Built for arguments; identifiers designed |
-| GDPR Art. 17 Erasure | Erase personal data on request | Identity mapping kept outside the chain; deleting it unlinks receipts while the chain still verifies | design section 8 | Designed |
+| HIPAA minimum necessary, 164.502(b) | Use the least ePHI needed | Arguments stored only as hashes; strict privacy mode stores targets and agent ids only as keyed hashes | privacy tests (`crates/mohar-core/tests/privacy.rs`) | Built |
+| GDPR Art. 5(1)(c) Data minimisation | Only the personal data needed | Pseudonymous identifiers, hashed arguments, no names in receipts | design section 8, privacy tests | Built (identifiers and targets in strict privacy mode) |
+| GDPR Art. 17 Erasure | Erase personal data on request | Identity mapping kept outside the chain; deleting it unlinks receipts while the chain still verifies | design section 8, privacy tests | Built in strict privacy mode |
 | GDPR Art. 25 Data protection by design and by default | Privacy built in, defaults protective | Local-only by default, nothing sent to the project, telemetry off by default | engineering bar | Built |
 | GDPR Art. 32 Security of processing | Integrity, confidentiality, resilience, regular testing | Signatures, owner-only keys, crash-safe writes, CI security scanning | store tests, CI | Built |
 | SOC 2 CC6.1 Logical access | Restrict access to information assets | Capabilities, gates, ceilings, earned levels | design sections 3 and 4 | Designed (Phase 3) |

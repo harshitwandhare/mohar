@@ -32,7 +32,12 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Create a new log with a fresh signing key.
-    Init,
+    Init {
+        /// Strict privacy mode: agent ids and targets go into the log only as keyed hashes, with the
+        /// mapping back in identities.jsonl outside the chain.
+        #[arg(long)]
+        strict_privacy: bool,
+    },
     /// Record a decision.
     Append {
         /// Agent identifier.
@@ -129,8 +134,13 @@ fn main() -> ExitCode {
 
 fn run(cli: Cli) -> Result<ExitCode, String> {
     match cli.command {
-        Command::Init => {
-            FileLog::init(&cli.dir).map_err(|e| e.to_string())?;
+        Command::Init { strict_privacy } => {
+            let init = if strict_privacy {
+                FileLog::init_strict
+            } else {
+                FileLog::init
+            };
+            init(&cli.dir).map_err(|e| e.to_string())?;
             println!("created {}", cli.dir.display());
         }
         Command::Append {

@@ -7,17 +7,27 @@
 //! writer.lock     held exclusively by the one process allowed to append; readers don't need it.
 //! ```
 //!
+//! A log in strict privacy mode (see [`crate::privacy`]) also holds:
+//!
+//! ```text
+//! privacy.key       32-byte secret for the pseudonyms, owner-only on Unix, beside the signing key.
+//! identities.jsonl  {"id": pseudonym, "value": clear value}, one per line; outside the chain, erasable.
+//! ```
+//!
 //! Opening a log verifies the whole chain first, one line at a time, so memory use doesn't grow with the
 //! log. A log that doesn't verify is never extended.
 
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, mpsc};
 
+use serde::{Deserialize, Serialize};
+
 use crate::Prechecked;
 use crate::checkpoint::{self, Checkpoint, CheckpointBreak, CheckpointWatcher};
+use crate::privacy::{Pseudonyms, is_pseudonym};
 use crate::{
     BreakKind, ChainBreak, ChainVerifier, Entry, Error, Receipt, SigningKey, VerifyingKey,
     public_key_string, receipt_hash, seal,
@@ -28,6 +38,8 @@ const PUBLIC_FILE: &str = "public.key";
 const LOG_FILE: &str = "receipts.jsonl";
 const CHECKPOINT_FILE: &str = "checkpoints.jsonl";
 const LOCK_FILE: &str = "writer.lock";
+const PRIVACY_KEY_FILE: &str = "privacy.key";
+const IDENTITIES_FILE: &str = "identities.jsonl";
 
 /// A checkpoint is signed automatically after every this many receipts.
 pub const CHECKPOINT_EVERY: u64 = 1000;
@@ -49,9 +61,13 @@ pub enum OpenError {
     /// `init` was pointed at a directory that already holds a log.
     #[error("{0} already holds a Mohar log")]
     AlreadyExists(PathBuf),
-    /// The key file isn't a 32-byte seed.
-    #[error("{0} is not a 32-byte signing key")]
+    /// A key file (the signing seed or the privacy secret) isn't 32 bytes.
+    #[error("{0} is not a 32-byte key")]
     BadKey(PathBuf),
+    /// The log keeps identities in strict privacy mode but its privacy key is gone. Writing on
+    /// without it would put new ids and targets in the clear.
+    #[error("{0} is missing; this log is in strict privacy mode")]
+    PrivacyKeyMissing(PathBuf),
     /// A line isn't a complete receipt, usually a write cut short by a crash.
     #[error("receipts.jsonl line {line} is not a complete receipt")]
     Unreadable {
@@ -94,11 +110,111 @@ pub struct FileLog {
     checkpoint_path: PathBuf,
     last_hash: String,
     len: u64,
+    /// Set in strict privacy mode.
+    identities: Option<Identities>,
+}
+
+/// The pseudonyms of a strict-privacy log and the file that maps them back.
+struct Identities {
+    pseudonyms: Pseudonyms,
+    file: File,
+    path: PathBuf,
+    /// Pseudonyms already in the file, so each is written once.
+    known: HashSet<String>,
+}
+
+/// One line of `identities.jsonl`.
+#[derive(Serialize, Deserialize)]
+struct Identity {
+    id: String,
+    value: String,
+}
+
+impl Identities {
+    /// The privacy state of the log in `dir`: `None` when it has no privacy key and no identities.
+    fn open(dir: &Path) -> Result<Option<Self>, OpenError> {
+        let key_path = dir.join(PRIVACY_KEY_FILE);
+        let path = dir.join(IDENTITIES_FILE);
+        let key = match fs::read(&key_path) {
+            Ok(bytes) => bytes
+                .try_into()
+                .map_err(|_| OpenError::BadKey(key_path.clone()))?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                // With the mapping erased too, the log itself still shows the mode it was made in.
+                if path.exists() || first_agent_is_pseudonym(&dir.join(LOG_FILE))? {
+                    return Err(OpenError::PrivacyKeyMissing(key_path));
+                }
+                return Ok(None);
+            }
+            Err(e) => return Err(io(&key_path)(e)),
+        };
+        // Deleting the whole file is a valid way to erase everyone, so it may be missing.
+        let mut file = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .append(true)
+            .open(&path)
+            .map_err(io(&path))?;
+        let text = fs::read(&path).map_err(io(&path))?;
+        // A line cut short by a crash is skipped; its value is written again when next seen.
+        let known = text
+            .split(|&b| b == b'\n')
+            .filter_map(|l| serde_json::from_slice::<Identity>(l).ok())
+            .map(|i| i.id)
+            .collect();
+        if text.last().is_some_and(|&b| b != b'\n') {
+            // End the torn line, so the next one isn't glued onto it.
+            file.write_all(b"\n").map_err(io(&path))?;
+        }
+        Ok(Some(Self {
+            pseudonyms: Pseudonyms::new(key),
+            file,
+            path,
+            known,
+        }))
+    }
+
+    /// The pseudonym for `value`, after its mapping back is on disk.
+    fn record(&mut self, value: String) -> Result<String, OpenError> {
+        let id = self.pseudonyms.pseudonym(&value);
+        if id != value && !self.known.contains(&id) {
+            let mut line = serde_json::to_vec(&Identity {
+                id: id.clone(),
+                value,
+            })
+            .map_err(|e| Error::Canonical(e.to_string()))?;
+            line.push(b'\n');
+            self.file.write_all(&line).map_err(io(&self.path))?;
+            self.file.sync_data().map_err(io(&self.path))?;
+            self.known.insert(id.clone());
+        }
+        Ok(id)
+    }
+}
+
+/// Whether the log's first receipt names its agent by a pseudonym: only a strict-privacy log writes
+/// one, since the daemon refuses them as input. Called after the chain verified, so the line parses.
+fn first_agent_is_pseudonym(path: &Path) -> Result<bool, OpenError> {
+    let mut line = String::new();
+    BufReader::new(File::open(path).map_err(io(path))?)
+        .read_line(&mut line)
+        .map_err(io(path))?;
+    Ok(serde_json::from_str::<Receipt>(&line).is_ok_and(|r| is_pseudonym(&r.agent.id)))
 }
 
 impl FileLog {
     /// Create a new log in `dir` with a fresh signing key. Refuses to touch an existing log.
     pub fn init(dir: &Path) -> Result<Self, OpenError> {
+        Self::create(dir, false)
+    }
+
+    /// Like [`FileLog::init`], in strict privacy mode: agent ids and targets go into the chain only
+    /// as keyed hashes (see [`crate::privacy`]).
+    pub fn init_strict(dir: &Path) -> Result<Self, OpenError> {
+        Self::create(dir, true)
+    }
+
+    fn create(dir: &Path, strict: bool) -> Result<Self, OpenError> {
         if dir.join(KEY_FILE).exists() || dir.join(LOG_FILE).exists() {
             return Err(OpenError::AlreadyExists(dir.to_path_buf()));
         }
@@ -110,6 +226,12 @@ impl FileLog {
         let pub_path = dir.join(PUBLIC_FILE);
         fs::write(&pub_path, public_key_string(&key.verifying_key()) + "\n")
             .map_err(io(&pub_path))?;
+        if strict {
+            let mut secret = [0u8; 32];
+            getrandom::fill(&mut secret).map_err(|e| Error::Random(e.to_string()))?;
+            let privacy_path = dir.join(PRIVACY_KEY_FILE);
+            write_private(&privacy_path, &secret).map_err(io(&privacy_path))?;
+        }
         let log_path = dir.join(LOG_FILE);
         File::create(&log_path)
             .map_err(io(&log_path))?
@@ -155,6 +277,7 @@ impl FileLog {
             &key.verifying_key(),
             SignatureChecks::AfterLastCheckpoint,
         )?;
+        let identities = Identities::open(dir)?;
         let file = OpenOptions::new()
             .append(true)
             .open(&path)
@@ -167,11 +290,33 @@ impl FileLog {
             checkpoint_path,
             last_hash: stats.head,
             len: stats.receipts,
+            identities,
         })
     }
 
-    /// Sign `entry`, write it, and sync it to disk before returning the receipt.
-    pub fn append(&mut self, entry: Entry) -> Result<Receipt, OpenError> {
+    /// Whether this log is in strict privacy mode.
+    pub fn is_strict(&self) -> bool {
+        self.identities.is_some()
+    }
+
+    /// How `value` is written into this log as an agent id or a target: its pseudonym in strict
+    /// privacy mode, itself otherwise. Anything that compares ids with ones read back from the log
+    /// goes through this.
+    pub fn pseudonym(&self, value: &str) -> String {
+        match &self.identities {
+            Some(ids) => ids.pseudonyms.pseudonym(value),
+            None => value.to_string(),
+        }
+    }
+
+    /// Sign `entry`, write it, and sync it to disk before returning the receipt. In strict privacy
+    /// mode the agent id and target are replaced by their pseudonyms first, and the mapping back is
+    /// synced before the receipt is written.
+    pub fn append(&mut self, mut entry: Entry) -> Result<Receipt, OpenError> {
+        if let Some(ids) = &mut self.identities {
+            entry.agent_id = ids.record(entry.agent_id)?;
+            entry.action.target = ids.record(entry.action.target)?;
+        }
         let r = seal(&self.key, self.len, self.last_hash.clone(), entry)?;
         let mut line = serde_json::to_vec(&r).map_err(|e| Error::Canonical(e.to_string()))?;
         line.push(b'\n');
