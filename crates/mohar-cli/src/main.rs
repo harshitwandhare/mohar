@@ -4,6 +4,7 @@
 mod daemon;
 mod hook;
 mod publish;
+mod telemetry;
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -82,6 +83,10 @@ enum Command {
         /// Exit when stdin closes, for a parent process that starts and stops the daemon.
         #[arg(long)]
         exit_on_stdin_eof: bool,
+        /// Send OpenTelemetry traces and metrics (OTLP/HTTP JSON) to a collector on this machine, such
+        /// as http://127.0.0.1:4318. Off by default.
+        #[arg(long)]
+        otlp_endpoint: Option<String>,
     },
     /// Run as an agent host's hook: read its payload on stdin, ask the daemon, print the answer.
     Hook {
@@ -159,6 +164,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             addr,
             max_inflight,
             exit_on_stdin_eof,
+            otlp_endpoint,
         } => {
             daemon::serve(
                 &cli.dir,
@@ -167,6 +173,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
                     max_inflight,
                     io_timeout: std::time::Duration::from_secs(5),
                     exit_on_stdin_eof,
+                    otlp_endpoint,
                 },
             )?;
         }

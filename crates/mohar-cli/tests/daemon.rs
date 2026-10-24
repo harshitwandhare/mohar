@@ -1074,3 +1074,153 @@ fn a_policy_file_that_cannot_be_read_stops_the_daemon() {
     assert_eq!(out.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&out.stderr).contains("policy.json"));
 }
+
+/// A stand-in OpenTelemetry collector: accepts OTLP/HTTP posts and passes on each path and JSON body.
+fn collector() -> (String, std::sync::mpsc::Receiver<(String, Value)>) {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let url = format!("http://{}", listener.local_addr().expect("addr"));
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut s) = stream else { return };
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 8192];
+            let got = loop {
+                let Ok(n) = s.read(&mut chunk) else {
+                    break None;
+                };
+                if n == 0 {
+                    break None;
+                }
+                buf.extend_from_slice(&chunk[..n]);
+                let text = String::from_utf8_lossy(&buf).to_string();
+                if let Some((head, body)) = text.split_once("\r\n\r\n") {
+                    let len: usize = head
+                        .lines()
+                        .find_map(|l| l.strip_prefix("Content-Length: "))
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(0);
+                    if body.len() >= len {
+                        let path = head.split(' ').nth(1).unwrap_or("").to_string();
+                        break Some((path, serde_json::from_str(body).unwrap_or(Value::Null)));
+                    }
+                }
+            };
+            let _ = s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}");
+            if let Some(g) = got
+                && tx.send(g).is_err()
+            {
+                return;
+            }
+        }
+    });
+    (url, rx)
+}
+
+/// Wait for the collector to receive a post to `path` whose body satisfies `ok`.
+fn wait_for(
+    rx: &std::sync::mpsc::Receiver<(String, Value)>,
+    path: &str,
+    ok: impl Fn(&Value) -> bool,
+) -> Value {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while let Some(left) = deadline.checked_duration_since(std::time::Instant::now()) {
+        match rx.recv_timeout(left) {
+            Ok((p, body)) if p == path && ok(&body) => return body,
+            Ok(_) => {}
+            Err(_) => break,
+        }
+    }
+    panic!("the collector never received a matching {path}");
+}
+
+#[test]
+fn the_exporter_receives_a_span_per_decision_and_counts_by_result() {
+    let dir = fresh_log("otlp");
+    let (url, rx) = collector();
+    let d = Daemon::start(&dir, &["--otlp-endpoint", &url]);
+    let (status, a) = decide(d.port, "Edit", "docs/a.md", Some("toolu_1"));
+    assert_eq!(status, 200);
+    let seq = a["receipt_seq"].as_u64().expect("seq");
+    let done =
+        json!({"receipt_seq": seq, "verifier": "human", "result": "pass", "evidence_sha256": SHA});
+    assert_eq!(post(d.port, "/v1/outcome", &done.to_string()).0, 200);
+
+    let traces = wait_for(&rx, "/v1/traces", |_| true);
+    let span = &traces["resourceSpans"][0]["scopeSpans"][0]["spans"][0];
+    assert_eq!(span["name"], "mohar.decide");
+    let attrs = span["attributes"].as_array().expect("attributes");
+    let get = |k: &str| {
+        attrs
+            .iter()
+            .find(|a| a["key"] == k)
+            .map(|a| a["value"].clone())
+    };
+    assert_eq!(
+        get("mohar.result"),
+        Some(json!({"stringValue": a["result"]}))
+    );
+    assert_eq!(
+        get("mohar.receipt_seq"),
+        Some(json!({"intValue": seq.to_string()}))
+    );
+    assert_eq!(span["traceId"].as_str().map(str::len), Some(32));
+
+    let metrics = wait_for(&rx, "/v1/metrics", |m| m.to_string().contains("\"human\""));
+    let list = metrics["resourceMetrics"][0]["scopeMetrics"][0]["metrics"]
+        .as_array()
+        .expect("metrics");
+    let named = |n: &str| list.iter().find(|m| m["name"] == n).expect(n).clone();
+    assert_eq!(
+        named("mohar.decisions")["sum"]["dataPoints"][0]["asInt"],
+        "1"
+    );
+    assert_eq!(
+        named("mohar.outcomes")["sum"]["dataPoints"][0]["asInt"],
+        "1"
+    );
+    assert_eq!(
+        named("mohar.decide.duration")["histogram"]["dataPoints"][0]["count"],
+        "1"
+    );
+    assert!(named("mohar.inflight")["gauge"]["dataPoints"][0]["asInt"].is_string());
+}
+
+#[test]
+fn a_collector_that_is_down_never_changes_a_decision() {
+    let dir = fresh_log("otlp-down");
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .expect("bind")
+        .local_addr()
+        .expect("addr")
+        .port();
+    let d = Daemon::start(
+        &dir,
+        &["--otlp-endpoint", &format!("http://127.0.0.1:{port}")],
+    );
+    for i in 0..3 {
+        assert_eq!(decide(d.port, "Edit", &format!("docs/{i}.md"), None).0, 200);
+    }
+    d.stop();
+    assert!(verify(&dir).contains("3 receipts"));
+}
+
+#[test]
+fn an_otlp_endpoint_off_the_machine_stops_the_daemon() {
+    let dir = fresh_log("otlp-remote");
+    let out = Command::new(BIN)
+        .arg("--dir")
+        .arg(&dir)
+        .args([
+            "daemon",
+            "--addr",
+            "127.0.0.1:0",
+            "--otlp-endpoint",
+            "http://203.0.113.7:4318",
+        ])
+        .stdin(Stdio::null())
+        .output()
+        .expect("run daemon");
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("loopback"));
+}

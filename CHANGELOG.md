@@ -9,6 +9,9 @@ receipt format; each such change is called out.
 
 ### Added
 
+- `mohar daemon --otlp-endpoint <url>` exports OpenTelemetry to a collector on the same machine: a span per
+  decision, decisions by result, verifier outcomes, a decision latency histogram and requests in flight,
+  over OTLP/HTTP JSON with no new dependencies. Off by default; loopback only (#62).
 - Checkpoints can be published to git: `mohar checkpoint --publish git:<clone>` pulls, appends, commits
   and pushes, and `mohar verify --checkpoints git:<clone>` pulls before checking. A log cut short together
   with every local copy of its checkpoints still fails against the remote. Any git step that fails is an
