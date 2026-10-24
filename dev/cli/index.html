@@ -490,15 +490,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mohar-daemon-addr-hostport-max-inflight-n" class="md-nav__link">
+  <a href="#mohar-daemon-addr-hostport-max-inflight-n-otlp-endpoint-url" class="md-nav__link">
     <span class="md-ellipsis">
       
-        mohar daemon [--addr &lt;host:port&gt;] [--max-inflight &lt;n&gt;]
+        mohar daemon [--addr &lt;host:port&gt;] [--max-inflight &lt;n&gt;] [--otlp-endpoint &lt;url&gt;]
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="mohar daemon [--addr &lt;host:port&gt;] [--max-inflight &lt;n&gt;]">
+    <nav class="md-nav" aria-label="mohar daemon [--addr &lt;host:port&gt;] [--max-inflight &lt;n&gt;] [--otlp-endpoint &lt;url&gt;]">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1192,15 +1192,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mohar-daemon-addr-hostport-max-inflight-n" class="md-nav__link">
+  <a href="#mohar-daemon-addr-hostport-max-inflight-n-otlp-endpoint-url" class="md-nav__link">
     <span class="md-ellipsis">
       
-        mohar daemon [--addr &lt;host:port&gt;] [--max-inflight &lt;n&gt;]
+        mohar daemon [--addr &lt;host:port&gt;] [--max-inflight &lt;n&gt;] [--otlp-endpoint &lt;url&gt;]
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="mohar daemon [--addr &lt;host:port&gt;] [--max-inflight &lt;n&gt;]">
+    <nav class="md-nav" aria-label="mohar daemon [--addr &lt;host:port&gt;] [--max-inflight &lt;n&gt;] [--otlp-endpoint &lt;url&gt;]">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1368,7 +1368,7 @@ checkpoint's own signature has verified. Receipts before it are still parsed, ha
 change to any of them still fails; this is about five times faster on a log that is mostly covered by
 checkpoints. It can't catch a receipt the key holder wrote with a bad signature before a checkpoint, so
 leave it off when auditing someone else's log. The design notes (receipt format) give the argument.</p>
-<h2 id="mohar-daemon-addr-hostport-max-inflight-n"><code>mohar daemon [--addr &lt;host:port&gt;] [--max-inflight &lt;n&gt;]</code><a class="headerlink" href="#mohar-daemon-addr-hostport-max-inflight-n" title="Permanent link">&para;</a></h2>
+<h2 id="mohar-daemon-addr-hostport-max-inflight-n-otlp-endpoint-url"><code>mohar daemon [--addr &lt;host:port&gt;] [--max-inflight &lt;n&gt;] [--otlp-endpoint &lt;url&gt;]</code><a class="headerlink" href="#mohar-daemon-addr-hostport-max-inflight-n-otlp-endpoint-url" title="Permanent link">&para;</a></h2>
 <p>Serves decisions and outcomes to agent hosts on this machine, from the log in <code>--dir</code>, which it holds
 open for writing while it runs. It listens on <code>127.0.0.1:7878</code> by default and refuses any address that
 isn't loopback. It prints <code>listening on &lt;address&gt;</code> once bound, then, if any earlier decisions are still
@@ -1381,6 +1381,14 @@ still waiting from it and lists them as above; each can be given its outcome by 
 answers 503 with <code>{"error": "too many requests in flight"}</code> straight away, writes nothing, and queues
 nothing; a slot frees as soon as its request ends or times out (5 seconds). The hook treats a 503 like
 any refusal and denies.</p>
+<p>Telemetry: with <code>--otlp-endpoint http://127.0.0.1:4318</code> the daemon sends OpenTelemetry over OTLP/HTTP with
+JSON bodies to a collector on this machine; it refuses an endpoint that isn't a loopback address, so
+nothing leaves the machine unless that collector forwards it. Every half second it sends a <code>mohar.decide</code>
+span for each decision (attributes <code>mohar.result</code>, <code>mohar.by</code>, <code>mohar.capability</code>, <code>mohar.receipt_seq</code>)
+and cumulative metrics: <code>mohar.decisions</code> by result, <code>mohar.outcomes</code> by verifier and result,
+<code>mohar.decide.duration</code> (a histogram in milliseconds) and <code>mohar.inflight</code>. Spans carry no agent ids,
+targets or arguments. Export runs on its own thread; a collector that is down or slow loses telemetry
+and never delays or changes a decision. Without the flag nothing is collected.</p>
 <p>Two endpoints, JSON in and out:</p>
 <div class="highlight"><pre><span></span><code>POST /v1/decide   {agent, tool, target, args_sha256, call_id?}  -&gt;  {result, level, receipt_seq}
 POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256}  -&gt;  {receipt_seq}

@@ -1283,8 +1283,9 @@ metrics work).</p>
 </ul>
 <h2 id="observability">Observability<a class="headerlink" href="#observability" title="Permanent link">&para;</a></h2>
 <ul>
-<li>The daemon exports metrics (decisions by result, latency histograms, verifier outcomes, queue depth)
-  and traces using OpenTelemetry, off by default and local-only unless configured.</li>
+<li>The daemon exports metrics (decisions by result, latency histograms, verifier outcomes, requests in
+  flight) and a trace span per decision using OpenTelemetry (OTLP/HTTP JSON), off by default and only to
+  a collector on the same machine (<code>mohar daemon --otlp-endpoint</code>).</li>
 <li>Every decision is explainable from its receipt alone: which gate or score decided it and the evidence
   behind it.</li>
 </ul>
