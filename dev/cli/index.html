@@ -435,10 +435,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#mohar-init" class="md-nav__link">
+  <a href="#mohar-init-strict-privacy" class="md-nav__link">
     <span class="md-ellipsis">
       
-        mohar init
+        mohar init [--strict-privacy]
       
     </span>
   </a>
@@ -1137,10 +1137,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#mohar-init" class="md-nav__link">
+  <a href="#mohar-init-strict-privacy" class="md-nav__link">
     <span class="md-ellipsis">
       
-        mohar init
+        mohar init [--strict-privacy]
       
     </span>
   </a>
@@ -1282,10 +1282,20 @@
 <p><code>--dir</code> is the log directory, <code>.mohar</code> by default. It applies to every command.</p>
 <p>Exit status: <code>0</code> on success, <code>1</code> when <code>verify</code> finds a break, <code>2</code> on any other error (the message goes
 to standard error).</p>
-<h2 id="mohar-init"><code>mohar init</code><a class="headerlink" href="#mohar-init" title="Permanent link">&para;</a></h2>
+<h2 id="mohar-init-strict-privacy"><code>mohar init [--strict-privacy]</code><a class="headerlink" href="#mohar-init-strict-privacy" title="Permanent link">&para;</a></h2>
 <p>Creates a new log in <code>--dir</code>: <code>key.ed25519</code> (the signing seed, owner-only on Unix), <code>public.key</code>,
 an empty <code>receipts.jsonl</code> and <code>checkpoints.jsonl</code>. Refuses to touch a directory that already holds a
 log.</p>
+<p><code>--strict-privacy</code> is for deployments where a file path or an agent name can itself be personal data,
+such as notes about patients. It adds <code>privacy.key</code>, a second 32-byte secret kept beside the signing
+key, and from then on every agent id and target goes into <code>receipts.jsonl</code> only as
+<code>hmac-sha256:&lt;hex&gt;</code>, the HMAC-SHA-256 of the value under that secret. The same value always gets the
+same pseudonym, so trust still adds up per agent. The clear value is written to <code>identities.jsonl</code>,
+one <code>{"id": ..., "value": ...}</code> line per pseudonym, synced before the receipt that uses it. That file
+is outside the chain: delete a line to erase someone, or the whole file to erase everyone, and
+<code>mohar verify</code> still passes because verification needs neither file. A log in this mode refuses to
+open for writing once <code>privacy.key</code> is gone, so new receipts are never written in the clear by
+accident. The mode is chosen at <code>init</code> and can't be switched on or off later.</p>
 <h2 id="mohar-append"><code>mohar append</code><a class="headerlink" href="#mohar-append" title="Permanent link">&para;</a></h2>
 <p>Signs and appends one receipt, then prints its sequence number. The receipt is synced to disk before
 the command returns.</p>

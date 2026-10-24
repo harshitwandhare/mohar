@@ -1350,7 +1350,9 @@ this in the design rather than later:</p>
 <ol>
 <li><strong>No personal data in the chained fields.</strong> Receipts identify people and agents by pseudonymous
    identifiers (<code>human:7f3a...</code>), never by name or email. The mapping from identifier to person lives in a
-   separate, mutable directory file.</li>
+   separate, mutable directory file. A log made with <code>mohar init --strict-privacy</code> goes further: agent
+   ids and targets, since a file path can name a patient, enter the chain only as keyed hashes, and the
+   clear values sit in <code>identities.jsonl</code> outside it.</li>
 <li><strong>Arguments are hashed, never stored.</strong> <code>args_sha256</code> proves which action was approved without keeping
    its contents.</li>
 <li><strong>Erasure by destroying the mapping.</strong> Deleting a person's directory entry, and any per-person key
@@ -1453,23 +1455,23 @@ software alone certifies nothing.</p>
 <tr>
 <td>HIPAA minimum necessary, 164.502(b)</td>
 <td>Use the least ePHI needed</td>
-<td>Arguments stored only as hashes; strict privacy mode hashes targets and identifiers too</td>
-<td>#64</td>
-<td>Partly built</td>
+<td>Arguments stored only as hashes; strict privacy mode stores targets and agent ids only as keyed hashes</td>
+<td>privacy tests (<code>crates/mohar-core/tests/privacy.rs</code>)</td>
+<td>Built</td>
 </tr>
 <tr>
 <td>GDPR Art. 5(1)(c) Data minimisation</td>
 <td>Only the personal data needed</td>
 <td>Pseudonymous identifiers, hashed arguments, no names in receipts</td>
-<td>design section 8</td>
-<td>Built for arguments; identifiers designed</td>
+<td>design section 8, privacy tests</td>
+<td>Built (identifiers and targets in strict privacy mode)</td>
 </tr>
 <tr>
 <td>GDPR Art. 17 Erasure</td>
 <td>Erase personal data on request</td>
 <td>Identity mapping kept outside the chain; deleting it unlinks receipts while the chain still verifies</td>
-<td>design section 8</td>
-<td>Designed</td>
+<td>design section 8, privacy tests</td>
+<td>Built in strict privacy mode</td>
 </tr>
 <tr>
 <td>GDPR Art. 25 Data protection by design and by default</td>
