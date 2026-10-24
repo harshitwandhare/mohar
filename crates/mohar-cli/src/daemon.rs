@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use mohar_core::policy::{Policy, Risk};
+use mohar_core::privacy::is_pseudonym;
 use mohar_core::store::{FileLog, for_each_receipt};
 use mohar_core::trust::{Ledger, Outcome, Severity};
 use mohar_core::{Action, Decision, Entry, Receipt, Verification};
@@ -509,6 +510,11 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     if req.target.len() > MAX_TARGET {
         return bad("target is longer than 4096 bytes");
     }
+    // A strict-privacy log writes a pseudonym through unchanged; taking one from a request would let
+    // a caller stand in for whoever it belongs to without knowing their id.
+    if is_pseudonym(&req.agent) || is_pseudonym(&req.target) {
+        return bad("agent and target must not have the form of a pseudonym");
+    }
     if !is_sha256_hex(&req.args_sha256) {
         return bad("args_sha256 must be 64 lowercase hex characters");
     }
@@ -535,14 +541,16 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         Err(e) => return e,
     };
     let now = now_secs();
+    // Trust is keyed by the id as the log holds it, which is what replay rebuilds the ledger from.
+    let agent = inner.log.pseudonym(&req.agent);
     // Hard gates come first; no record outweighs them.
     let stop = state
         .policy
         .gate(&action.tool, &action.target, &action.capability);
-    let suspended = inner.ledger.is_suspended(&req.agent);
+    let suspended = inner.ledger.is_suspended(&agent);
     let verdict = inner
         .ledger
-        .decide(&req.agent, &action.capability, &classified.spec, now);
+        .decide(&agent, &action.capability, &classified.spec, now);
     let decision = match &stop {
         Some(_) => Decision {
             result: "deny".to_string(),
@@ -578,7 +586,7 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     inner.pending.insert(
         receipt.seq,
         Pending {
-            agent_id: req.agent.clone(),
+            agent_id: agent,
             action,
             decision: decision.clone(),
         },

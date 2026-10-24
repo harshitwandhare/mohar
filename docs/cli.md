@@ -7,11 +7,22 @@
 Exit status: `0` on success, `1` when `verify` finds a break, `2` on any other error (the message goes
 to standard error).
 
-## `mohar init`
+## `mohar init [--strict-privacy]`
 
 Creates a new log in `--dir`: `key.ed25519` (the signing seed, owner-only on Unix), `public.key`,
 an empty `receipts.jsonl` and `checkpoints.jsonl`. Refuses to touch a directory that already holds a
 log.
+
+`--strict-privacy` is for deployments where a file path or an agent name can itself be personal data,
+such as notes about patients. It adds `privacy.key`, a second 32-byte secret kept beside the signing
+key, and from then on every agent id and target goes into `receipts.jsonl` only as
+`hmac-sha256:<hex>`, the HMAC-SHA-256 of the value under that secret. The same value always gets the
+same pseudonym, so trust still adds up per agent. The clear value is written to `identities.jsonl`,
+one `{"id": ..., "value": ...}` line per pseudonym, synced before the receipt that uses it. That file
+is outside the chain: delete a line to erase someone, or the whole file to erase everyone, and
+`mohar verify` still passes because verification needs neither file. A log in this mode refuses to
+open for writing once `privacy.key` is gone, so new receipts are never written in the clear by
+accident. The mode is chosen at `init` and can't be switched on or off later.
 
 ## `mohar append`
 

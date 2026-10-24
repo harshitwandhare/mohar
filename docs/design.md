@@ -270,6 +270,10 @@ Receipts are append-only, so they're designed to hold no personal data:
 - People and machines appear only as pseudonymous identifiers (`human:7f3a09c2`, `host-4b1d`). The
   mapping to real names lives in a separate, mutable directory file that never enters the chain.
 - Arguments are stored only as `args_sha256`.
+- In strict privacy mode (`mohar init --strict-privacy`) agent ids and targets are stored only as
+  HMAC-SHA-256 pseudonyms under a per-log secret kept beside the signing key, with the mapping back in
+  a separate `identities.jsonl` outside the chain. A path like `patients/<name>/notes.md` then never
+  reaches the log in the clear. See the [CLI reference](cli.md).
 - Erasing a person means deleting their directory entry and any per-person key for optional encrypted
   notes. The chain still verifies; it just no longer points at anyone.
 - Retention is a setting. Segments older than a signed checkpoint can be archived or dropped and the rest
