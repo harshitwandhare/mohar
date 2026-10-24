@@ -18,6 +18,8 @@ use mohar_core::store::{FileLog, for_each_receipt};
 use mohar_core::trust::{Ledger, Outcome, Severity};
 use mohar_core::{Action, Decision, Entry, Receipt, Verification};
 use serde::Deserialize;
+
+use crate::telemetry::{self, Event, Telemetry};
 use serde_json::json;
 
 /// Largest request head (request line and headers) the daemon reads.
@@ -37,6 +39,8 @@ pub struct Config {
     pub io_timeout: Duration,
     /// Exit when stdin closes, so a parent process can stop the daemon by closing the pipe.
     pub exit_on_stdin_eof: bool,
+    /// Where to send OpenTelemetry (OTLP/HTTP JSON), if anywhere. Loopback only.
+    pub otlp_endpoint: Option<String>,
 }
 
 /// A decision that has no outcome yet: enough to write the follow-up receipt.
@@ -55,6 +59,8 @@ struct State {
     log_dir: PathBuf,
     inflight: AtomicUsize,
     max_inflight: usize,
+    /// The OpenTelemetry exporter, when one was asked for.
+    telemetry: Option<Telemetry>,
 }
 
 struct Inner {
@@ -84,6 +90,11 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
         ));
     }
     let policy = load_policy(dir)?;
+    let telemetry = cfg
+        .otlp_endpoint
+        .as_deref()
+        .map(Telemetry::start)
+        .transpose()?;
     let log = FileLog::open(dir).map_err(|e| e.to_string())?;
     let (pending, ledger) = replay(&dir.join("receipts.jsonl"), &policy)?;
     let listener = TcpListener::bind(cfg.addr).map_err(|e| format!("{}: {e}", cfg.addr))?;
@@ -123,12 +134,15 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
         inflight: AtomicUsize::new(0),
         max_inflight: cfg.max_inflight,
         policy,
+        telemetry,
     });
     for stream in listener.incoming() {
         let Ok(mut stream) = stream else { continue };
         let _ = stream.set_read_timeout(Some(cfg.io_timeout));
         let _ = stream.set_write_timeout(Some(cfg.io_timeout));
-        if state.inflight.fetch_add(1, Ordering::SeqCst) >= state.max_inflight {
+        let busy = state.inflight.fetch_add(1, Ordering::SeqCst);
+        report(&state, || Event::InFlight(busy + 1));
+        if busy >= state.max_inflight {
             state.inflight.fetch_sub(1, Ordering::SeqCst);
             respond(
                 &mut stream,
@@ -464,6 +478,13 @@ fn lock(state: &State) -> Result<std::sync::MutexGuard<'_, Inner>, (u16, serde_j
         .map_err(|_| (500, json!({"error": "log lock poisoned"})))
 }
 
+/// Send an event to the exporter, if there is one. Building the event is skipped otherwise.
+fn report(state: &State, event: impl FnOnce() -> Event) {
+    if let Some(t) = &state.telemetry {
+        t.send(event());
+    }
+}
+
 fn bad(msg: &str) -> (u16, serde_json::Value) {
     (400, json!({ "error": msg }))
 }
@@ -477,6 +498,7 @@ fn field_ok(s: &str, max: usize) -> bool {
 }
 
 fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
+    let (started, start_ns) = (std::time::Instant::now(), telemetry::now_ns());
     let req: DecideRequest = match serde_json::from_slice(body) {
         Ok(r) => r,
         Err(_) => return bad("body is not a valid decide request"),
@@ -552,6 +574,7 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         // The disk refused the write: nothing is acknowledged that isn't on disk.
         Err(e) => return (500, json!({ "error": e.to_string() })),
     };
+    let capability = action.capability.clone();
     inner.pending.insert(
         receipt.seq,
         Pending {
@@ -574,6 +597,14 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     if decision.result == "allow" {
         inner.ran.insert(receipt.seq);
     }
+    report(state, || Event::Decision {
+        result: decision.result.clone(),
+        by: decision.by.clone(),
+        capability,
+        receipt_seq: receipt.seq,
+        start_ns,
+        took: started.elapsed(),
+    });
     (
         200,
         json!({
@@ -635,7 +666,14 @@ fn outcome(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         &req.result,
         req.evidence_sha256,
     ) {
-        Ok(r) => (200, json!({ "receipt_seq": r })),
+        Ok(r) => {
+            report(state, || Event::Outcome {
+                verifier: req.verifier.clone(),
+                result: req.result.clone(),
+                count: 1,
+            });
+            (200, json!({ "receipt_seq": r }))
+        }
         // As in `decide`: a write the disk refused is never acknowledged.
         Err(e) => (500, json!({ "error": e })),
     }
@@ -787,6 +825,11 @@ fn verify_task(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         }
         // Otherwise a verifier closed the decision while the tests ran; it already has its outcome.
     }
+    report(state, || Event::Outcome {
+        verifier: kind.to_string(),
+        result: result.to_string(),
+        count: recorded,
+    });
     (
         200,
         json!({ "verified": recorded, "result": result, "verifier": kind, "out_of_scope": out_of_scope }),
@@ -961,6 +1004,7 @@ mod tests {
             log_dir: dir,
             inflight: AtomicUsize::new(0),
             max_inflight: 1,
+            telemetry: None,
         }
     }
 

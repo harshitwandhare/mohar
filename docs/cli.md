@@ -76,7 +76,7 @@ change to any of them still fails; this is about five times faster on a log that
 checkpoints. It can't catch a receipt the key holder wrote with a bad signature before a checkpoint, so
 leave it off when auditing someone else's log. The design notes (receipt format) give the argument.
 
-## `mohar daemon [--addr <host:port>] [--max-inflight <n>]`
+## `mohar daemon [--addr <host:port>] [--max-inflight <n>] [--otlp-endpoint <url>]`
 
 Serves decisions and outcomes to agent hosts on this machine, from the log in `--dir`, which it holds
 open for writing while it runs. It listens on `127.0.0.1:7878` by default and refuses any address that
@@ -92,6 +92,15 @@ Overload: at most `--max-inflight` requests (default 64) are handled at once. Pa
 answers 503 with `{"error": "too many requests in flight"}` straight away, writes nothing, and queues
 nothing; a slot frees as soon as its request ends or times out (5 seconds). The hook treats a 503 like
 any refusal and denies.
+
+Telemetry: with `--otlp-endpoint http://127.0.0.1:4318` the daemon sends OpenTelemetry over OTLP/HTTP with
+JSON bodies to a collector on this machine; it refuses an endpoint that isn't a loopback address, so
+nothing leaves the machine unless that collector forwards it. Every half second it sends a `mohar.decide`
+span for each decision (attributes `mohar.result`, `mohar.by`, `mohar.capability`, `mohar.receipt_seq`)
+and cumulative metrics: `mohar.decisions` by result, `mohar.outcomes` by verifier and result,
+`mohar.decide.duration` (a histogram in milliseconds) and `mohar.inflight`. Spans carry no agent ids,
+targets or arguments. Export runs on its own thread; a collector that is down or slow loses telemetry
+and never delays or changes a decision. Without the flag nothing is collected.
 
 Two endpoints, JSON in and out:
 

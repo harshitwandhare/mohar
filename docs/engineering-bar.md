@@ -68,8 +68,9 @@ Verification streams the log instead of loading it whole, so log size never limi
 
 ## Observability
 
-- The daemon exports metrics (decisions by result, latency histograms, verifier outcomes, queue depth)
-  and traces using OpenTelemetry, off by default and local-only unless configured.
+- The daemon exports metrics (decisions by result, latency histograms, verifier outcomes, requests in
+  flight) and a trace span per decision using OpenTelemetry (OTLP/HTTP JSON), off by default and only to
+  a collector on the same machine (`mohar daemon --otlp-endpoint`).
 - Every decision is explainable from its receipt alone: which gate or score decided it and the evidence
   behind it.
 
