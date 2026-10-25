@@ -4,7 +4,8 @@
 
 use mohar_core::policy::{Capability, Risk};
 use mohar_core::trust::{
-    ASK_FIRST, Ledger, Outcome, REMEDIATION_PASSES, SUPERVISED, Severity, TRUSTED, wilson_lower,
+    ASK_FIRST, HumanReview, Ledger, MIN_REVIEW_SECS, Outcome, REMEDIATION_PASSES, SUPERVISED,
+    Severity, TRUSTED, wilson_lower,
 };
 use proptest::prelude::*;
 
@@ -403,4 +404,121 @@ fn the_default_failure_class_follows_risk_and_reversibility() {
         Severity::for_capability(&cap(Risk::None, true, 2)),
         Severity::S1
     );
+}
+
+/// A person's review of an action: who reviewed it and how long they spent.
+fn review(reviewer: &str, seconds: u64) -> HumanReview {
+    HumanReview {
+        reviewer: reviewer.to_string(),
+        seconds,
+    }
+}
+
+#[test]
+fn a_quick_human_accept_does_not_count_toward_promotion() {
+    let code = cap(Risk::Medium, true, 2);
+    let mut l = Ledger::new();
+    let quick = review("person:r1", MIN_REVIEW_SECS - 1);
+    for _ in 0..20 {
+        assert!(!l.record_human(A, "fs.edit.code", &pass(0), &quick));
+    }
+    assert_eq!(l.level(A, "fs.edit.code", &code, 7 * DAY), ASK_FIRST);
+    let careful = review("person:r2", MIN_REVIEW_SECS);
+    for _ in 0..20 {
+        assert!(l.record_human(A, "fs.edit.code", &pass(0), &careful));
+    }
+    assert_eq!(l.level(A, "fs.edit.code", &code, 7 * DAY), SUPERVISED);
+}
+
+#[test]
+fn a_human_reject_always_counts_however_quick() {
+    let code = cap(Risk::Medium, true, 2);
+    let mut l = Ledger::new();
+    passes(&mut l, "fs.edit.code", 20, 0);
+    assert_eq!(l.level(A, "fs.edit.code", &code, 7 * DAY), SUPERVISED);
+    let quick = review("person:r1", 0);
+    assert!(l.record_human(A, "fs.edit.code", &fail(7 * DAY, Severity::S2), &quick));
+    assert_eq!(l.level(A, "fs.edit.code", &code, 7 * DAY), ASK_FIRST);
+}
+
+/// `approved` accepts and then `rejected` rejects from one reviewer, each read for long enough.
+fn history(l: &mut Ledger, reviewer: &str, approved: u32, rejected: u32) {
+    let r = review(reviewer, MIN_REVIEW_SECS);
+    for _ in 0..approved {
+        l.record_human("agent:test/other", "fs.edit.docs", &pass(0), &r);
+    }
+    for _ in 0..rejected {
+        l.record_human(
+            "agent:test/other",
+            "fs.edit.docs",
+            &fail(0, Severity::S1),
+            &r,
+        );
+    }
+}
+
+#[test]
+fn a_reviewer_approving_more_than_95_percent_of_the_last_50_stops_counting() {
+    let r = review("person:r1", MIN_REVIEW_SECS);
+    // 47 of 50 is 94%: still counts.
+    let mut l = Ledger::new();
+    history(&mut l, "person:r1", 47, 3);
+    assert!(!l.is_rubber_stamping("person:r1"));
+    assert!(l.record_human(A, "fs.edit.code", &pass(0), &r));
+    // 48 of the last 50 is 96%: the next accept doesn't count.
+    let mut l = Ledger::new();
+    history(&mut l, "person:r1", 48, 2);
+    assert!(l.is_rubber_stamping("person:r1"));
+    assert!(!l.record_human(A, "fs.edit.code", &pass(0), &r));
+    // Fewer than 50 reviews say nothing yet, even if all were accepts.
+    let mut l = Ledger::new();
+    history(&mut l, "person:r1", 49, 0);
+    assert!(!l.is_rubber_stamping("person:r1"));
+    // Other reviewers are unaffected.
+    let mut l = Ledger::new();
+    history(&mut l, "person:r1", 50, 0);
+    assert!(l.record_human(
+        A,
+        "fs.edit.code",
+        &pass(0),
+        &review("person:r2", MIN_REVIEW_SECS)
+    ));
+}
+
+#[test]
+fn only_the_last_50_reviews_set_the_rate() {
+    let mut l = Ledger::new();
+    // 10 rejects long ago, then 50 accepts: the last 50 are all accepts.
+    history(&mut l, "person:r1", 0, 10);
+    history(&mut l, "person:r1", 50, 0);
+    assert!(l.is_rubber_stamping("person:r1"));
+}
+
+#[test]
+fn rubber_stamping_lasts_until_a_sampled_recheck_passes() {
+    let r = review("person:r1", MIN_REVIEW_SECS);
+    let mut l = Ledger::new();
+    history(&mut l, "person:r1", 50, 0);
+    // Rejecting a few more doesn't lift it; only a re-check does.
+    history(&mut l, "person:r1", 0, 5);
+    assert!(l.is_rubber_stamping("person:r1"));
+    l.recheck("person:r1", false);
+    assert!(
+        l.is_rubber_stamping("person:r1"),
+        "a failed re-check keeps it"
+    );
+    l.recheck("person:r1", true);
+    assert!(!l.is_rubber_stamping("person:r1"));
+    assert!(l.record_human(A, "fs.edit.code", &pass(0), &r));
+    // The re-check starts a fresh window: one more accept doesn't flag them again.
+    assert!(!l.is_rubber_stamping("person:r1"));
+}
+
+#[test]
+fn tests_and_diffs_are_unaffected_by_reviewer_flags() {
+    let code = cap(Risk::Medium, true, 2);
+    let mut l = Ledger::new();
+    history(&mut l, "person:r1", 50, 0);
+    passes(&mut l, "fs.edit.code", 20, 0);
+    assert_eq!(l.level(A, "fs.edit.code", &code, 7 * DAY), SUPERVISED);
 }

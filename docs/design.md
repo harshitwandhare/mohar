@@ -154,10 +154,11 @@ the user issued.
 ### Rubber-stamping
 
 A person's approval is the weakest kind of verification, because tired reviewers approve almost
-everything. So a human accept counts toward promotion only when the reviewer spent time on it, and
-Mohar watches each reviewer's approval rate: if someone approves more than 95% of requests over the last
-50, their accepts stop counting toward promotion until a sampled re-check shows they are still reading.
-Tests, diffs and replays are unaffected.
+everything. So a human accept counts toward promotion only when the reviewer spent at least 30 seconds
+on it, and Mohar watches each reviewer's approval rate: if someone approves more than 95% of requests
+over the last 50, their accepts stop counting toward promotion until a sampled re-check shows they are
+still reading. A passed re-check starts their window over. A reject always counts, however quick. Tests,
+diffs and replays are unaffected.
 
 ### Hard gates
 

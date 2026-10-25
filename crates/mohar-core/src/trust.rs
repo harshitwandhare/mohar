@@ -4,7 +4,7 @@
 //! Everything here is a pure function of the events fed in and the time passed in, so the whole state
 //! can be rebuilt by replaying the signed log through it, and every rule can be tested exactly.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::policy::{Capability, Risk};
 
@@ -23,6 +23,12 @@ const MINOR_WINDOW_DAYS: u64 = 14;
 const MINORS_FOR_MEANINGFUL: usize = 3;
 /// Consecutive verified passes that end remediation.
 pub const REMEDIATION_PASSES: u32 = 5;
+/// Seconds a person must spend on a review before their accept counts toward promotion.
+pub const MIN_REVIEW_SECS: u64 = 30;
+/// Reviews per reviewer that the approval rate is taken over.
+const REVIEW_WINDOW: usize = 50;
+/// Approval rate, in percent, above which a reviewer's accepts stop counting.
+const RUBBER_STAMP_PERCENT: usize = 95;
 
 /// The three trust levels.
 pub const ASK_FIRST: u8 = 0;
@@ -78,6 +84,15 @@ pub struct Outcome {
     pub related: Vec<String>,
 }
 
+/// A person's review behind a `human` outcome.
+#[derive(Debug, Clone)]
+pub struct HumanReview {
+    /// Who reviewed it.
+    pub reviewer: String,
+    /// How long they spent on it, in seconds.
+    pub seconds: u64,
+}
+
 /// Why an action was decided the way it was.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Verdict {
@@ -103,11 +118,21 @@ struct Record {
     remediation: Option<(u32, bool)>,
 }
 
+/// One reviewer's recent decisions, for the rubber-stamping rule (docs/design.md section 4).
+#[derive(Debug, Clone, Default)]
+struct Reviewer {
+    /// Whether each of the last `REVIEW_WINDOW` reviews was an accept, oldest first.
+    recent: VecDeque<bool>,
+    /// Set once the approval rate goes over the limit; only a passed re-check clears it.
+    flagged: bool,
+}
+
 /// Trust state for every agent and capability.
 #[derive(Debug, Clone, Default)]
 pub struct Ledger {
     records: BTreeMap<(String, String), Record>,
     suspended: BTreeSet<String>,
+    reviewers: BTreeMap<String, Reviewer>,
 }
 
 /// Weight of evidence `age` seconds old.
@@ -242,6 +267,46 @@ impl Ledger {
                     }
                 }
             }
+        }
+    }
+
+    /// Record an outcome a person verified. A reject always counts. An accept counts only if the
+    /// reviewer spent at least `MIN_REVIEW_SECS` on it and isn't flagged for rubber-stamping. Returns
+    /// whether the outcome was recorded.
+    pub fn record_human(
+        &mut self,
+        agent: &str,
+        capability: &str,
+        o: &Outcome,
+        review: &HumanReview,
+    ) -> bool {
+        let rv = self.reviewers.entry(review.reviewer.clone()).or_default();
+        let counts = !o.passed || (!rv.flagged && review.seconds >= MIN_REVIEW_SECS);
+        rv.recent.push_back(o.passed);
+        if rv.recent.len() > REVIEW_WINDOW {
+            rv.recent.pop_front();
+        }
+        let accepts = rv.recent.iter().filter(|a| **a).count();
+        if rv.recent.len() == REVIEW_WINDOW && accepts * 100 > RUBBER_STAMP_PERCENT * REVIEW_WINDOW
+        {
+            rv.flagged = true;
+        }
+        if counts {
+            self.record(agent, capability, o);
+        }
+        counts
+    }
+
+    /// Whether a reviewer's accepts have stopped counting toward promotion.
+    pub fn is_rubber_stamping(&self, reviewer: &str) -> bool {
+        self.reviewers.get(reviewer).is_some_and(|r| r.flagged)
+    }
+
+    /// The result of a sampled re-check of a reviewer. A pass shows they are still reading: their
+    /// accepts count again and their approval rate starts over. A fail changes nothing.
+    pub fn recheck(&mut self, reviewer: &str, passed: bool) {
+        if passed && let Some(r) = self.reviewers.get_mut(reviewer) {
+            *r = Reviewer::default();
         }
     }
 
