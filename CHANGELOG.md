@@ -9,6 +9,9 @@ receipt format; each such change is called out.
 
 ### Added
 
+- The trust engine guards against rubber-stamping: a human accept counts toward promotion only after 30
+  seconds of review, and a reviewer who approves more than 95% of their last 50 reviews stops counting
+  until a sampled re-check passes. Rejects always count; tests and diffs are untouched (#50).
 - `mohar init --strict-privacy` keeps agent ids and targets out of the log in the clear: each is stored
   as an HMAC-SHA-256 pseudonym under a per-log secret, and the mapping back lives in `identities.jsonl`
   outside the chain, where deleting a line erases someone without breaking verification (#64).
