@@ -174,3 +174,19 @@ test('example hashes on the home page are full length and only cut by the browse
     expect(cut, text).toBe(true);
   }
 });
+
+test('running text avoids one-word last lines and headings wrap evenly', async ({ page }) => {
+  await page.goto('/');
+  const support = await page.evaluate(() => ({
+    pretty: CSS.supports('text-wrap', 'pretty'),
+    balance: CSS.supports('text-wrap', 'balance'),
+  }));
+  test.skip(!support.pretty, 'this browser has no text-wrap: pretty and wraps greedily');
+  const styles = await page.evaluate(() => {
+    const wrap = sel => [...document.querySelectorAll(sel)].map(e => getComputedStyle(e).textWrapStyle);
+    return { p: wrap('main p, main li, main dd'), h: wrap('h1, h2, h3') };
+  });
+  expect(styles.p.length).toBeGreaterThan(10);
+  expect(new Set(styles.p)).toEqual(new Set(['pretty']));
+  if (support.balance) expect(new Set(styles.h)).toEqual(new Set(['balance']));
+});
