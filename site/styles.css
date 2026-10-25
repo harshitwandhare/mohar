@@ -58,7 +58,9 @@ img { max-width: 100%; height: auto; display: block; }
 
 section { padding: 0 var(--edge); margin: 0 0 var(--gap); }
 h1 { font-weight: 800; font-size: var(--s-display); line-height: 0.92; letter-spacing: -0.045em; margin: 0 0 clamp(20px, 3vw, 32px); }
-h1, h2 { text-wrap: balance; }
+h1, h2, h3 { text-wrap: balance; }
+/* No one-word last lines in running text, like "score." alone under a tile's sentence. */
+p, li, dd, figcaption { text-wrap: pretty; }
 h2 { font-weight: 800; font-size: var(--s-heading); line-height: 1.02; letter-spacing: -0.03em; margin: 0 0 clamp(18px, 2.4vw, 28px); max-width: 16ch; }
 .lede { font-size: var(--s-lead); line-height: 1.5; color: #d9d4cc; max-width: 40ch; margin: 0 0 clamp(28px, 4vw, 40px); }
 .note { color: var(--ink); max-width: 62ch; }
