@@ -34,7 +34,10 @@ Mohar is early, and this table is kept honest.
 | Signed, hash-chained receipt log (`mohar-core`) | Released in 0.1 |
 | `mohar` CLI: `init`, `append`, `log`, `checkpoint`, `verify` | Released in 0.1, for Linux, macOS and Windows |
 | Receipt format test vectors, with an independent Python checker | Released in 0.1 |
-| Trust engine, verifiers, escalation, host adapters | Designed in [docs/design.md](docs/design.md), being built ([roadmap](docs/ROADMAP.md)) |
+| Trust engine with hard gates and proportionate demotion; tests and diff verifiers | Released in 0.2 |
+| `mohar daemon` and the Claude Code hook (fails closed), shell commands split before they are judged | Released in 0.2 |
+| Checkpoints published to a file or git, strict privacy mode, OpenTelemetry export | Released in 0.2 |
+| Escalation to the right person, more host adapters, the benchmark | Designed in [docs/design.md](docs/design.md), being built ([roadmap](docs/ROADMAP.md)) |
 
 Nothing here is production-ready yet.
 
