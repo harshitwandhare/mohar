@@ -1453,8 +1453,15 @@ list of rules; the first rule that matches an action's tool and target wins:</p>
 <li><code>risk</code> is <code>none</code>, <code>low</code>, <code>medium</code> or <code>high</code>; <code>ceiling</code> is the highest level an agent may reach on the
   capability, 0 to 2, and a high-risk irreversible capability can't go above 1.</li>
 <li>A rule gives either <code>paths</code> (globs over the target relative to <code>root</code>, where <code>*</code> and <code>?</code> stay within a
-  directory and <code>**</code> crosses directories) or <code>commands</code> (globs over the whole command line, where <code>*</code>
-  matches anything), never both. <code>tools</code> limits it to those host tools.</li>
+  directory and <code>**</code> crosses directories) or <code>commands</code> (globs over a command, where <code>*</code> matches
+  anything), never both. <code>tools</code> limits it to those host tools.</li>
+<li>A <code>Bash</code> command line is split into the commands it runs (at <code>;</code>, <code>&amp;&amp;</code>, <code>||</code>, <code>|</code>, <code>&amp;</code>, newlines and
+  subshell brackets, with quotes and escapes respected) and each one is matched on its own. The riskiest
+  decides the line's capability, and a denied capability anywhere in the line stops all of it, so
+  <code>ls &amp;&amp; git push origin main</code> is a push to main. A line Mohar can't read through (command or process
+  substitution, a here-document, <code>eval</code>, <code>source</code>, a shell run with <code>-c</code>, an unclosed quote) is
+  <code>unclassified</code> and refused. When <code>allowed_hosts</code> is set, a command that uses a variable next to a
+  URL or a network program (<code>curl $HOST/x</code>) is refused too, since the host can't be known.</li>
 <li><code>root</code> defaults to the directory that holds the log directory. <code>..</code> in a target is resolved first, so a
   path can't climb out of the root.</li>
 <li>An action that matches no rule, or names a path outside the root, is <code>unclassified</code>: high risk,
