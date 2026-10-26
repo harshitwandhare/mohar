@@ -54,6 +54,25 @@ to the [engineering bar](engineering-bar.md). Each phase ships as small pull req
   budgets and batching.
 - Cost per verified outcome by agent, person and team, from the hosts' own cost telemetry.
 
+## Path to a standard
+
+The goal is for any repository to be able to require that agent commits come with receipts that verify,
+using free tools and a format anyone can implement. The steps, roughly in order:
+
+- **A receipt spec with its own version.** `spec/receipts-v1.md` describes the format apart from the Rust
+  code, with conformance levels a tool can claim and test vectors that prove it. The spec is versioned
+  separately from the `mohar` crate, so a change to one doesn't force a release of the other.
+- **A free GitHub Action.** It fails a pull request whose agent commits lack receipts that verify against
+  a pinned key and match the diff in front of it. It will be listed on the GitHub Marketplace and work
+  as a plain command in other CI systems.
+- **A branch protection recipe.** One page on making that check required, so "agent commits need
+  receipts" is a setting a maintainer turns on in a few minutes.
+- **Alignment with IETF drafts.** Several individual drafts describe signed, hash-chained records of agent
+  actions. Mohar maps its fields onto them, tests the mapping, and brings interop results to the
+  authors of those drafts.
+- **A neutral home, later.** Once people outside this project depend on the spec, it should move to a
+  vendor-neutral foundation so no single maintainer controls it.
+
 ## Not planned
 
 - Another identity provider, policy language, orchestrator or memory store. Good ones exist; Mohar
