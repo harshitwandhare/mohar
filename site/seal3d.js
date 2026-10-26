@@ -82,13 +82,18 @@ async function start() {
   await document.fonts.load('700 40px "Tiro Devanagari Marathi"').catch(() => {});
 
   // Load the model and the studio first; if either fails, the still image stays.
+  // Everything the first frame needs loads before the canvas replaces the still, so a visitor never
+  // sees untextured wood or a black page while the rest arrives.
   const draco = new DRACOLoader().setDecoderPath('vendor/draco/');
-  let gltf, hdr;
+  const loader = new THREE.TextureLoader();
+  let gltf, hdr, paperTex, woodMaps;
   try {
-    [gltf, hdr] = await Promise.all([
+    [gltf, hdr, paperTex, ...woodMaps] = await Promise.all([
       new GLTFLoader().setDRACOLoader(draco).loadAsync('assets/stamp.glb'),
       // A photographed studio (Poly Haven, CC0) gives the metal and lacquer real softboxes to reflect.
       new HDRLoader().loadAsync('assets/pbr/brown_photostudio_02_1k.hdr'),
+      loader.loadAsync('assets/1765-saka-1843-ce-jnanesvari-jnandeva-dnyaneshwar.jpg'),
+      ...['diff', 'nor_gl', 'rough'].map(n => loader.loadAsync('assets/pbr/rosewood_veneer1_' + n + '_1k.jpg')),
     ]);
   } catch {
     return;
@@ -102,39 +107,39 @@ async function start() {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.AgXToneMapping;
   renderer.toneMappingExposure = 1.15;
-  host.append(renderer.domElement);
-  host.classList.add('live');
 
   const scene = new THREE.Scene();
   const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromEquirectangular(hdr).texture;
+  // The studio is given to each material, not to the scene, so the metal and wood reflect it while
+  // the page takes only a trace and stays dark outside the lamp's pool.
+  const studio = pmrem.fromEquirectangular(hdr).texture;
   hdr.dispose();
-  scene.environmentIntensity = 0.75;
 
   const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
   camera.position.set(0, 7.6, 12.8);
   camera.lookAt(0, 2.8, 0);
 
-  // One warm lamp: a pool of light on the page that falls off into the dark ground around it.
-  const lamp = new THREE.SpotLight(0xffe2b8, 420, 40, Math.PI / 6.5, 1, 2);
+  // One warm lamp: a round pool of light on the page that falls off into the dark ground around it.
+  // The cone is narrow enough that the pool ends inside the page, so no edge of the sheet is ever lit.
+  const lamp = new THREE.SpotLight(0xffe2b8, 520, 40, Math.PI / 9, 1, 2);
   lamp.position.set(-3, 14, 5);
   lamp.target.position.set(0, 0, 0.5);
   lamp.castShadow = true;
   lamp.shadow.mapSize.set(2048, 2048);
   lamp.shadow.radius = 8;
   lamp.shadow.bias = -0.0004;
-  // A cool rim from behind separates the stamp from the dark ground.
-  const rim = new THREE.DirectionalLight(0xd8e4ff, 1.4);
+  // A cool rim from behind separates the stamp from the dark ground. It is a narrow spot on the stamp,
+  // not a directional light, which would light the whole page evenly and show its far edge.
+  const rim = new THREE.SpotLight(0xd8e4ff, 260, 30, Math.PI / 14, 0.6, 2);
   rim.position.set(4, 6, -8);
-  scene.add(lamp, lamp.target, rim, new THREE.AmbientLight(0xffffff, 0.04));
+  rim.target.position.set(0, 2.6, 0);
+  scene.add(lamp, lamp.target, rim, rim.target, new THREE.AmbientLight(0xffffff, 0.04));
 
   const aniso = renderer.capabilities.getMaxAnisotropy();
-  // Paper: an 1843 Marathi manuscript page (credited on the page).
-  const loader = new THREE.TextureLoader();
-  const paperTex = loader.load('assets/1765-saka-1843-ce-jnanesvari-jnandeva-dnyaneshwar.jpg');
+  // Paper: an 1843 Marathi manuscript page (credited on the page), shown once and the right way round.
   paperTex.colorSpace = THREE.SRGBColorSpace;
   paperTex.anisotropy = aniso;
-  const paper = new THREE.Mesh(new THREE.PlaneGeometry(22, 27), new THREE.MeshStandardMaterial({ map: paperTex, roughness: 0.95, color: 0x9a948c }));
+  const paper = new THREE.Mesh(new THREE.PlaneGeometry(22, 27), new THREE.MeshStandardMaterial({ map: paperTex, roughness: 0.95, color: 0x9a948c, envMap: studio, envMapIntensity: 0.02 }));
   paper.rotation.x = -Math.PI / 2;
   paper.position.z = -1;
   paper.receiveShadow = true;
@@ -151,14 +156,14 @@ async function start() {
   const ringTex = new THREE.CanvasTexture(rings);
   ringTex.wrapS = ringTex.wrapT = THREE.RepeatWrapping;
   ringTex.repeat.set(1, 3);
-  const brass = new THREE.MeshPhysicalMaterial({ color: 0xb48c52, metalness: 1, roughness: 0.42, roughnessMap: ringTex, vertexColors: true });
+  const brass = new THREE.MeshPhysicalMaterial({ envMap: studio, envMapIntensity: 0.75, color: 0xb48c52, metalness: 1, roughness: 0.42, roughnessMap: ringTex, vertexColors: true });
   // The printing face is drawn here, so its engraving always matches the impression.
   const face = new THREE.CanvasTexture(sealFace(1024, '#fff', '#000', true));
-  const faceMat = new THREE.MeshPhysicalMaterial({ color: 0xb48c52, metalness: 1, roughness: 0.55, bumpMap: face, bumpScale: 6 });
+  const faceMat = new THREE.MeshPhysicalMaterial({ envMap: studio, envMapIntensity: 0.75, color: 0xb48c52, metalness: 1, roughness: 0.55, bumpMap: face, bumpScale: 6 });
 
   // Photographed rosewood (Poly Haven, CC0): sheesham is Indian rosewood. Grain runs along the handle.
   const pbr = (name, srgb) => {
-    const t = loader.load('assets/pbr/rosewood_veneer1_' + name + '_1k.jpg');
+    const t = woodMaps[['diff', 'nor_gl', 'rough'].indexOf(name)];
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     t.repeat.set(2, 0.5);
     t.anisotropy = aniso;
@@ -166,6 +171,7 @@ async function start() {
     return t;
   };
   const wood = new THREE.MeshPhysicalMaterial({
+    envMap: studio, envMapIntensity: 0.75,
     map: pbr('diff', true), normalMap: pbr('nor_gl'), roughnessMap: pbr('rough'), vertexColors: true,
     color: 0xa89482, roughness: 0.8, clearcoat: 0.35, clearcoatRoughness: 0.18,
   });
@@ -241,6 +247,18 @@ async function start() {
   }
   new ResizeObserver(size).observe(host);
   size();
+  // Draw the first frame off screen, then fade the canvas in over the still and drop the still
+  // only once the fade is done, so the hand-over can't flash.
+  renderer.render(scene, camera);
+  host.append(renderer.domElement);
+  // Two frames so the canvas is laid out at opacity 0 before the fade starts. The render loop hides the
+  // still once the fade has had time to finish. Not transitionend, which doesn't fire when no transition
+  // runs, and not a timer, which a busy page can hold back: the still must never stay under the canvas.
+  let liveAt = Infinity;
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    host.classList.add('live');
+    liveAt = performance.now();
+  }));
   let visible = true;
   new IntersectionObserver(([e]) => { visible = e.isIntersecting; }).observe(host);
 
@@ -248,6 +266,7 @@ async function start() {
   const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
   renderer.setAnimationLoop(time => {
     timer.update(time);
+    if (performance.now() - liveAt > 500 && !host.classList.contains('shown')) host.classList.add('shown');
     if (!visible) return;
     const dt = timer.getDelta();
     stamp.rotation.z += (-tilt.x - stamp.rotation.z) * 0.07;
