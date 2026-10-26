@@ -51,6 +51,16 @@ test('without WebGL or with reduced motion the still seal shows', async ({ brows
   await page.close();
 });
 
+test('once the 3D seal is drawn the still under it is hidden, so the two never show together', async ({ page }) => {
+  await page.goto('/');
+  // Engines without WebGL 2 keep the still, which the test above covers.
+  const webgl = await page.evaluate(() => !!document.createElement('canvas').getContext('webgl2'));
+  test.skip(!webgl, 'no WebGL 2 in this browser');
+  await expect(page.locator('#seal3d canvas')).toHaveCount(1, { timeout: 20000 });
+  await expect(page.locator('#seal3d')).toHaveClass(/(^| )shown( |$)/, { timeout: 8000 });
+  await expect(page.locator('#seal3d img')).toBeHidden();
+});
+
 test('the story of the name lives on its own page, with every picture credited', async ({ page }) => {
   await page.goto('/name.html');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Why Mohar');
