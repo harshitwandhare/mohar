@@ -2,7 +2,7 @@
 
 <h1 align="center">Mohar</h1>
 
-<p align="center">Agents should earn what they're allowed to do, and lose it the moment they get it wrong.</p>
+<p align="center">Agents should earn what they're allowed to do, and lose it in proportion to what they get wrong.</p>
 
 <p align="center">
   <a href="https://github.com/harshitwandhare/mohar/actions/workflows/rust.yml"><img alt="Rust" src="https://github.com/harshitwandhare/mohar/actions/workflows/rust.yml/badge.svg?branch=main"></a>
