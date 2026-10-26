@@ -7,6 +7,8 @@ receipt format; each such change is called out.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-26
+
 ### Added
 
 - The trust engine guards against rubber-stamping: a human accept counts toward promotion only after 30
@@ -143,5 +145,6 @@ The first release: a signed, hash-chained receipt log and the `mohar` command li
   line-coverage floor on every pull request; branch protection on `main`; release tags limited to
   admins; release artefacts carry GitHub build attestations.
 
-[Unreleased]: https://github.com/harshitwandhare/mohar/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/harshitwandhare/mohar/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/harshitwandhare/mohar/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/harshitwandhare/mohar/releases/tag/v0.1.0
