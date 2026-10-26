@@ -108,6 +108,11 @@ receipt format; each such change is called out.
 
 ### Security
 
+- Shell commands are split into their parts before they are classified and gated. A harmless first
+  command used to decide the whole line: with the built-in policy, `ls && git push origin main` was
+  read-only and passed the gate that forbids pushing to main. Each part is now classified, the riskiest
+  decides, a denied part stops the line, and command substitution, `eval`, `sh -c`, here-documents and
+  runtime-built hosts are refused as undecidable (#105).
 - Signatures and public keys must be lowercase hex. Uppercase spellings were accepted, so the last
   receipt in a log could be rewritten without failing verification. Found by the new fuzz targets (#58).
 

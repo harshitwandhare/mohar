@@ -142,6 +142,13 @@ pub struct GateStop {
 const WRITE_TOOLS: [&str; 4] = ["Edit", "MultiEdit", "Write", "NotebookEdit"];
 /// Host tools whose target is a URL.
 const URL_TOOLS: [&str; 1] = ["WebFetch"];
+/// Tools whose target is a shell command line, split into its commands before classifying.
+const SHELL_TOOLS: [&str; 1] = ["Bash"];
+/// Programs that reach other hosts. A variable near one of them hides which host.
+const NETWORK_PROGRAMS: [&str; 14] = [
+    "curl", "wget", "http", "https", "nc", "ncat", "netcat", "ssh", "scp", "sftp", "rsync", "ftp",
+    "telnet", "git",
+];
 
 /// A loaded, validated policy.
 #[derive(Debug, Clone)]
@@ -318,6 +325,41 @@ impl Policy {
                 reason: format!("no agent may use {capability}; a person has to do it"),
             });
         }
+        if SHELL_TOOLS.contains(&tool) {
+            let parts = match crate::shell::split(target) {
+                Ok(parts) => parts,
+                Err(why) => {
+                    return Some(GateStop {
+                        gate: "undecidable",
+                        reason: format!("can't tell what this command runs: {why}"),
+                    });
+                }
+            };
+            // A denied capability anywhere in the line stops it, whichever part decides the class.
+            for p in &parts {
+                let c = self.classify_one(tool, &p.text()).capability;
+                if self.gates.deny_capabilities.contains(&c) {
+                    return Some(GateStop {
+                        gate: "denied_capability",
+                        reason: format!("no agent may use {c}; a person has to do it"),
+                    });
+                }
+            }
+            if self.gates.allowed_hosts.is_some()
+                && let Some(p) = parts.iter().find(|p| {
+                    p.expands
+                        && p.words.iter().any(|w| {
+                            w.contains("://")
+                                || NETWORK_PROGRAMS.contains(&w.rsplit('/').next().unwrap_or(""))
+                        })
+                })
+            {
+                return Some(GateStop {
+                    gate: "undecidable",
+                    reason: format!("can't tell which host `{}` reaches", p.text()),
+                });
+            }
+        }
         if WRITE_TOOLS.contains(&tool) {
             let Some(rel) = self.relative(target) else {
                 return Some(if target.is_empty() {
@@ -356,8 +398,16 @@ impl Policy {
                     }
                 }
             } else {
-                // A command line: every URL in it must go to an allowed host.
-                target.split_whitespace().filter_map(url_host).collect()
+                // A command line: every URL in it must go to an allowed host. Shell lines were
+                // checked above to be readable, so their words are what the shell would see.
+                match crate::shell::split(target) {
+                    Ok(parts) => parts
+                        .iter()
+                        .flat_map(|p| p.words.iter())
+                        .filter_map(|w| url_host(w))
+                        .collect(),
+                    Err(_) => target.split_whitespace().filter_map(url_host).collect(),
+                }
             };
             if let Some(h) = hosts.iter().find(|h| !host_allowed(h, allowed)) {
                 return Some(GateStop {
@@ -369,10 +419,58 @@ impl Policy {
         None
     }
 
-    /// Classify an action by host tool and target. Path targets are resolved against the root.
+    /// Classify an action by host tool and target. Path targets are resolved against the root. A
+    /// shell command line is split into its commands and the riskiest one decides; a line that can't
+    /// be read is unclassified, the highest risk.
     pub fn classify(&self, tool: &str, target: &str) -> Classified {
+        if !SHELL_TOOLS.contains(&tool) {
+            return self.classify_one(tool, target);
+        }
+        let parts = match crate::shell::split(target) {
+            Ok(parts) if !parts.is_empty() => parts,
+            Ok(_) => return self.classify_one(tool, target),
+            Err(_) => {
+                return Classified {
+                    capability: UNCLASSIFIED.to_string(),
+                    spec: UNCLASSIFIED_SPEC,
+                };
+            }
+        };
+        // Riskier first; between equally risky parts, the one an earlier (more specific) rule named.
+        let rank = |(c, rule): &(Classified, usize)| {
+            (
+                c.spec.risk,
+                !c.spec.reversible,
+                std::cmp::Reverse(c.spec.ceiling),
+                std::cmp::Reverse(*rule),
+            )
+        };
+        let mut worst: Option<(Classified, usize)> = None;
+        for p in &parts {
+            let c = self.classify_ranked(tool, &p.text());
+            if worst.as_ref().is_none_or(|w| rank(&c) > rank(w)) {
+                worst = Some(c);
+            }
+        }
+        worst.map_or(
+            Classified {
+                capability: UNCLASSIFIED.to_string(),
+                spec: UNCLASSIFIED_SPEC,
+            },
+            |(c, _)| c,
+        )
+    }
+
+    /// Classify one target against the rules, in order.
+    fn classify_one(&self, tool: &str, target: &str) -> Classified {
+        self.classify_ranked(tool, target).0
+    }
+
+    /// [`classify_one`](Self::classify_one), with the index of the rule that matched (`usize::MAX`
+    /// when none did).
+    fn classify_ranked(&self, tool: &str, target: &str) -> (Classified, usize) {
         let rel = self.relative(target);
-        for r in &self.rules {
+        for (index, r) in self.rules.iter().enumerate() {
             if !r.tools.is_empty() && !r.tools.iter().any(|t| t == tool) {
                 continue;
             }
@@ -388,16 +486,22 @@ impl Policy {
                 })
             };
             if hit && let Some(spec) = self.capabilities.get(&r.capability) {
-                return Classified {
-                    capability: r.capability.clone(),
-                    spec: spec.clone(),
-                };
+                return (
+                    Classified {
+                        capability: r.capability.clone(),
+                        spec: spec.clone(),
+                    },
+                    index,
+                );
             }
         }
-        Classified {
-            capability: UNCLASSIFIED.to_string(),
-            spec: UNCLASSIFIED_SPEC,
-        }
+        (
+            Classified {
+                capability: UNCLASSIFIED.to_string(),
+                spec: UNCLASSIFIED_SPEC,
+            },
+            usize::MAX,
+        )
     }
 
     /// The target as a `/`-separated path inside the root, or `None` if it is outside it.
