@@ -33,18 +33,24 @@ pub(crate) fn split(line: &str) -> Result<Vec<Part>, &'static str> {
     let mut words: Vec<String> = Vec::new();
     let mut word = String::new();
     let mut in_word = false;
+    // Whether the current word had any quoted or escaped part: `'{'` is a word, a bare `{` is grouping.
+    let mut literal = false;
     let mut expands = false;
     let mut i = 0;
     // Close the current word, and on a separator the current part.
-    let end_word = |words: &mut Vec<String>, word: &mut String, in_word: &mut bool| {
-        if *in_word {
-            words.push(std::mem::take(word));
-            *in_word = false;
-        }
-    };
+    let end_word =
+        |words: &mut Vec<String>, word: &mut String, in_word: &mut bool, literal: &mut bool| {
+            if *in_word {
+                let w = std::mem::take(word);
+                // A bare brace groups commands and isn't one; a quoted or escaped one is just text.
+                if *literal || (w != "{" && w != "}") {
+                    words.push(w);
+                }
+                *in_word = false;
+            }
+            *literal = false;
+        };
     let end_part = |parts: &mut Vec<Part>, words: &mut Vec<String>, expands: &mut bool| {
-        // A subshell's braces are grouping, not commands.
-        words.retain(|w| w != "{" && w != "}");
         if !words.is_empty() {
             parts.push(Part {
                 words: std::mem::take(words),
@@ -63,12 +69,14 @@ pub(crate) fn split(line: &str) -> Result<Vec<Part>, &'static str> {
                 {
                     word.push(n);
                     in_word = true;
+                    literal = true;
                 }
                 i += 2;
                 continue;
             }
             '\'' => {
                 in_word = true;
+                literal = true;
                 i += 1;
                 loop {
                     match chars.get(i) {
@@ -81,6 +89,7 @@ pub(crate) fn split(line: &str) -> Result<Vec<Part>, &'static str> {
             }
             '"' => {
                 in_word = true;
+                literal = true;
                 i += 1;
                 loop {
                     match chars.get(i) {
@@ -128,7 +137,7 @@ pub(crate) fn split(line: &str) -> Result<Vec<Part>, &'static str> {
                 in_word = true;
             }
             ';' | '&' | '|' | '\n' | '(' | ')' => {
-                end_word(&mut words, &mut word, &mut in_word);
+                end_word(&mut words, &mut word, &mut in_word, &mut literal);
                 end_part(&mut parts, &mut words, &mut expands);
                 // `&&`, `||` and `|&` are one separator.
                 if matches!(
@@ -138,7 +147,7 @@ pub(crate) fn split(line: &str) -> Result<Vec<Part>, &'static str> {
                     i += 1;
                 }
             }
-            c if c.is_whitespace() => end_word(&mut words, &mut word, &mut in_word),
+            c if c.is_whitespace() => end_word(&mut words, &mut word, &mut in_word, &mut literal),
             c => {
                 word.push(c);
                 in_word = true;
@@ -146,7 +155,7 @@ pub(crate) fn split(line: &str) -> Result<Vec<Part>, &'static str> {
         }
         i += 1;
     }
-    end_word(&mut words, &mut word, &mut in_word);
+    end_word(&mut words, &mut word, &mut in_word, &mut literal);
     end_part(&mut parts, &mut words, &mut expands);
     for p in &parts {
         let program = p.words[0].rsplit('/').next().unwrap_or("");
@@ -208,6 +217,9 @@ mod tests {
         );
         assert_eq!(texts("(cd x && rm y)"), ["cd x", "rm y"]);
         assert_eq!(texts("{ a; b; }"), ["a", "b"]);
+        // Quoted or escaped braces are text, not grouping.
+        assert_eq!(texts("echo '{'"), ["echo {"]);
+        assert_eq!(texts(r#"echo "}" \{"#), ["echo } {"]);
         assert_eq!(texts("ls;;"), ["ls"]);
         assert_eq!(texts(""), Vec::<String>::new());
     }
