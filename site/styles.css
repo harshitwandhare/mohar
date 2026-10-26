@@ -79,19 +79,25 @@ h2 { font-weight: 800; font-size: var(--s-heading); line-height: 1.02; letter-sp
 .button.quiet { background: var(--tile-2, #2a231b); color: var(--ink); }
 .button.quiet:hover { background: #3a3026; }
 
-.hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 16px 48px; align-items: center; padding-top: 4vh; min-height: calc(92vh - 64px); }
-.seal3d { height: min(76vh, 720px); display: grid; place-items: center; }
+.hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 12px 48px; align-items: center; align-content: center; padding-top: 4vh; min-height: calc(92vh - 64px); }
+/* The box sets the size; the still and the canvas are pinned inside it, so neither can grow past it.
+   Sized so the whole hero, hint included, fits the first screen. */
+.seal3d { position: relative; height: min(66vh, 620px); }
 /* The still and the canvas share one cell; the canvas fades in over the still, which goes once it is covered. */
-.seal3d > * { grid-area: 1 / 1; }
-.seal3d img { width: 100%; height: 100%; object-fit: contain; }
+.seal3d > img, .seal3d > canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+/* contain scales the still by height, as the 3D camera's vertical field of view does, so the two match. */
+.seal3d img { object-fit: contain; }
 .seal3d.shown img { visibility: hidden; }
-.seal3d canvas { width: 100%; height: 100%; display: block; cursor: pointer; opacity: 0; transition: opacity 0.45s ease-out;
+.seal3d canvas { display: block; cursor: pointer; opacity: 0; transition: opacity 0.45s ease-out;
   -webkit-mask-image: radial-gradient( /* taste-skill-ignore: edge fade on the rendered picture */circle closest-side at 50% 52%, #000 62%, transparent 100%);
   mask-image: radial-gradient( /* taste-skill-ignore */circle closest-side at 50% 52%, #000 62%, transparent 100%); }
 .seal3d.live canvas { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .seal3d canvas { transition: none; } }
-.hint { grid-column: 2; color: var(--soft); font-size: var(--s-small); margin: 0; }
-@media (max-width: 900px) { .hero { grid-template-columns: 1fr; min-height: 0; padding-top: 40px; } .hint { grid-column: 1; } .seal3d { height: min(88vw, 420px); } }
+.hint { grid-column: 2; color: var(--soft); font-size: var(--s-small); margin: 0; text-align: center; }
+/* Phones have no pointer to tilt with; they get the instruction that works for them. */
+.hint-touch { display: none; }
+@media (hover: none) { .hint-pointer { display: none; } .hint-touch { display: inline; } }
+@media (max-width: 900px) { .hero { grid-template-columns: 1fr; min-height: 0; padding-top: 24px; } .hint { grid-column: 1; } .seal3d { height: min(76vw, 300px); } }
 
 .try { background: var(--field); padding-top: clamp(64px, 9vw, 112px); padding-bottom: clamp(64px, 9vw, 112px); }
 .sim { display: grid; gap: 32px; margin-top: 40px; }

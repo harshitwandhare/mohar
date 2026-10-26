@@ -200,3 +200,18 @@ test('running text avoids one-word last lines and headings wrap evenly', async (
   expect(new Set(styles.p)).toEqual(new Set(['pretty']));
   if (support.balance) expect(new Set(styles.h)).toEqual(new Set(['balance']));
 });
+
+test('the hero picture stays inside its box and the hint under it is on the first screen', async ({ page }) => {
+  await page.goto('/');
+  const box = await page.locator('#seal3d').boundingBox();
+  for (const sel of ['#seal3d img', '#seal3d canvas']) {
+    if (await page.locator(sel).count() === 0) continue;
+    const b = await page.locator(sel).boundingBox();
+    if (!b) continue;
+    expect(Math.round(b.height), `${sel} height`).toBeLessThanOrEqual(Math.round(box.height) + 1);
+    expect(Math.round(b.width), `${sel} width`).toBeLessThanOrEqual(Math.round(box.width) + 1);
+  }
+  const hint = await page.locator('.hint').boundingBox();
+  const vh = page.viewportSize().height;
+  expect(hint.y + hint.height, 'hint bottom').toBeLessThanOrEqual(vh);
+});
