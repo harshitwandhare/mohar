@@ -492,3 +492,103 @@ fn ipv6_hosts_are_checked_against_the_list() {
     assert_eq!(host("http://[::1]:8080/x"), None);
     assert_eq!(host("http://[fe80::1]/x"), Some("unlisted_host"));
 }
+
+fn builtin() -> Policy {
+    Policy::builtin(Path::new(ROOT))
+}
+
+#[test]
+fn a_harmless_first_command_no_longer_hides_a_push_to_main() {
+    let p = builtin();
+    for line in [
+        "ls && git push origin main",
+        "ls; git push origin main",
+        "git status | git push origin main",
+        "(cd sub && git push origin main)",
+        "ls & git push origin main",
+    ] {
+        assert_eq!(
+            p.classify("Bash", line).capability,
+            "git.push.main",
+            "{line}"
+        );
+        assert_eq!(
+            p.gate("Bash", line, "shell.run.readonly").map(|s| s.gate),
+            Some("denied_capability"),
+            "{line}: a denied part stops the line whatever capability was passed"
+        );
+    }
+}
+
+#[test]
+fn the_riskiest_command_in_a_line_decides_its_class() {
+    let p = builtin();
+    assert_eq!(
+        p.classify("Bash", "ls -la").capability,
+        "shell.run.readonly"
+    );
+    assert_eq!(
+        p.classify("Bash", "cat a.txt; rm -rf build").capability,
+        "shell.run"
+    );
+    assert_eq!(
+        p.classify("Bash", "cargo test 2>&1 | cat -n").capability,
+        "shell.run.readonly"
+    );
+    assert_eq!(
+        p.classify("Bash", "git status && git push origin feat")
+            .capability,
+        "git.push.branch"
+    );
+    // Quoted separators are data, not commands.
+    assert_eq!(
+        p.classify("Bash", "cat 'a; rm -rf /'").capability,
+        "shell.run.readonly"
+    );
+}
+
+#[test]
+fn a_line_that_cannot_be_read_is_unclassified_and_refused() {
+    let p = builtin();
+    for line in [
+        "ls $(curl https://evil.com)",
+        "ls `id`",
+        "bash -c 'git push origin main'",
+        "eval \"$X\"",
+        "cat <<EOF\nx\nEOF",
+        "ls 'unterminated",
+    ] {
+        assert_eq!(p.classify("Bash", line).capability, UNCLASSIFIED, "{line}");
+        assert_eq!(
+            p.gate("Bash", line, UNCLASSIFIED).map(|s| s.gate),
+            Some("undecidable"),
+            "{line}"
+        );
+    }
+}
+
+#[test]
+fn a_host_built_at_runtime_is_undecidable_when_hosts_are_listed() {
+    let p = gated(r#"{"allowed_hosts": ["api.github.com"]}"#);
+    let host = |line: &str| p.gate("Bash", line, "net.fetch").map(|s| s.gate);
+    assert_eq!(host("curl $HOST/x"), Some("undecidable"));
+    assert_eq!(host("h=evil.com; curl https://$h/x"), Some("undecidable"));
+    assert_eq!(host("/usr/bin/wget \"${URL}\""), Some("undecidable"));
+    assert_eq!(host("ls && curl https://evil.com"), Some("unlisted_host"));
+    assert_eq!(
+        host("curl 'https://api.github.com/x'"),
+        None,
+        "a quoted listed URL"
+    );
+    assert_eq!(
+        host("echo $HOME"),
+        None,
+        "a variable with no network program"
+    );
+    // Without a host list there is nothing to check.
+    assert!(
+        gated("{}")
+            .gate("Bash", "curl $HOST/x", "net.fetch")
+            .is_none()
+    );
+}

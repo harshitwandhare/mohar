@@ -177,8 +177,15 @@ list of rules; the first rule that matches an action's tool and target wins:
 - `risk` is `none`, `low`, `medium` or `high`; `ceiling` is the highest level an agent may reach on the
   capability, 0 to 2, and a high-risk irreversible capability can't go above 1.
 - A rule gives either `paths` (globs over the target relative to `root`, where `*` and `?` stay within a
-  directory and `**` crosses directories) or `commands` (globs over the whole command line, where `*`
-  matches anything), never both. `tools` limits it to those host tools.
+  directory and `**` crosses directories) or `commands` (globs over a command, where `*` matches
+  anything), never both. `tools` limits it to those host tools.
+- A `Bash` command line is split into the commands it runs (at `;`, `&&`, `||`, `|`, `&`, newlines and
+  subshell brackets, with quotes and escapes respected) and each one is matched on its own. The riskiest
+  decides the line's capability, and a denied capability anywhere in the line stops all of it, so
+  `ls && git push origin main` is a push to main. A line Mohar can't read through (command or process
+  substitution, a here-document, `eval`, `source`, a shell run with `-c`, an unclosed quote) is
+  `unclassified` and refused. When `allowed_hosts` is set, a command that uses a variable next to a
+  URL or a network program (`curl $HOST/x`) is refused too, since the host can't be known.
 - `root` defaults to the directory that holds the log directory. `..` in a target is resolved first, so a
   path can't climb out of the root.
 - An action that matches no rule, or names a path outside the root, is `unclassified`: high risk,
