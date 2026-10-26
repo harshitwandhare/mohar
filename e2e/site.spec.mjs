@@ -215,3 +215,25 @@ test('the hero picture stays inside its box and the hint under it is on the firs
   const vh = page.viewportSize().height;
   expect(hint.y + hint.height, 'hint bottom').toBeLessThanOrEqual(vh);
 });
+
+test('every page uses the gold seal for its icons and header mark, and each one loads', async ({ page, request }) => {
+  const pages = readdirSync('site').filter(f => f.endsWith('.html'));
+  for (const p of pages) {
+    await page.goto('/' + p);
+    const refs = await page.evaluate(() => [
+      ...[...document.querySelectorAll('link[rel~="icon"], link[rel="apple-touch-icon"]')].map(l => l.getAttribute('href')),
+      ...[...document.querySelectorAll('.wordmark img')].map(i => i.getAttribute('src')),
+    ]);
+    expect(refs.length, p).toBeGreaterThanOrEqual(3);
+    for (const ref of refs) {
+      expect(ref, `${p}: ${ref}`).toMatch(/(^|\/)(favicon\.ico|assets\/brand\/[\w-]+\.png)$/);
+      const res = await request.get(new URL(ref, page.url()).href);
+      expect(res.status(), `${p}: ${ref}`).toBe(200);
+    }
+  }
+  const manifest = await (await request.get('/site.webmanifest')).json();
+  for (const icon of manifest.icons) {
+    expect(icon.src).toMatch(/^\/assets\/brand\//);
+    expect((await request.get(icon.src)).status()).toBe(200);
+  }
+});
