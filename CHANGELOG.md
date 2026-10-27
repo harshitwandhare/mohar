@@ -7,6 +7,12 @@ receipt format; each such change is called out.
 
 ## [Unreleased]
 
+### Fixed
+
+- A shell redirection is now a write to its target. Before, `cat a > src/main.rs` matched the read-only
+  `cat *` rule and never reached the path rules or the protected-path gate; now the write is classified
+  and gated like an edit, and a target only the shell can resolve is refused (#131).
+
 ## [0.2.0] - 2026-10-26
 
 ### Added
