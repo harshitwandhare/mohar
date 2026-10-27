@@ -1503,6 +1503,13 @@ person. A gate that can't decide (a write with no path, a URL it can't parse) re
 </ul>
 <p>The built-in policy denies <code>git.push.main</code> and protects <code>.mohar/**</code>, so an agent can't rewrite its own
 policy or log.</p>
+<p>Capabilities that touch the same paths, hosts or database can be grouped into scopes. When a failure on
+a high-risk or irreversible capability drops it to Ask first, every other capability in its scopes drops
+with it, for that agent only. Each name must be defined under <code>capabilities</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">"scopes"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"prod-db"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"db.migrate.prod"</span><span class="p">,</span><span class="w"> </span><span class="s2">"db.seed.prod"</span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
 <p>The built-in policy (<code>mohar_core::policy::BUILTIN</code>) is a fuller example: reads, docs, tests, code and
 config edits, read-only shell commands, pushes to a branch and to the default branch.</p>
 <p>After a crash, decisions without an outcome are rebuilt from the log on the next start and can still be
