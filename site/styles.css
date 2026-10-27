@@ -206,6 +206,8 @@ figcaption { color: var(--soft); font-size: var(--s-small); margin-top: 10px; }
 .cap.demoted .level { color: var(--seal-text); }
 .cap.demoted .meter span { background: var(--seal); }
 .cap .why { color: var(--soft); font-size: var(--s-small); }
+/* Figures that change as the simulator runs keep their width, so lines don't jitter. */
+.fig-tile .fig, .cap .why, .receipts .stamp, .receipts strong { font-variant-numeric: tabular-nums; }
 .controls { display: flex; flex-wrap: wrap; gap: 8px; }
 .receipts { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; max-height: 420px; overflow: auto; }
 .receipts li { background: var(--ground); border-radius: 2px; min-height: 64px; padding: 10px 16px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 2px 16px; align-items: center; animation: rise .35s ease both; }
