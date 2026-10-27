@@ -27,6 +27,8 @@ pub fn entry(i: u64) -> Entry {
             result: "allow".into(),
             level: 1,
             by: "score".into(),
+            // Half the receipts carry the review mark, so mutations of it are fuzzed too.
+            review: i % 2 == 1,
         },
         verification: None,
     }
