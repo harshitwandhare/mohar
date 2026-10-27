@@ -1462,6 +1462,11 @@ list of rules; the first rule that matches an action's tool and target wins:</p>
   substitution, a here-document, <code>eval</code>, <code>source</code>, a shell run with <code>-c</code>, an unclosed quote) is
   <code>unclassified</code> and refused. When <code>allowed_hosts</code> is set, a command that uses a variable next to a
   URL or a network program (<code>curl $HOST/x</code>) is refused too, since the host can't be known.</li>
+<li>Output redirection is a write. <code>ls &gt; notes.md</code> is classified as a <code>Write</code> to <code>notes.md</code> as well as an
+  <code>ls</code>, the riskier of the two deciding, and the target goes through the same gates as an edit, so
+  <code>echo x &gt; .mohar/policy.json</code> is refused as a protected path. <code>&gt;</code>, <code>&gt;&gt;</code>, <code>&gt;|</code>, <code>&amp;&gt;</code>, <code>2&gt;</code> and <code>&lt;&gt;</code>
+  all count; copying a descriptor (<code>2&gt;&amp;1</code>) and writing to <code>/dev/null</code>, <code>/dev/stdout</code> or <code>/dev/stderr</code>
+  don't. A target Mohar can't name before the shell runs (a variable, a glob, a <code>~</code>) is refused.</li>
 <li><code>root</code> defaults to the directory that holds the log directory. <code>..</code> in a target is resolved first, so a
   path can't climb out of the root.</li>
 <li>An action that matches no rule, or names a path outside the root, is <code>unclassified</code>: high risk,
