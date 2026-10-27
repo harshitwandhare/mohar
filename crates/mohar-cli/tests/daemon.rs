@@ -608,6 +608,11 @@ fn rfc3339(secs: u64) -> String {
 
 /// Write 40 docs edits by `worker`, each verified by tests, 20 days ago, straight into the log.
 fn earn_docs_trust(dir: &Path, worker: &str) {
+    earn_trust(dir, worker, "fs.edit.docs", "docs/a.md");
+}
+
+/// Write 40 edits of `target` under `capability` by `worker`, each verified by tests, 20 days ago.
+fn earn_trust(dir: &Path, worker: &str, capability: &str, target: &str) {
     use mohar_core::store::FileLog;
     use mohar_core::{Action, Decision, Entry, Verification};
 
@@ -618,9 +623,9 @@ fn earn_docs_trust(dir: &Path, worker: &str) {
     let ts = rfc3339(now - 20 * 86_400);
     let mut log = FileLog::open(dir).expect("open");
     let action = Action {
-        capability: "fs.edit.docs".into(),
+        capability: capability.into(),
         tool: "Edit".into(),
-        target: "docs/a.md".into(),
+        target: target.into(),
         args_sha256: SHA.into(),
     };
     let decision = Decision {
@@ -746,6 +751,64 @@ fn in_strict_privacy_mode_trust_still_counts_and_nothing_is_in_the_clear() {
         "40 earned pairs, then a decision and its outcome"
     );
     verify(&dir);
+}
+
+#[test]
+fn a_serious_failure_drops_the_capabilities_in_its_scope_and_nothing_else() {
+    let dir = fresh_log("scopes");
+    let policy = json!({"version": 1,
+        "capabilities": {
+            "fs.edit.docs":   {"risk": "low",  "reversible": true, "ceiling": 2},
+            "fs.edit.notes":  {"risk": "low",  "reversible": true, "ceiling": 2},
+            "fs.edit.config": {"risk": "high", "reversible": true, "ceiling": 1}},
+        "rules": [
+            {"tools": ["Edit"], "paths": ["docs/**"], "capability": "fs.edit.docs"},
+            {"tools": ["Edit"], "paths": ["notes/**"], "capability": "fs.edit.notes"},
+            {"tools": ["Edit"], "paths": ["site/**"], "capability": "fs.edit.config"}],
+        "scopes": {"site": ["fs.edit.docs", "fs.edit.config"]}});
+    std::fs::write(dir.join("policy.json"), policy.to_string()).expect("policy");
+    let worker = "agent:claude-code/site-worker";
+    earn_trust(&dir, worker, "fs.edit.docs", "docs/a.md");
+    earn_trust(&dir, worker, "fs.edit.notes", "notes/a.md");
+    let d = Daemon::start(&dir, &[]);
+    let ask = |target: &str| {
+        let b = json!({"agent": worker, "tool": "Edit", "target": target, "args_sha256": SHA});
+        let a = post(d.port, "/v1/decide", &b.to_string()).1;
+        (a["result"].as_str().map(String::from), a["level"].as_u64())
+    };
+    let allowed = (Some("allow".to_string()), Some(1));
+    assert_eq!(ask("docs/a.md"), allowed, "earned before the failure");
+    assert_eq!(ask("notes/a.md"), allowed, "earned before the failure");
+    let b =
+        json!({"agent": worker, "tool": "Edit", "target": "site/vercel.json", "args_sha256": SHA});
+    let seq = post(d.port, "/v1/decide", &b.to_string()).1["receipt_seq"]
+        .as_u64()
+        .expect("seq");
+    let fail =
+        json!({"receipt_seq": seq, "verifier": "tests", "result": "fail", "evidence_sha256": SHA});
+    assert_eq!(post(d.port, "/v1/outcome", &fail.to_string()).0, 200);
+    assert_eq!(
+        ask("docs/a.md"),
+        (Some("escalate".to_string()), Some(0)),
+        "shares the scope, so it drops with it"
+    );
+    assert_eq!(ask("notes/a.md"), allowed, "outside the scope, untouched");
+    d.stop();
+    // Replaying the log on the next start rebuilds the same state.
+    let d = Daemon::start(&dir, &[]);
+    let b = json!({"agent": worker, "tool": "Edit", "target": "docs/a.md", "args_sha256": SHA});
+    let a = post(d.port, "/v1/decide", &b.to_string()).1;
+    assert_eq!(
+        (a["result"].as_str(), a["level"].as_u64()),
+        (Some("escalate"), Some(0))
+    );
+    let b = json!({"agent": worker, "tool": "Edit", "target": "notes/a.md", "args_sha256": SHA});
+    let a = post(d.port, "/v1/decide", &b.to_string()).1;
+    assert_eq!(
+        (a["result"].as_str(), a["level"].as_u64()),
+        (Some("allow"), Some(1))
+    );
+    d.stop();
 }
 
 #[test]
