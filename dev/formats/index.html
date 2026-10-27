@@ -1128,6 +1128,11 @@
   that a tool ran) and <code>result</code> is <code>pass</code>, <code>fail</code> or <code>unknown</code>. It repeats the decision's agent, action
   and decision. Receipts without an outcome have no <code>verification</code> key at all, so their bytes, and every
   existing test vector, are unchanged; <code>verification</code> sorts last in the canonical form.</li>
+<li><strong>Review sample</strong>: a decision the agent's record allowed may carry <code>"review": true</code> inside <code>decision</code>,
+  meaning the action was drawn for a person to check after it ran (20% at Supervised, 5% at Trusted).
+  The draw is SHA-256 over a seed derived from the signing key and the receipt's <code>seq</code>, so whoever holds
+  the key can recompute it. The key is left out when false, so older receipts read the same, and it is
+  signed like every other field.</li>
 </ul>
 <h2 id="checkpoint">Checkpoint<a class="headerlink" href="#checkpoint" title="Permanent link">&para;</a></h2>
 <p>One JSON object per line in <code>checkpoints.jsonl</code>:</p>
