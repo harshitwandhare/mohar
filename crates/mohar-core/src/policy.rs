@@ -82,6 +82,10 @@ struct File {
     gates: Gates,
     #[serde(default)]
     verify: Verify,
+    /// Named groups of capabilities that touch the same paths, hosts or database. A serious failure on
+    /// one member drops the others with it.
+    #[serde(default)]
+    scopes: BTreeMap<String, Vec<String>>,
 }
 
 /// How work is verified.
@@ -160,6 +164,7 @@ pub struct Policy {
     rules: Vec<Rule>,
     gates: Gates,
     verify: Verify,
+    scopes: BTreeMap<String, Vec<String>>,
 }
 
 /// Why a policy file was refused.
@@ -211,6 +216,14 @@ pub enum PolicyError {
     /// A gate names a capability that isn't defined.
     #[error("gates.deny_capabilities names {name:?}, which is not defined under capabilities")]
     UnknownGateCapability {
+        /// The name.
+        name: String,
+    },
+    /// A scope names a capability that isn't defined.
+    #[error("scope {scope:?} names {name:?}, which is not defined under capabilities")]
+    UnknownScopeCapability {
+        /// The scope.
+        scope: String,
         /// The name.
         name: String,
     },
@@ -272,12 +285,21 @@ impl Policy {
                 return Err(PolicyError::UnknownGateCapability { name: name.clone() });
             }
         }
+        for (scope, names) in &file.scopes {
+            if let Some(name) = names.iter().find(|n| !file.capabilities.contains_key(*n)) {
+                return Err(PolicyError::UnknownScopeCapability {
+                    scope: scope.clone(),
+                    name: name.clone(),
+                });
+            }
+        }
         Ok(Self {
             root: resolve(&root),
             capabilities: file.capabilities,
             rules: file.rules,
             gates: file.gates,
             verify: file.verify,
+            scopes: file.scopes,
         })
     }
 
@@ -291,6 +313,22 @@ impl Policy {
     /// The project root every relative path is resolved against.
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    /// The capabilities that share a scope with `capability`, sorted, without itself. An S3 failure on
+    /// `capability` drops all of them.
+    pub fn related(&self, capability: &str) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .scopes
+            .values()
+            .filter(|names| names.iter().any(|n| n == capability))
+            .flatten()
+            .filter(|n| *n != capability)
+            .cloned()
+            .collect();
+        out.sort();
+        out.dedup();
+        out
     }
 
     /// The tests verifier, if the project configured one.

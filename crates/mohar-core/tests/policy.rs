@@ -440,6 +440,51 @@ fn a_root_in_the_file_is_taken_as_is_or_relative_to_the_file() {
     assert_eq!(absolute.root(), std::fs::canonicalize(&sub).expect("sub"));
 }
 
+fn scoped(scopes: &str) -> Result<Policy, PolicyError> {
+    Policy::from_json(
+        &format!(
+            r#"{{"version": 1,
+                "capabilities": {{
+                    "db.migrate": {{"risk": "high", "reversible": false, "ceiling": 1}},
+                    "db.seed":    {{"risk": "medium", "reversible": true, "ceiling": 2}},
+                    "db.read":    {{"risk": "low", "reversible": true, "ceiling": 2}},
+                    "fs.edit.docs": {{"risk": "low", "reversible": true, "ceiling": 2}}}},
+                "rules": [{{"tools": ["Edit"], "paths": ["docs/**"], "capability": "fs.edit.docs"}}],
+                "scopes": {scopes}}}"#
+        ),
+        Path::new(ROOT),
+    )
+}
+
+#[test]
+fn capabilities_in_a_scope_are_related_to_each_other_and_nothing_else() {
+    let p = scoped(r#"{"prod-db": ["db.migrate", "db.seed"], "reads": ["db.read", "db.seed"]}"#)
+        .expect("valid");
+    assert_eq!(p.related("db.migrate"), ["db.seed"]);
+    assert_eq!(
+        p.related("db.seed"),
+        ["db.migrate", "db.read"],
+        "every scope it is in, sorted"
+    );
+    assert!(p.related("fs.edit.docs").is_empty());
+    assert!(p.related("not.defined").is_empty());
+    let none = scoped("{}").expect("valid");
+    assert!(none.related("db.migrate").is_empty());
+}
+
+#[test]
+fn a_scope_naming_an_undefined_capability_is_refused() {
+    let err = scoped(r#"{"prod-db": ["db.migrate", "db.drop"]}"#).expect_err("refused");
+    assert_eq!(
+        err,
+        PolicyError::UnknownScopeCapability {
+            scope: "prod-db".into(),
+            name: "db.drop".into()
+        }
+    );
+    assert!(err.to_string().contains("\"db.drop\""), "{err}");
+}
+
 #[test]
 fn an_empty_test_command_is_refused() {
     let err = with_extra(r#", "verify": {"tests": {"command": []}}"#).expect_err("refused");
