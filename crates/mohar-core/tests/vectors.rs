@@ -32,6 +32,7 @@ fn entries() -> Vec<Entry> {
         result: result.into(),
         level,
         by: by.into(),
+        review: false,
     };
     vec![
         Entry {

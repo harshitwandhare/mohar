@@ -18,6 +18,7 @@ fn entry(i: u64) -> Entry {
             result: "allow".into(),
             level: 1,
             by: "score".into(),
+            review: false,
         },
         verification: None,
     }
@@ -80,6 +81,36 @@ fn a_different_key_fails_on_the_first_receipt() {
     let other = SigningKey::generate().unwrap_or_else(|e| panic!("keygen: {e}"));
     let err = verify(log.receipts(), &other.verifying_key()).expect_err("wrong key");
     assert_eq!((err.index, err.kind), (0, BreakKind::BadSignature));
+}
+
+#[test]
+fn the_review_mark_is_signed_and_left_out_when_unset() {
+    let key = SigningKey::generate().unwrap_or_else(|e| panic!("keygen: {e}"));
+    let mut log = Log::new(key.clone());
+    log.append(entry(0))
+        .unwrap_or_else(|e| panic!("append: {e}"));
+    let mut sampled = entry(1);
+    sampled.decision.review = true;
+    log.append(sampled)
+        .unwrap_or_else(|e| panic!("append: {e}"));
+    let r = log.receipts().to_vec();
+    assert_eq!(verify(&r, &key.verifying_key()), Ok(()));
+    let unset = serde_json::to_string(&r[0]).unwrap_or_else(|e| panic!("{e}"));
+    assert!(
+        !unset.contains("review"),
+        "receipts from before sampling read the same: {unset}"
+    );
+    let set = serde_json::to_string(&r[1]).unwrap_or_else(|e| panic!("{e}"));
+    assert!(set.contains(r#""review":true"#), "{set}");
+    let back: mohar_core::Receipt = serde_json::from_str(&set).unwrap_or_else(|e| panic!("{e}"));
+    assert!(back.decision.review);
+    // Hiding that an action was picked for review, or claiming one was, breaks the signature.
+    for (i, flip) in [(0, true), (1, false)] {
+        let mut t = r.clone();
+        t[i].decision.review = flip;
+        let err = verify(&t, &key.verifying_key()).expect_err("flip must be caught");
+        assert_eq!((err.index, err.kind), (i, BreakKind::BadSignature));
+    }
 }
 
 #[test]
