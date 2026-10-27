@@ -259,7 +259,7 @@ fn verified(
         passed,
         severity: Severity::for_capability(&policy.spec(capability)),
         exercises_failure: true,
-        related: Vec::new(),
+        related: policy.related(capability),
     })
 }
 
