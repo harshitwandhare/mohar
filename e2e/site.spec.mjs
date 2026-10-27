@@ -201,6 +201,20 @@ test('running text avoids one-word last lines and headings wrap evenly', async (
   if (support.balance) expect(new Set(styles.h)).toEqual(new Set(['balance']));
 });
 
+test('figures that change while the simulator runs use tabular numerals', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#step').click();
+  const styles = await page.evaluate(() =>
+    ['.fig-tile .fig', '.cap .why', '.receipts .stamp', '.receipts strong'].map(sel => {
+      const els = [...document.querySelectorAll(sel)];
+      return { sel, n: els.length, tab: els.every(e => getComputedStyle(e).fontVariantNumeric.includes('tabular-nums')) };
+    }));
+  for (const { sel, n, tab } of styles) {
+    expect(n, sel).toBeGreaterThan(0);
+    expect(tab, sel).toBe(true);
+  }
+});
+
 test('the hero picture stays inside its box and the hint under it is on the first screen', async ({ page }) => {
   await page.goto('/');
   const box = await page.locator('#seal3d').boundingBox();
