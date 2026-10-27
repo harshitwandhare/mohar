@@ -31,6 +31,7 @@ fn entry(agent: &str, target: &str) -> Entry {
             result: "allow".into(),
             level: 1,
             by: "score".into(),
+            review: false,
         },
         verification: None,
     }

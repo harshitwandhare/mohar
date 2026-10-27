@@ -164,7 +164,12 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
                         target,
                         args_sha256,
                     },
-                    decision: Decision { result, level, by },
+                    decision: Decision {
+                        result,
+                        level,
+                        by,
+                        review: false,
+                    },
                     verification: None,
                 })
                 .map_err(|e| e.to_string())?;

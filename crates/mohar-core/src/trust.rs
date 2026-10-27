@@ -6,6 +6,8 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
+use sha2::{Digest, Sha256};
+
 use crate::policy::{Capability, Risk};
 
 /// Seconds in a day.
@@ -358,4 +360,29 @@ fn eligible(r: &Record, spec: &Capability, now: u64) -> bool {
     }
     // The minimum count is over weighted evidence, so old outcomes count for less there too.
     s + f >= n_min && wilson_lower(s, f) >= bound
+}
+
+/// How many in a thousand actions an agent runs on its own record go to a person for review: 200 at
+/// Supervised, 50 at Trusted, none at Ask first (every action there already goes to a person).
+pub fn review_per_mille(level: u8) -> u64 {
+    match level {
+        SUPERVISED => 200,
+        TRUSTED => 50,
+        _ => 0,
+    }
+}
+
+/// Whether the action decided as receipt `seq`, at `level`, is sampled for review. The draw is a hash
+/// of a secret seed and the sequence number, so it is the same every time it is recomputed from the
+/// log and the seed, and an agent without the seed can't tell which of its actions will be checked.
+pub fn sampled_for_review(seed: &[u8; 32], seq: u64, level: u8) -> bool {
+    let digest = Sha256::new()
+        .chain_update(b"mohar review sample v1")
+        .chain_update(seed)
+        .chain_update(seq.to_be_bytes())
+        .finalize();
+    let mut first = [0u8; 8];
+    first.copy_from_slice(&digest[..8]);
+    // 2^64 mod 1000 is 616, so the bias toward small residues is under one part in 10^16.
+    u64::from_be_bytes(first) % 1000 < review_per_mille(level)
 }

@@ -30,6 +30,7 @@ fn entry(i: u64) -> Entry {
             result: "allow".into(),
             level: 1,
             by: "score".into(),
+            review: false,
         },
         verification: None,
     }

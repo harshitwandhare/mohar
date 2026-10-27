@@ -294,6 +294,17 @@ impl FileLog {
         })
     }
 
+    /// The seed for review sampling, derived from the signing key so it needs no file of its own and
+    /// is as secret as the key. Anyone holding the key can recompute which actions were sampled.
+    pub fn review_seed(&self) -> [u8; 32] {
+        use sha2::{Digest, Sha256};
+        Sha256::new()
+            .chain_update(b"mohar review seed v1")
+            .chain_update(self.key.seed())
+            .finalize()
+            .into()
+    }
+
     /// Whether this log is in strict privacy mode.
     pub fn is_strict(&self) -> bool {
         self.identities.is_some()

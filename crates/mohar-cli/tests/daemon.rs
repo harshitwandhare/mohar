@@ -627,6 +627,7 @@ fn earn_docs_trust(dir: &Path, worker: &str) {
         result: "escalate".into(),
         level: 0,
         by: "score".into(),
+        review: false,
     };
     for _ in 0..40 {
         let d = log
@@ -687,6 +688,72 @@ fn trust_earned_in_the_log_changes_what_the_daemon_decides() {
         last_two[1]["decision"]["by"], "score",
         "decided from the record"
     );
+}
+
+#[test]
+fn allowed_actions_are_sampled_for_review_and_a_reviewed_failure_counts() {
+    let dir = fresh_log("sampling");
+    let worker = "agent:claude-code/docs-writer";
+    earn_docs_trust(&dir, worker);
+    let d = Daemon::start(&dir, &[]);
+    let ask = |agent: &str| {
+        let b = json!({"agent": agent, "tool": "Edit", "target": "docs/a.md", "args_sha256": SHA});
+        post(d.port, "/v1/decide", &b.to_string()).1
+    };
+    let mut picked = Vec::new();
+    for _ in 0..300 {
+        let a = ask(worker);
+        assert_eq!(a["result"], "allow");
+        if a["review"] == json!(true) {
+            picked.push(a["receipt_seq"].as_u64().expect("seq"));
+        }
+    }
+    // 20% of 300 is 60, with a standard deviation near 7; the seed is random per log.
+    assert!(
+        (25..=100).contains(&picked.len()),
+        "{} of 300",
+        picked.len()
+    );
+    // What goes to a person anyway is never sampled.
+    let stranger = ask("agent:claude-code/new");
+    assert_eq!(
+        (stranger["result"].as_str(), stranger["review"].as_bool()),
+        (Some("escalate"), Some(false))
+    );
+    // A person reviews three sampled actions and finds them wrong: three minor failures in two weeks
+    // count as one meaningful failure, so the capability drops a level.
+    for seq in &picked[..3] {
+        let o = json!({"receipt_seq": seq, "verifier": "human", "result": "fail", "evidence_sha256": SHA});
+        assert_eq!(post(d.port, "/v1/outcome", &o.to_string()).0, 200);
+    }
+    let after = ask(worker);
+    assert_eq!(
+        (after["result"].as_str(), after["level"].as_u64()),
+        (Some("escalate"), Some(0)),
+        "reviewed failures count as verified failures"
+    );
+    d.stop();
+    // The receipts say which actions were sampled, and nothing else claims to be.
+    let log = std::fs::read_to_string(dir.join("receipts.jsonl")).expect("log");
+    let marked: Vec<u64> = log
+        .lines()
+        .map(|l| serde_json::from_str::<Value>(l).expect("json"))
+        .filter(|r| r["decision"]["review"] == json!(true))
+        .map(|r| r["seq"].as_u64().expect("seq"))
+        .collect();
+    let mut expected = picked.clone();
+    // The three outcome receipts copy their decision, mark included.
+    let outcomes: Vec<u64> = log
+        .lines()
+        .map(|l| serde_json::from_str::<Value>(l).expect("json"))
+        .filter(|r| r["decision"]["review"] == json!(true) && !r["verification"].is_null())
+        .map(|r| r["seq"].as_u64().expect("seq"))
+        .collect();
+    assert_eq!(outcomes.len(), 3);
+    expected.extend(outcomes);
+    expected.sort_unstable();
+    assert_eq!(marked, expected);
+    assert!(verify(&dir).contains("receipts"));
 }
 
 #[test]

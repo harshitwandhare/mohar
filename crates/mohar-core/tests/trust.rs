@@ -5,7 +5,7 @@
 use mohar_core::policy::{Capability, Risk};
 use mohar_core::trust::{
     ASK_FIRST, HumanReview, Ledger, MIN_REVIEW_SECS, Outcome, REMEDIATION_PASSES, SUPERVISED,
-    Severity, TRUSTED, wilson_lower,
+    Severity, TRUSTED, review_per_mille, sampled_for_review, wilson_lower,
 };
 use proptest::prelude::*;
 
@@ -521,4 +521,70 @@ fn tests_and_diffs_are_unaffected_by_reviewer_flags() {
     history(&mut l, "person:r1", 50, 0);
     passes(&mut l, "fs.edit.code", 20, 0);
     assert_eq!(l.level(A, "fs.edit.code", &code, 7 * DAY), SUPERVISED);
+}
+
+/// How many of `n` receipts from `start` are sampled at `level` under `seed`.
+fn sampled(seed: &[u8; 32], level: u8, start: u64, n: u64) -> u64 {
+    (start..start + n)
+        .filter(|&seq| sampled_for_review(seed, seq, level))
+        .count() as u64
+}
+
+#[test]
+fn review_sampling_runs_at_twenty_and_five_percent_and_never_at_ask_first() {
+    assert_eq!(
+        (
+            review_per_mille(ASK_FIRST),
+            review_per_mille(SUPERVISED),
+            review_per_mille(TRUSTED)
+        ),
+        (0, 200, 50)
+    );
+    // 20,000 draws per seed: the binomial standard deviation is about 57 at 20% and 31 at 5%, so the
+    // bounds below are more than six of them wide and a correct sampler never misses them.
+    let n = 20_000;
+    for k in 0u8..4 {
+        let seed = [k.wrapping_mul(37).wrapping_add(1); 32];
+        let s = sampled(&seed, SUPERVISED, 0, n);
+        assert!(
+            (3_650..=4_350).contains(&s),
+            "Supervised, seed {k}: {s} of {n}"
+        );
+        let t = sampled(&seed, TRUSTED, 0, n);
+        assert!((810..=1_190).contains(&t), "Trusted, seed {k}: {t} of {n}");
+        assert_eq!(sampled(&seed, ASK_FIRST, 0, n), 0);
+        assert_eq!(sampled(&seed, 7, 0, n), 0, "no level above Trusted samples");
+    }
+}
+
+#[test]
+fn review_sampling_is_reproducible_from_the_seed_and_differs_between_seeds() {
+    let (a, b) = ([1u8; 32], [2u8; 32]);
+    let draw = |seed: &[u8; 32]| -> Vec<bool> {
+        (0..2_000)
+            .map(|seq| sampled_for_review(seed, seq, SUPERVISED))
+            .collect()
+    };
+    assert_eq!(draw(&a), draw(&a), "same seed, same sample");
+    let differ = draw(&a)
+        .iter()
+        .zip(draw(&b))
+        .filter(|(x, y)| **x != *y)
+        .count();
+    // Two independent 20% samples disagree on 32% of draws; anything near zero means the seed is
+    // ignored.
+    assert!(differ > 400, "{differ} of 2000 differ");
+}
+
+#[test]
+fn successive_receipts_are_sampled_independently() {
+    // A sampler that picked runs of receipts would let an agent learn the pattern. Count how often a
+    // sampled receipt is followed by another: for independent draws that is about 20%.
+    let seed = [9u8; 32];
+    let draws: Vec<bool> = (0..20_000)
+        .map(|seq| sampled_for_review(&seed, seq, SUPERVISED))
+        .collect();
+    let after_hit: Vec<bool> = draws.windows(2).filter(|w| w[0]).map(|w| w[1]).collect();
+    let rate = after_hit.iter().filter(|&&x| x).count() as f64 / after_hit.len() as f64;
+    assert!((0.16..=0.24).contains(&rate), "{rate}");
 }

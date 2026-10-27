@@ -24,6 +24,7 @@ fn log_of(n: u64) -> (Log, SigningKey) {
                 result: "allow".into(),
                 level: 1,
                 by: "score".into(),
+                review: false,
             },
             verification: None,
         })

@@ -16,7 +16,7 @@ use std::time::Duration;
 use mohar_core::policy::{Policy, Risk};
 use mohar_core::privacy::is_pseudonym;
 use mohar_core::store::{FileLog, for_each_receipt};
-use mohar_core::trust::{Ledger, Outcome, Severity};
+use mohar_core::trust::{Ledger, Outcome, Severity, sampled_for_review};
 use mohar_core::{Action, Decision, Entry, Receipt, Verification};
 use serde::Deserialize;
 
@@ -62,6 +62,8 @@ struct State {
     max_inflight: usize,
     /// The OpenTelemetry exporter, when one was asked for.
     telemetry: Option<Telemetry>,
+    /// The log's seed for review sampling.
+    review_seed: [u8; 32],
 }
 
 struct Inner {
@@ -121,7 +123,9 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
     // Resolved the way the policy resolves its root (following symlinks, and in the long-path form on
     // Windows), so the two can be compared.
     let log_dir = std::fs::canonicalize(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let review_seed = log.review_seed();
     let state = Arc::new(State {
+        review_seed,
         log_dir,
         log: Mutex::new(Inner {
             log,
@@ -551,11 +555,15 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     let verdict = inner
         .ledger
         .decide(&agent, &action.capability, &classified.spec, now);
+    // What runs on the agent's own record is sampled for a person to check afterwards, so a record
+    // built on unchecked luck gets caught. The draw is fixed by the log's seed and the receipt number.
+    let next_seq = inner.log.len();
     let decision = match &stop {
         Some(_) => Decision {
             result: "deny".to_string(),
             level: verdict.level,
             by: "gate".to_string(),
+            review: false,
         },
         // A fixed rule (a suspension, an action with no effect) is a gate; anything else came from
         // the record.
@@ -568,6 +576,10 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
                 "score"
             }
             .to_string(),
+            review: verdict.result == "allow"
+                && !suspended
+                && classified.spec.risk != Risk::None
+                && sampled_for_review(&state.review_seed, next_seq, verdict.level),
         },
     };
     let entry = Entry {
@@ -619,6 +631,7 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
             "result": decision.result,
             "level": decision.level,
             "receipt_seq": receipt.seq,
+            "review": decision.review,
             "gate": stop.as_ref().map(|g| g.gate),
             "reason": stop.map(|g| g.reason),
         }),
@@ -999,6 +1012,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let log = FileLog::init(&dir).expect("init");
         State {
+            review_seed: log.review_seed(),
             log: Mutex::new(Inner {
                 log,
                 pending: HashMap::new(),

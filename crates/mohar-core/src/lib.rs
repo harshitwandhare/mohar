@@ -46,6 +46,10 @@ pub struct Decision {
     pub level: u8,
     /// What decided it: `gate`, `score`, `human` or `predicted`.
     pub by: String,
+    /// Whether this action, allowed on the agent's own record, was sampled for a person to review
+    /// after it runs. Left out of the receipt when false, so receipts without it read the same.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub review: bool,
 }
 
 /// The checked outcome of an earlier decision, carried by a follow-up receipt.
@@ -255,6 +259,10 @@ fn fast_canonical(r: &Receipt, with_sig: bool) -> Vec<u8> {
     // Writing to a Vec cannot fail.
     let _ = write!(o, r#","level":{}"#, r.decision.level);
     s(&mut o, r#","result":"#, &r.decision.result);
+    // Written only when set, as serde leaves it out; "review" sorts after "result".
+    if r.decision.review {
+        o.extend_from_slice(br#","review":true"#);
+    }
     o.extend_from_slice(b"},");
     s(&mut o, r#""prev":"#, &r.prev);
     let _ = write!(o, r#","seq":{}"#, r.seq);
@@ -565,6 +573,7 @@ mod tests {
                 result: by.clone(),
                 level,
                 by,
+                review: false,
             },
             sig,
             verification,
@@ -581,8 +590,10 @@ mod tests {
             sig in prop_oneof![Just(String::new()), text()],
             verification in proptest::option::of((text(), text(), any::<u64>(), text())
                 .prop_map(|(evidence_sha256, kind, of, result)| Verification { evidence_sha256, kind, of, result })),
+            review in any::<bool>(),
         ) {
-            let r = receipt(s, n, sig, verification);
+            let mut r = receipt(s, n, sig, verification);
+            r.decision.review = review;
             let general = serde_jcs::to_vec(&r).expect("jcs");
             prop_assert_eq!(canonical(&r).expect("fast"), general);
             let mut unsigned = r.clone();
@@ -638,6 +649,7 @@ mod tests {
                     result: "allow".into(),
                     level: 1,
                     by: "score".into(),
+                    review: false,
                 },
                 verification: None,
             })
