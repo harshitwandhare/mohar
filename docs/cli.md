@@ -186,6 +186,11 @@ list of rules; the first rule that matches an action's tool and target wins:
   substitution, a here-document, `eval`, `source`, a shell run with `-c`, an unclosed quote) is
   `unclassified` and refused. When `allowed_hosts` is set, a command that uses a variable next to a
   URL or a network program (`curl $HOST/x`) is refused too, since the host can't be known.
+- Output redirection is a write. `ls > notes.md` is classified as a `Write` to `notes.md` as well as an
+  `ls`, the riskier of the two deciding, and the target goes through the same gates as an edit, so
+  `echo x > .mohar/policy.json` is refused as a protected path. `>`, `>>`, `>|`, `&>`, `2>` and `<>`
+  all count; copying a descriptor (`2>&1`) and writing to `/dev/null`, `/dev/stdout` or `/dev/stderr`
+  don't. A target Mohar can't name before the shell runs (a variable, a glob, a `~`) is refused.
 - `root` defaults to the directory that holds the log directory. `..` in a target is resolved first, so a
   path can't climb out of the root.
 - An action that matches no rule, or names a path outside the root, is `unclassified`: high risk,

@@ -592,3 +592,67 @@ fn a_host_built_at_runtime_is_undecidable_when_hosts_are_listed() {
             .is_none()
     );
 }
+
+#[test]
+fn a_redirection_is_classified_as_a_write_to_its_target() {
+    let p = builtin();
+    let class = |line: &str| p.classify("Bash", line).capability;
+    // Without the redirect these are read-only commands.
+    assert_eq!(class("ls"), "shell.run.readonly");
+    assert_eq!(class("ls > notes.md"), "fs.edit.docs");
+    assert_eq!(class("cat a >> src/main.rs"), "fs.edit.code");
+    assert_eq!(class("ls 2> .github/x.yml"), "fs.edit.config");
+    assert_eq!(class("> src/main.rs"), "fs.edit.code", "a bare truncation");
+    // Riskier command still decides when the write is the milder of the two.
+    assert_eq!(class("git push origin main > log.md"), "git.push.main");
+    // Descriptors, devices and reads write no file.
+    assert_eq!(class("ls 2>&1"), "shell.run.readonly");
+    assert_eq!(class("ls > /dev/null 2>&1"), "shell.run.readonly");
+    assert_eq!(class("sort < notes.md"), class("sort"));
+    // A target only the shell knows is the highest risk.
+    assert_eq!(class("ls > $OUT"), UNCLASSIFIED);
+}
+
+#[test]
+fn a_redirection_is_held_to_the_write_gates() {
+    let p = builtin();
+    let gate = |line: &str| {
+        p.gate("Bash", line, &p.classify("Bash", line).capability)
+            .map(|s| s.gate)
+    };
+    assert_eq!(gate("echo x > .mohar/policy.json"), Some("protected_path"));
+    assert_eq!(gate("ls; cat a >> .mohar/x"), Some("protected_path"));
+    assert_eq!(gate("ls > /etc/passwd"), Some("outside_root"));
+    assert_eq!(gate("ls > ../outside"), Some("outside_root"));
+    assert_eq!(gate("ls > \"$OUT\""), Some("undecidable"));
+    assert_eq!(gate("ls > *.md"), Some("undecidable"));
+    assert_eq!(gate("ls > ~/x"), Some("undecidable"));
+    assert_eq!(gate("ls >"), Some("undecidable"));
+    assert_eq!(gate("ls > notes.md"), None);
+    assert_eq!(gate("cargo test > /dev/null 2>&1"), None);
+    assert_eq!(gate("ls >/dev/stderr"), None);
+}
+
+#[test]
+fn a_redirection_into_a_denied_capability_is_refused() {
+    let p = Policy::from_json(
+        r#"{"version": 1,
+            "capabilities": {
+              "fs.edit.secrets": {"risk": "high", "reversible": false, "ceiling": 1},
+              "shell.run":       {"risk": "low",  "reversible": true,  "ceiling": 2}
+            },
+            "rules": [
+              {"tools": ["Write"], "paths": ["secrets/**"], "capability": "fs.edit.secrets"},
+              {"tools": ["Bash"], "commands": ["*"], "capability": "shell.run"}
+            ],
+            "gates": {"deny_capabilities": ["fs.edit.secrets"]}}"#,
+        Path::new(ROOT),
+    )
+    .expect("valid");
+    assert_eq!(
+        p.gate("Bash", "echo k > secrets/key", "shell.run")
+            .map(|s| s.gate),
+        Some("denied_capability")
+    );
+    assert!(p.gate("Bash", "echo k > notes", "shell.run").is_none());
+}

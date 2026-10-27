@@ -144,6 +144,8 @@ const WRITE_TOOLS: [&str; 4] = ["Edit", "MultiEdit", "Write", "NotebookEdit"];
 const URL_TOOLS: [&str; 1] = ["WebFetch"];
 /// Tools whose target is a shell command line, split into its commands before classifying.
 const SHELL_TOOLS: [&str; 1] = ["Bash"];
+/// Redirection targets that are not files in the project, so writing them changes nothing.
+const DEVICES: [&str; 3] = ["/dev/null", "/dev/stdout", "/dev/stderr"];
 /// Programs that reach other hosts. A variable near one of them hides which host.
 const NETWORK_PROGRAMS: [&str; 14] = [
     "curl", "wget", "http", "https", "nc", "ncat", "netcat", "ssh", "scp", "sftp", "rsync", "ftp",
@@ -345,6 +347,23 @@ impl Policy {
                     });
                 }
             }
+            // A redirection is a write to its target, held to the same gates as an edit.
+            for w in parts.iter().flat_map(|p| p.writes.iter()) {
+                let Some(path) = w else {
+                    return Some(GateStop {
+                        gate: "undecidable",
+                        reason: "can't tell which file this command writes".into(),
+                    });
+                };
+                if DEVICES.contains(&path.as_str()) {
+                    continue;
+                }
+                if let Some(stop) =
+                    self.gate("Write", path, &self.classify_one("Write", path).capability)
+                {
+                    return Some(stop);
+                }
+            }
             if self.gates.allowed_hosts.is_some()
                 && let Some(p) = parts.iter().find(|p| {
                     p.expands
@@ -447,9 +466,25 @@ impl Policy {
         };
         let mut worst: Option<(Classified, usize)> = None;
         for p in &parts {
-            let c = self.classify_ranked(tool, &p.text());
-            if worst.as_ref().is_none_or(|w| rank(&c) > rank(w)) {
-                worst = Some(c);
+            // A part that is only a redirection (`> file`) runs no command.
+            let command = (!p.words.is_empty()).then(|| self.classify_ranked(tool, &p.text()));
+            // Each file it writes counts as an edit of that file; a target only the shell knows is
+            // unclassified.
+            let written = p.writes.iter().filter_map(|w| match w {
+                Some(path) if DEVICES.contains(&path.as_str()) => None,
+                Some(path) => Some(self.classify_ranked("Write", path)),
+                None => Some((
+                    Classified {
+                        capability: UNCLASSIFIED.to_string(),
+                        spec: UNCLASSIFIED_SPEC,
+                    },
+                    usize::MAX,
+                )),
+            });
+            for c in command.into_iter().chain(written) {
+                if worst.as_ref().is_none_or(|w| rank(&c) > rank(w)) {
+                    worst = Some(c);
+                }
             }
         }
         worst.map_or(
