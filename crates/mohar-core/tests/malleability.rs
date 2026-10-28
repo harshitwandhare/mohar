@@ -62,3 +62,15 @@ fn a_public_key_must_be_lowercase_hex() {
     assert!(parse_public_key(&lower).is_some());
     assert!(parse_public_key(&respell(&lower, str::to_uppercase)).is_none());
 }
+
+#[test]
+fn an_outcome_with_a_field_the_format_does_not_define_does_not_parse() {
+    let (log, _) = log_of(1);
+    let mut outcome = serde_json::to_value(&log.receipts()[0]).expect("json");
+    outcome["verification"] = serde_json::json!({
+        "evidence_sha256": "5d41402a", "kind": "tests", "of": 0, "result": "pass"
+    });
+    assert!(serde_json::from_value::<mohar_core::Receipt>(outcome.clone()).is_ok());
+    outcome["verification"]["reviewer"] = "human:7f3a09c2".into();
+    assert!(serde_json::from_value::<mohar_core::Receipt>(outcome).is_err());
+}

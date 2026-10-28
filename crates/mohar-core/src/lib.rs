@@ -26,6 +26,7 @@ const SIG_PREFIX: &str = "ed25519:";
 
 /// The action an agent asked to take.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Action {
     /// Capability the action falls under, such as `fs.edit.tests`.
     pub capability: String,
@@ -39,6 +40,7 @@ pub struct Action {
 
 /// What Mohar decided about the action.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Decision {
     /// `allow`, `escalate` or `deny`.
     pub result: String,
@@ -48,12 +50,17 @@ pub struct Decision {
     pub by: String,
     /// Whether this action, allowed on the agent's own record, was sampled for a person to review
     /// after it runs. Left out of the receipt when false, so receipts without it read the same.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[serde(
+        default,
+        skip_serializing_if = "std::ops::Not::not",
+        deserialize_with = "only_true"
+    )]
     pub review: bool,
 }
 
 /// The checked outcome of an earlier decision, carried by a follow-up receipt.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Verification {
     /// SHA-256 of the evidence the verifier looked at (a test log, a diff, a review).
     pub evidence_sha256: String,
@@ -67,6 +74,7 @@ pub struct Verification {
 
 /// The agent that acted.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Agent {
     /// Stable agent identifier.
     pub id: String,
@@ -75,7 +83,12 @@ pub struct Agent {
 }
 
 /// One signed entry in the log.
+///
+/// A field the format doesn't define is refused when a receipt is read, here and in every type it
+/// holds: the canonical bytes are rebuilt from the known fields, so an ignored extra field would ride
+/// along under a signature that never covered it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Receipt {
     /// Format version.
     pub v: u32,
@@ -96,8 +109,28 @@ pub struct Receipt {
     pub sig: String,
     /// Present only on a follow-up receipt that records an outcome. Absent fields leave the bytes of
     /// every earlier receipt unchanged.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
     pub verification: Option<Verification>,
+}
+
+// The two optional fields are written only when they say something. Reading `"review": false` or
+// `"verification": null` as if the key were absent would give a receipt a second spelling with the same
+// signature, and a field nobody signed, so both are refused.
+
+fn only_true<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    if bool::deserialize(d)? {
+        Ok(true)
+    } else {
+        Err(serde::de::Error::custom("review is written only when true"))
+    }
+}
+
+fn present<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Verification>, D::Error> {
+    Verification::deserialize(d).map(Some)
 }
 
 /// The fields a caller supplies; the log fills in the rest.

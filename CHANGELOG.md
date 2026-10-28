@@ -7,8 +7,19 @@ receipt format; each such change is called out.
 
 ## [Unreleased]
 
+### Added
+
+- `spec/receipts-v1.md`, the receipt format described apart from the Rust code (spec version 1.0.0), with
+  conformance levels: a signed chain, then a pinned key with published checkpoints, then outcomes bound to
+  the diff (defined, not yet reachable). `spec/vectors/conformance-v1.json` has seventeen logs with the
+  level each must reach; the Rust tests and `check.py` both check every one, and `check.py --log` reports
+  the level of a real log (#134).
+
 ### Fixed
 
+- A receipt or checkpoint with a key the format doesn't define, or with `"review": false` or
+  `"verification": null` written out, no longer verifies. Each was dropped while parsing, so the
+  signature still matched and the extra field rode along unsigned; the new conformance vectors found it.
 - A shell redirection is now a write to its target. Before, `cat a > src/main.rs` matched the read-only
   `cat *` rule and never reached the path rules or the protected-path gate; now the write is classified
   and gated like an edit, and a target only the shell can resolve is refused (#131).

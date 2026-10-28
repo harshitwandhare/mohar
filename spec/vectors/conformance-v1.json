@@ -1,0 +1,1939 @@
+{
+  "cases": [
+    {
+      "about": "Every receipt verifies against the pinned key, and the log still holds what both published checkpoints vouched for.",
+      "expect_level": 2,
+      "log_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "name": "level-2",
+      "pinned_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "published_checkpoints": [
+        {
+          "count": 2,
+          "head": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "sig": "ed25519:2028c3812bf8df5df35cbeb942dacf02ac9fe55c26100b465a069783e5ecf7ae45783216bbe1d1bc2f1c83fa212407641c8e8ec98b42016ea8946a4ff5224f04",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        },
+        {
+          "count": 4,
+          "head": "sha256:8129d9230681afca0ffb2d321d6a09c049eb97e23b57c572ebf5eb67ec3e7f12",
+          "sig": "ed25519:6035923c69c0a4dfc1b41adf3da9d510805762ac49e128f264e005cefe880e9f1f43e05c57d3a4e9479e5999274488bb2d8e59908548a6a7ebaa7e1152379008",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        }
+      ],
+      "receipts": [
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "seq": 0,
+          "sig": "ed25519:1e897de075c1fba3d6cf3840caff9b302e52e333706db6c3ba383f223d7cc10622ef6f8b6228c5f61d27edd7eae469f7025f10aace9f06dbb0f7034885409605",
+          "ts": "2026-11-03T14:22:07.311Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "gate",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:3f9487cde3fce1cfcd2cc773dc7f871cb4632b0d651bcbc25f008e446546362a",
+          "seq": 1,
+          "sig": "ed25519:80978e926e0107671eeb8627ea0dd879b7197d5e45f40b93a155aebf61e85441fe8e68e1a4ce3484633e94811eb2ddb19b18d6cc85ac40b692a1bef7f9f9cd0a",
+          "ts": "2026-11-03T14:22:09.020Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "prev": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "seq": 2,
+          "sig": "ed25519:b29e812c1a0080e4f9c07172c85b5a7529078ad249c22fb6dac08369de195a8002d1c8df3711ea16d739d1c8998c2fd23252e68b56ceee0ba63525a047e6a40c",
+          "ts": "2026-11-03T14:23:41.555Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:3795fd493c040bcf94f1df2da0fa887a795916efb502af948f7da6c5e8c29392",
+          "seq": 3,
+          "sig": "ed25519:de7b51b5c890855399ed5e5057084e5c3fcd82baa9c51e00b85d98355e5d1e7fc0e34faf44a17e3caf4cc11be2c6bde35e912116cfd609a4905438033c2b860d",
+          "ts": "2026-11-03T14:25:02.870Z",
+          "v": 1,
+          "verification": {
+            "evidence_sha256": "5d41402abc4b2a76b9719d911017c592ae8a2f3c1d2e6b0a4f7c9e1d3b5a7c90",
+            "kind": "tests",
+            "of": 0,
+            "result": "pass"
+          }
+        }
+      ]
+    },
+    {
+      "about": "A sound chain with a pinned key, but nothing outside the machine says how long the log was.",
+      "expect_level": 1,
+      "log_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "name": "no-published-checkpoints",
+      "pinned_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "published_checkpoints": [],
+      "receipts": [
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "seq": 0,
+          "sig": "ed25519:1e897de075c1fba3d6cf3840caff9b302e52e333706db6c3ba383f223d7cc10622ef6f8b6228c5f61d27edd7eae469f7025f10aace9f06dbb0f7034885409605",
+          "ts": "2026-11-03T14:22:07.311Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "gate",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:3f9487cde3fce1cfcd2cc773dc7f871cb4632b0d651bcbc25f008e446546362a",
+          "seq": 1,
+          "sig": "ed25519:80978e926e0107671eeb8627ea0dd879b7197d5e45f40b93a155aebf61e85441fe8e68e1a4ce3484633e94811eb2ddb19b18d6cc85ac40b692a1bef7f9f9cd0a",
+          "ts": "2026-11-03T14:22:09.020Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "prev": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "seq": 2,
+          "sig": "ed25519:b29e812c1a0080e4f9c07172c85b5a7529078ad249c22fb6dac08369de195a8002d1c8df3711ea16d739d1c8998c2fd23252e68b56ceee0ba63525a047e6a40c",
+          "ts": "2026-11-03T14:23:41.555Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:3795fd493c040bcf94f1df2da0fa887a795916efb502af948f7da6c5e8c29392",
+          "seq": 3,
+          "sig": "ed25519:de7b51b5c890855399ed5e5057084e5c3fcd82baa9c51e00b85d98355e5d1e7fc0e34faf44a17e3caf4cc11be2c6bde35e912116cfd609a4905438033c2b860d",
+          "ts": "2026-11-03T14:25:02.870Z",
+          "v": 1,
+          "verification": {
+            "evidence_sha256": "5d41402abc4b2a76b9719d911017c592ae8a2f3c1d2e6b0a4f7c9e1d3b5a7c90",
+            "kind": "tests",
+            "of": 0,
+            "result": "pass"
+          }
+        }
+      ]
+    },
+    {
+      "about": "A sound chain and published checkpoints, but the only key is the one in the log directory.",
+      "expect_level": 1,
+      "log_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "name": "no-pinned-key",
+      "pinned_key": null,
+      "published_checkpoints": [
+        {
+          "count": 2,
+          "head": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "sig": "ed25519:2028c3812bf8df5df35cbeb942dacf02ac9fe55c26100b465a069783e5ecf7ae45783216bbe1d1bc2f1c83fa212407641c8e8ec98b42016ea8946a4ff5224f04",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        },
+        {
+          "count": 4,
+          "head": "sha256:8129d9230681afca0ffb2d321d6a09c049eb97e23b57c572ebf5eb67ec3e7f12",
+          "sig": "ed25519:6035923c69c0a4dfc1b41adf3da9d510805762ac49e128f264e005cefe880e9f1f43e05c57d3a4e9479e5999274488bb2d8e59908548a6a7ebaa7e1152379008",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        }
+      ],
+      "receipts": [
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "seq": 0,
+          "sig": "ed25519:1e897de075c1fba3d6cf3840caff9b302e52e333706db6c3ba383f223d7cc10622ef6f8b6228c5f61d27edd7eae469f7025f10aace9f06dbb0f7034885409605",
+          "ts": "2026-11-03T14:22:07.311Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "gate",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:3f9487cde3fce1cfcd2cc773dc7f871cb4632b0d651bcbc25f008e446546362a",
+          "seq": 1,
+          "sig": "ed25519:80978e926e0107671eeb8627ea0dd879b7197d5e45f40b93a155aebf61e85441fe8e68e1a4ce3484633e94811eb2ddb19b18d6cc85ac40b692a1bef7f9f9cd0a",
+          "ts": "2026-11-03T14:22:09.020Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "prev": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "seq": 2,
+          "sig": "ed25519:b29e812c1a0080e4f9c07172c85b5a7529078ad249c22fb6dac08369de195a8002d1c8df3711ea16d739d1c8998c2fd23252e68b56ceee0ba63525a047e6a40c",
+          "ts": "2026-11-03T14:23:41.555Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:3795fd493c040bcf94f1df2da0fa887a795916efb502af948f7da6c5e8c29392",
+          "seq": 3,
+          "sig": "ed25519:de7b51b5c890855399ed5e5057084e5c3fcd82baa9c51e00b85d98355e5d1e7fc0e34faf44a17e3caf4cc11be2c6bde35e912116cfd609a4905438033c2b860d",
+          "ts": "2026-11-03T14:25:02.870Z",
+          "v": 1,
+          "verification": {
+            "evidence_sha256": "5d41402abc4b2a76b9719d911017c592ae8a2f3c1d2e6b0a4f7c9e1d3b5a7c90",
+            "kind": "tests",
+            "of": 0,
+            "result": "pass"
+          }
+        }
+      ]
+    },
+    {
+      "about": "The last two receipts were removed. What is left verifies, but a published checkpoint vouched for four.",
+      "expect_level": 1,
+      "log_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "name": "tail-deleted",
+      "pinned_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "published_checkpoints": [
+        {
+          "count": 2,
+          "head": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "sig": "ed25519:2028c3812bf8df5df35cbeb942dacf02ac9fe55c26100b465a069783e5ecf7ae45783216bbe1d1bc2f1c83fa212407641c8e8ec98b42016ea8946a4ff5224f04",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        },
+        {
+          "count": 4,
+          "head": "sha256:8129d9230681afca0ffb2d321d6a09c049eb97e23b57c572ebf5eb67ec3e7f12",
+          "sig": "ed25519:6035923c69c0a4dfc1b41adf3da9d510805762ac49e128f264e005cefe880e9f1f43e05c57d3a4e9479e5999274488bb2d8e59908548a6a7ebaa7e1152379008",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        }
+      ],
+      "receipts": [
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "seq": 0,
+          "sig": "ed25519:1e897de075c1fba3d6cf3840caff9b302e52e333706db6c3ba383f223d7cc10622ef6f8b6228c5f61d27edd7eae469f7025f10aace9f06dbb0f7034885409605",
+          "ts": "2026-11-03T14:22:07.311Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "gate",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:3f9487cde3fce1cfcd2cc773dc7f871cb4632b0d651bcbc25f008e446546362a",
+          "seq": 1,
+          "sig": "ed25519:80978e926e0107671eeb8627ea0dd879b7197d5e45f40b93a155aebf61e85441fe8e68e1a4ce3484633e94811eb2ddb19b18d6cc85ac40b692a1bef7f9f9cd0a",
+          "ts": "2026-11-03T14:22:09.020Z",
+          "v": 1
+        }
+      ]
+    },
+    {
+      "about": "The log and its checkpoints were signed again with a different key, which replaced public.key. It verifies on its own terms, not against the pinned key.",
+      "expect_level": 1,
+      "log_key": "ed25519:29acbae141bccaf0b22e1a94d34d0bc7361e526d0bfe12c89794bc9322966dd7",
+      "name": "rewritten-with-another-key",
+      "pinned_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "published_checkpoints": [
+        {
+          "count": 2,
+          "head": "sha256:8a93aef885aa2c29cda57f03ffb414de838aca61906a9d0d44a388427b29c536",
+          "sig": "ed25519:cc2321a81c703c98fc16a07e0f0d34293806ee12f68979eb934b024b5d7407cc44e78ef322ace41ac4b7e90125fa80c1437bc6c4d840b7c17308a747f775bd09",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        },
+        {
+          "count": 4,
+          "head": "sha256:73709cbe664de9b4d634b603b3b37ae69d05be219b035c6255770c9114b37ce3",
+          "sig": "ed25519:65bed3b0071f8c6da2ded6893b6cf3b6b8e9688bccfc2b6b538bcb3cf13ed975411f0a100de16105a947770f4caba94570a3c3e10388b39216cce118bf5ada06",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        }
+      ],
+      "receipts": [
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:29acbae141bccaf0b22e1a94d34d0bc7361e526d0bfe12c89794bc9322966dd7"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "seq": 0,
+          "sig": "ed25519:bce5a0ddb06c3a781704a4291490bf5a969d648e975c07c81f91bbfb1ddde9d45621f090d717bd8f1981efab8229ce3e792881cda325cb594f79764fcbb79e05",
+          "ts": "2026-11-03T14:22:07.311Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:29acbae141bccaf0b22e1a94d34d0bc7361e526d0bfe12c89794bc9322966dd7"
+          },
+          "decision": {
+            "by": "gate",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:32661d7ad348055c0887aefd65dcc42c133583144203e664571cd7d271961d04",
+          "seq": 1,
+          "sig": "ed25519:bf5d40cea1e2f8e9b8a8467e43c05b82705710f5d30418035cf1e1256288d107ffb7fde5db9ac67a727ce65d4a198284e3442f96f3fcebe86eee39831fa88b0d",
+          "ts": "2026-11-03T14:22:09.020Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:29acbae141bccaf0b22e1a94d34d0bc7361e526d0bfe12c89794bc9322966dd7"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "prev": "sha256:8a93aef885aa2c29cda57f03ffb414de838aca61906a9d0d44a388427b29c536",
+          "seq": 2,
+          "sig": "ed25519:08ae3f4d3c9b03c4bea5c69a0530cf3650df0247df46b54b18505fd47570dde3d026e0d86f4de4617181b8d1f1e61ace82bb448d9f456584b09080e885165d06",
+          "ts": "2026-11-03T14:23:41.555Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:29acbae141bccaf0b22e1a94d34d0bc7361e526d0bfe12c89794bc9322966dd7"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:e79d33317527eec3bbd31a7b7e66656a24f4b3800a0cef879bca1ea943fa416f",
+          "seq": 3,
+          "sig": "ed25519:af070749896865a18da4c0982a178362f62eaf059117ef8251115af5a89d103c43666d123e6296cc5fe6b10b0fd06431e1616396693c9f0c0ede9109f9a06d08",
+          "ts": "2026-11-03T14:25:02.870Z",
+          "v": 1,
+          "verification": {
+            "evidence_sha256": "5d41402abc4b2a76b9719d911017c592ae8a2f3c1d2e6b0a4f7c9e1d3b5a7c90",
+            "kind": "tests",
+            "of": 0,
+            "result": "pass"
+          }
+        }
+      ]
+    },
+    {
+      "about": "The log was signed again with a different key. The only published checkpoint is the pinned key's, from when the log was empty, so it vouches for nothing; the receipts still have to verify against the pinned key.",
+      "expect_level": 1,
+      "log_key": "ed25519:29acbae141bccaf0b22e1a94d34d0bc7361e526d0bfe12c89794bc9322966dd7",
+      "name": "rewritten-after-an-empty-checkpoint",
+      "pinned_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "published_checkpoints": [
+        {
+          "count": 0,
+          "head": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "sig": "ed25519:3517c84838bb5dfdc041e3f48f1b3373dd45833a872dd5071fcd4caba61056a8661d79640b49dc9d8961a5ee7e751e29442122d76682d9591e9c12075fc3aa04",
+          "ts": "2026-11-03T13:00:00.000Z",
+          "v": 1
+        }
+      ],
+      "receipts": [
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:29acbae141bccaf0b22e1a94d34d0bc7361e526d0bfe12c89794bc9322966dd7"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "seq": 0,
+          "sig": "ed25519:bce5a0ddb06c3a781704a4291490bf5a969d648e975c07c81f91bbfb1ddde9d45621f090d717bd8f1981efab8229ce3e792881cda325cb594f79764fcbb79e05",
+          "ts": "2026-11-03T14:22:07.311Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:29acbae141bccaf0b22e1a94d34d0bc7361e526d0bfe12c89794bc9322966dd7"
+          },
+          "decision": {
+            "by": "gate",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:32661d7ad348055c0887aefd65dcc42c133583144203e664571cd7d271961d04",
+          "seq": 1,
+          "sig": "ed25519:bf5d40cea1e2f8e9b8a8467e43c05b82705710f5d30418035cf1e1256288d107ffb7fde5db9ac67a727ce65d4a198284e3442f96f3fcebe86eee39831fa88b0d",
+          "ts": "2026-11-03T14:22:09.020Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:29acbae141bccaf0b22e1a94d34d0bc7361e526d0bfe12c89794bc9322966dd7"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "prev": "sha256:8a93aef885aa2c29cda57f03ffb414de838aca61906a9d0d44a388427b29c536",
+          "seq": 2,
+          "sig": "ed25519:08ae3f4d3c9b03c4bea5c69a0530cf3650df0247df46b54b18505fd47570dde3d026e0d86f4de4617181b8d1f1e61ace82bb448d9f456584b09080e885165d06",
+          "ts": "2026-11-03T14:23:41.555Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:29acbae141bccaf0b22e1a94d34d0bc7361e526d0bfe12c89794bc9322966dd7"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:e79d33317527eec3bbd31a7b7e66656a24f4b3800a0cef879bca1ea943fa416f",
+          "seq": 3,
+          "sig": "ed25519:af070749896865a18da4c0982a178362f62eaf059117ef8251115af5a89d103c43666d123e6296cc5fe6b10b0fd06431e1616396693c9f0c0ede9109f9a06d08",
+          "ts": "2026-11-03T14:25:02.870Z",
+          "v": 1,
+          "verification": {
+            "evidence_sha256": "5d41402abc4b2a76b9719d911017c592ae8a2f3c1d2e6b0a4f7c9e1d3b5a7c90",
+            "kind": "tests",
+            "of": 0,
+            "result": "pass"
+          }
+        }
+      ]
+    },
+    {
+      "about": "The latest published checkpoint was signed by a key other than the pinned one.",
+      "expect_level": 1,
+      "log_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "name": "checkpoint-from-another-key",
+      "pinned_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "published_checkpoints": [
+        {
+          "count": 2,
+          "head": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "sig": "ed25519:2028c3812bf8df5df35cbeb942dacf02ac9fe55c26100b465a069783e5ecf7ae45783216bbe1d1bc2f1c83fa212407641c8e8ec98b42016ea8946a4ff5224f04",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        },
+        {
+          "count": 4,
+          "head": "sha256:8129d9230681afca0ffb2d321d6a09c049eb97e23b57c572ebf5eb67ec3e7f12",
+          "sig": "ed25519:b802ef95da5c705b5e3503cacd9f8e1a114a86cbe335f25ea058ba74a51d8dbb12e3e9c4cd8e13418bfe738fab76e9274302469ae310c234ee173c95d553a10f",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        }
+      ],
+      "receipts": [
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "seq": 0,
+          "sig": "ed25519:1e897de075c1fba3d6cf3840caff9b302e52e333706db6c3ba383f223d7cc10622ef6f8b6228c5f61d27edd7eae469f7025f10aace9f06dbb0f7034885409605",
+          "ts": "2026-11-03T14:22:07.311Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "gate",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:3f9487cde3fce1cfcd2cc773dc7f871cb4632b0d651bcbc25f008e446546362a",
+          "seq": 1,
+          "sig": "ed25519:80978e926e0107671eeb8627ea0dd879b7197d5e45f40b93a155aebf61e85441fe8e68e1a4ce3484633e94811eb2ddb19b18d6cc85ac40b692a1bef7f9f9cd0a",
+          "ts": "2026-11-03T14:22:09.020Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "prev": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "seq": 2,
+          "sig": "ed25519:b29e812c1a0080e4f9c07172c85b5a7529078ad249c22fb6dac08369de195a8002d1c8df3711ea16d739d1c8998c2fd23252e68b56ceee0ba63525a047e6a40c",
+          "ts": "2026-11-03T14:23:41.555Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:3795fd493c040bcf94f1df2da0fa887a795916efb502af948f7da6c5e8c29392",
+          "seq": 3,
+          "sig": "ed25519:de7b51b5c890855399ed5e5057084e5c3fcd82baa9c51e00b85d98355e5d1e7fc0e34faf44a17e3caf4cc11be2c6bde35e912116cfd609a4905438033c2b860d",
+          "ts": "2026-11-03T14:25:02.870Z",
+          "v": 1,
+          "verification": {
+            "evidence_sha256": "5d41402abc4b2a76b9719d911017c592ae8a2f3c1d2e6b0a4f7c9e1d3b5a7c90",
+            "kind": "tests",
+            "of": 0,
+            "result": "pass"
+          }
+        }
+      ]
+    },
+    {
+      "about": "The key holder changed the last outcome from pass to fail and signed it again. The chain verifies, but the receipt at the published head is not the one signed for.",
+      "expect_level": 1,
+      "log_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "name": "last-receipt-rewritten",
+      "pinned_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "published_checkpoints": [
+        {
+          "count": 2,
+          "head": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "sig": "ed25519:2028c3812bf8df5df35cbeb942dacf02ac9fe55c26100b465a069783e5ecf7ae45783216bbe1d1bc2f1c83fa212407641c8e8ec98b42016ea8946a4ff5224f04",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        },
+        {
+          "count": 4,
+          "head": "sha256:8129d9230681afca0ffb2d321d6a09c049eb97e23b57c572ebf5eb67ec3e7f12",
+          "sig": "ed25519:6035923c69c0a4dfc1b41adf3da9d510805762ac49e128f264e005cefe880e9f1f43e05c57d3a4e9479e5999274488bb2d8e59908548a6a7ebaa7e1152379008",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        }
+      ],
+      "receipts": [
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "seq": 0,
+          "sig": "ed25519:1e897de075c1fba3d6cf3840caff9b302e52e333706db6c3ba383f223d7cc10622ef6f8b6228c5f61d27edd7eae469f7025f10aace9f06dbb0f7034885409605",
+          "ts": "2026-11-03T14:22:07.311Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "gate",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:3f9487cde3fce1cfcd2cc773dc7f871cb4632b0d651bcbc25f008e446546362a",
+          "seq": 1,
+          "sig": "ed25519:80978e926e0107671eeb8627ea0dd879b7197d5e45f40b93a155aebf61e85441fe8e68e1a4ce3484633e94811eb2ddb19b18d6cc85ac40b692a1bef7f9f9cd0a",
+          "ts": "2026-11-03T14:22:09.020Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "prev": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "seq": 2,
+          "sig": "ed25519:b29e812c1a0080e4f9c07172c85b5a7529078ad249c22fb6dac08369de195a8002d1c8df3711ea16d739d1c8998c2fd23252e68b56ceee0ba63525a047e6a40c",
+          "ts": "2026-11-03T14:23:41.555Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:3795fd493c040bcf94f1df2da0fa887a795916efb502af948f7da6c5e8c29392",
+          "seq": 3,
+          "sig": "ed25519:1860828a3dbdd374458f1e8e3240ebb07f973db3f42c8ff2bb15bec10657d7d84a4de20511bb615eca9054c08f51869b0a1a143a8acd2565c646231bc08bda06",
+          "ts": "2026-11-03T14:25:02.870Z",
+          "v": 1,
+          "verification": {
+            "evidence_sha256": "5d41402abc4b2a76b9719d911017c592ae8a2f3c1d2e6b0a4f7c9e1d3b5a7c90",
+            "kind": "tests",
+            "of": 0,
+            "result": "fail"
+          }
+        }
+      ]
+    },
+    {
+      "about": "The signature on receipt 1 has one hex digit changed.",
+      "expect_level": 0,
+      "log_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "name": "bad-signature",
+      "pinned_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "published_checkpoints": [
+        {
+          "count": 2,
+          "head": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "sig": "ed25519:2028c3812bf8df5df35cbeb942dacf02ac9fe55c26100b465a069783e5ecf7ae45783216bbe1d1bc2f1c83fa212407641c8e8ec98b42016ea8946a4ff5224f04",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        },
+        {
+          "count": 4,
+          "head": "sha256:8129d9230681afca0ffb2d321d6a09c049eb97e23b57c572ebf5eb67ec3e7f12",
+          "sig": "ed25519:6035923c69c0a4dfc1b41adf3da9d510805762ac49e128f264e005cefe880e9f1f43e05c57d3a4e9479e5999274488bb2d8e59908548a6a7ebaa7e1152379008",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        }
+      ],
+      "receipts": [
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "seq": 0,
+          "sig": "ed25519:1e897de075c1fba3d6cf3840caff9b302e52e333706db6c3ba383f223d7cc10622ef6f8b6228c5f61d27edd7eae469f7025f10aace9f06dbb0f7034885409605",
+          "ts": "2026-11-03T14:22:07.311Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "gate",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:3f9487cde3fce1cfcd2cc773dc7f871cb4632b0d651bcbc25f008e446546362a",
+          "seq": 1,
+          "sig": "ed25519:80978e926e0107671eeb8627ea0dd879b7197d5e45f40b93a155aebf61e85441fe8e68e1a4ce3484633e94811eb2ddb19b18d6cc85ac40b692a1bef7f9f9cd00",
+          "ts": "2026-11-03T14:22:09.020Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "prev": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "seq": 2,
+          "sig": "ed25519:b29e812c1a0080e4f9c07172c85b5a7529078ad249c22fb6dac08369de195a8002d1c8df3711ea16d739d1c8998c2fd23252e68b56ceee0ba63525a047e6a40c",
+          "ts": "2026-11-03T14:23:41.555Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:3795fd493c040bcf94f1df2da0fa887a795916efb502af948f7da6c5e8c29392",
+          "seq": 3,
+          "sig": "ed25519:de7b51b5c890855399ed5e5057084e5c3fcd82baa9c51e00b85d98355e5d1e7fc0e34faf44a17e3caf4cc11be2c6bde35e912116cfd609a4905438033c2b860d",
+          "ts": "2026-11-03T14:25:02.870Z",
+          "v": 1,
+          "verification": {
+            "evidence_sha256": "5d41402abc4b2a76b9719d911017c592ae8a2f3c1d2e6b0a4f7c9e1d3b5a7c90",
+            "kind": "tests",
+            "of": 0,
+            "result": "pass"
+          }
+        }
+      ]
+    },
+    {
+      "about": "Receipt 1's target was changed and its old signature kept.",
+      "expect_level": 0,
+      "log_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "name": "edited-without-signing",
+      "pinned_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "published_checkpoints": [
+        {
+          "count": 2,
+          "head": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "sig": "ed25519:2028c3812bf8df5df35cbeb942dacf02ac9fe55c26100b465a069783e5ecf7ae45783216bbe1d1bc2f1c83fa212407641c8e8ec98b42016ea8946a4ff5224f04",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        },
+        {
+          "count": 4,
+          "head": "sha256:8129d9230681afca0ffb2d321d6a09c049eb97e23b57c572ebf5eb67ec3e7f12",
+          "sig": "ed25519:6035923c69c0a4dfc1b41adf3da9d510805762ac49e128f264e005cefe880e9f1f43e05c57d3a4e9479e5999274488bb2d8e59908548a6a7ebaa7e1152379008",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        }
+      ],
+      "receipts": [
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "seq": 0,
+          "sig": "ed25519:1e897de075c1fba3d6cf3840caff9b302e52e333706db6c3ba383f223d7cc10622ef6f8b6228c5f61d27edd7eae469f7025f10aace9f06dbb0f7034885409605",
+          "ts": "2026-11-03T14:22:07.311Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "release",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "gate",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:3f9487cde3fce1cfcd2cc773dc7f871cb4632b0d651bcbc25f008e446546362a",
+          "seq": 1,
+          "sig": "ed25519:80978e926e0107671eeb8627ea0dd879b7197d5e45f40b93a155aebf61e85441fe8e68e1a4ce3484633e94811eb2ddb19b18d6cc85ac40b692a1bef7f9f9cd0a",
+          "ts": "2026-11-03T14:22:09.020Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "prev": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "seq": 2,
+          "sig": "ed25519:b29e812c1a0080e4f9c07172c85b5a7529078ad249c22fb6dac08369de195a8002d1c8df3711ea16d739d1c8998c2fd23252e68b56ceee0ba63525a047e6a40c",
+          "ts": "2026-11-03T14:23:41.555Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:3795fd493c040bcf94f1df2da0fa887a795916efb502af948f7da6c5e8c29392",
+          "seq": 3,
+          "sig": "ed25519:de7b51b5c890855399ed5e5057084e5c3fcd82baa9c51e00b85d98355e5d1e7fc0e34faf44a17e3caf4cc11be2c6bde35e912116cfd609a4905438033c2b860d",
+          "ts": "2026-11-03T14:25:02.870Z",
+          "v": 1,
+          "verification": {
+            "evidence_sha256": "5d41402abc4b2a76b9719d911017c592ae8a2f3c1d2e6b0a4f7c9e1d3b5a7c90",
+            "kind": "tests",
+            "of": 0,
+            "result": "pass"
+          }
+        }
+      ]
+    },
+    {
+      "about": "Receipt 2 names the genesis hash as prev and is signed with the right key.",
+      "expect_level": 0,
+      "log_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "name": "broken-link",
+      "pinned_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "published_checkpoints": [
+        {
+          "count": 2,
+          "head": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "sig": "ed25519:2028c3812bf8df5df35cbeb942dacf02ac9fe55c26100b465a069783e5ecf7ae45783216bbe1d1bc2f1c83fa212407641c8e8ec98b42016ea8946a4ff5224f04",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        },
+        {
+          "count": 4,
+          "head": "sha256:8129d9230681afca0ffb2d321d6a09c049eb97e23b57c572ebf5eb67ec3e7f12",
+          "sig": "ed25519:6035923c69c0a4dfc1b41adf3da9d510805762ac49e128f264e005cefe880e9f1f43e05c57d3a4e9479e5999274488bb2d8e59908548a6a7ebaa7e1152379008",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        }
+      ],
+      "receipts": [
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "seq": 0,
+          "sig": "ed25519:1e897de075c1fba3d6cf3840caff9b302e52e333706db6c3ba383f223d7cc10622ef6f8b6228c5f61d27edd7eae469f7025f10aace9f06dbb0f7034885409605",
+          "ts": "2026-11-03T14:22:07.311Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "gate",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:3f9487cde3fce1cfcd2cc773dc7f871cb4632b0d651bcbc25f008e446546362a",
+          "seq": 1,
+          "sig": "ed25519:80978e926e0107671eeb8627ea0dd879b7197d5e45f40b93a155aebf61e85441fe8e68e1a4ce3484633e94811eb2ddb19b18d6cc85ac40b692a1bef7f9f9cd0a",
+          "ts": "2026-11-03T14:22:09.020Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "seq": 2,
+          "sig": "ed25519:9d5dd5fbc3e3c07198784cada114c2eb16d962a62982141f95f69ef050c33a63c0dd991679e06c99a3475f7dd0a7314d1c7a53ca63e82a51ef289b33b26fa301",
+          "ts": "2026-11-03T14:23:41.555Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:3795fd493c040bcf94f1df2da0fa887a795916efb502af948f7da6c5e8c29392",
+          "seq": 3,
+          "sig": "ed25519:de7b51b5c890855399ed5e5057084e5c3fcd82baa9c51e00b85d98355e5d1e7fc0e34faf44a17e3caf4cc11be2c6bde35e912116cfd609a4905438033c2b860d",
+          "ts": "2026-11-03T14:25:02.870Z",
+          "v": 1,
+          "verification": {
+            "evidence_sha256": "5d41402abc4b2a76b9719d911017c592ae8a2f3c1d2e6b0a4f7c9e1d3b5a7c90",
+            "kind": "tests",
+            "of": 0,
+            "result": "pass"
+          }
+        }
+      ]
+    },
+    {
+      "about": "Receipt 2 was removed from the middle, so the receipt at position 2 says seq 3.",
+      "expect_level": 0,
+      "log_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "name": "receipt-removed",
+      "pinned_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "published_checkpoints": [
+        {
+          "count": 2,
+          "head": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "sig": "ed25519:2028c3812bf8df5df35cbeb942dacf02ac9fe55c26100b465a069783e5ecf7ae45783216bbe1d1bc2f1c83fa212407641c8e8ec98b42016ea8946a4ff5224f04",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        },
+        {
+          "count": 4,
+          "head": "sha256:8129d9230681afca0ffb2d321d6a09c049eb97e23b57c572ebf5eb67ec3e7f12",
+          "sig": "ed25519:6035923c69c0a4dfc1b41adf3da9d510805762ac49e128f264e005cefe880e9f1f43e05c57d3a4e9479e5999274488bb2d8e59908548a6a7ebaa7e1152379008",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        }
+      ],
+      "receipts": [
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "seq": 0,
+          "sig": "ed25519:1e897de075c1fba3d6cf3840caff9b302e52e333706db6c3ba383f223d7cc10622ef6f8b6228c5f61d27edd7eae469f7025f10aace9f06dbb0f7034885409605",
+          "ts": "2026-11-03T14:22:07.311Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "gate",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:3f9487cde3fce1cfcd2cc773dc7f871cb4632b0d651bcbc25f008e446546362a",
+          "seq": 1,
+          "sig": "ed25519:80978e926e0107671eeb8627ea0dd879b7197d5e45f40b93a155aebf61e85441fe8e68e1a4ce3484633e94811eb2ddb19b18d6cc85ac40b692a1bef7f9f9cd0a",
+          "ts": "2026-11-03T14:22:09.020Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:3795fd493c040bcf94f1df2da0fa887a795916efb502af948f7da6c5e8c29392",
+          "seq": 3,
+          "sig": "ed25519:de7b51b5c890855399ed5e5057084e5c3fcd82baa9c51e00b85d98355e5d1e7fc0e34faf44a17e3caf4cc11be2c6bde35e912116cfd609a4905438033c2b860d",
+          "ts": "2026-11-03T14:25:02.870Z",
+          "v": 1,
+          "verification": {
+            "evidence_sha256": "5d41402abc4b2a76b9719d911017c592ae8a2f3c1d2e6b0a4f7c9e1d3b5a7c90",
+            "kind": "tests",
+            "of": 0,
+            "result": "pass"
+          }
+        }
+      ]
+    },
+    {
+      "about": "Receipt 3's signature is written in uppercase hex. The bytes are the same, but only lowercase is accepted, so each receipt has one encoding.",
+      "expect_level": 0,
+      "log_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "name": "uppercase-hex-signature",
+      "pinned_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "published_checkpoints": [
+        {
+          "count": 2,
+          "head": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "sig": "ed25519:2028c3812bf8df5df35cbeb942dacf02ac9fe55c26100b465a069783e5ecf7ae45783216bbe1d1bc2f1c83fa212407641c8e8ec98b42016ea8946a4ff5224f04",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        },
+        {
+          "count": 4,
+          "head": "sha256:8129d9230681afca0ffb2d321d6a09c049eb97e23b57c572ebf5eb67ec3e7f12",
+          "sig": "ed25519:6035923c69c0a4dfc1b41adf3da9d510805762ac49e128f264e005cefe880e9f1f43e05c57d3a4e9479e5999274488bb2d8e59908548a6a7ebaa7e1152379008",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        }
+      ],
+      "receipts": [
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "seq": 0,
+          "sig": "ed25519:1e897de075c1fba3d6cf3840caff9b302e52e333706db6c3ba383f223d7cc10622ef6f8b6228c5f61d27edd7eae469f7025f10aace9f06dbb0f7034885409605",
+          "ts": "2026-11-03T14:22:07.311Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "gate",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:3f9487cde3fce1cfcd2cc773dc7f871cb4632b0d651bcbc25f008e446546362a",
+          "seq": 1,
+          "sig": "ed25519:80978e926e0107671eeb8627ea0dd879b7197d5e45f40b93a155aebf61e85441fe8e68e1a4ce3484633e94811eb2ddb19b18d6cc85ac40b692a1bef7f9f9cd0a",
+          "ts": "2026-11-03T14:22:09.020Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "prev": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "seq": 2,
+          "sig": "ed25519:b29e812c1a0080e4f9c07172c85b5a7529078ad249c22fb6dac08369de195a8002d1c8df3711ea16d739d1c8998c2fd23252e68b56ceee0ba63525a047e6a40c",
+          "ts": "2026-11-03T14:23:41.555Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:3795fd493c040bcf94f1df2da0fa887a795916efb502af948f7da6c5e8c29392",
+          "seq": 3,
+          "sig": "ed25519:DE7B51B5C890855399ED5E5057084E5C3FCD82BAA9C51E00B85D98355E5D1E7FC0E34FAF44A17E3CAF4CC11BE2C6BDE35E912116CFD609A4905438033C2B860D",
+          "ts": "2026-11-03T14:25:02.870Z",
+          "v": 1,
+          "verification": {
+            "evidence_sha256": "5d41402abc4b2a76b9719d911017c592ae8a2f3c1d2e6b0a4f7c9e1d3b5a7c90",
+            "kind": "tests",
+            "of": 0,
+            "result": "pass"
+          }
+        }
+      ]
+    },
+    {
+      "about": "Receipt 0 says v 2, and the chain is rebuilt and signed after it.",
+      "expect_level": 0,
+      "log_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "name": "unknown-version",
+      "pinned_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "published_checkpoints": [
+        {
+          "count": 2,
+          "head": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "sig": "ed25519:2028c3812bf8df5df35cbeb942dacf02ac9fe55c26100b465a069783e5ecf7ae45783216bbe1d1bc2f1c83fa212407641c8e8ec98b42016ea8946a4ff5224f04",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        },
+        {
+          "count": 4,
+          "head": "sha256:8129d9230681afca0ffb2d321d6a09c049eb97e23b57c572ebf5eb67ec3e7f12",
+          "sig": "ed25519:6035923c69c0a4dfc1b41adf3da9d510805762ac49e128f264e005cefe880e9f1f43e05c57d3a4e9479e5999274488bb2d8e59908548a6a7ebaa7e1152379008",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        }
+      ],
+      "receipts": [
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "seq": 0,
+          "sig": "ed25519:bcf87579bb84d20df2aaa1d14f5497751143bd588131014ba8b73bf6ad338cd8c2479d3366ca3f26263ffd1b4413c43c6c7d09ff4e3bf0c7dd8207f3e63c770a",
+          "ts": "2026-11-03T14:22:07.311Z",
+          "v": 2
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "gate",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:dca6011a368b396d8eb9a64b2a2aca6ac9652f75b71102e6fbb063a30a502713",
+          "seq": 1,
+          "sig": "ed25519:4176e36087188a2862cfc292c454ef0940dbfe51d6037ebb6fc15448a3739c0f5893696f7ca1517bb42879d3e9f865c5cd96a0e123e098075c554edc6faac80e",
+          "ts": "2026-11-03T14:22:09.020Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "prev": "sha256:17b83a8c16e0d15aa5ef8e157a82f694180333c1a1c17eb4d8bd99363e6ca6dc",
+          "seq": 2,
+          "sig": "ed25519:085e6a0c7f16f6ebfbcbf8e5b31550d525ce46e8856f35e0512108f55a2a94e15a78742138bfaa47cda42173daf0de316601c716aa76b25569c8936b9b505701",
+          "ts": "2026-11-03T14:23:41.555Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:deaebf19a6ad722fa1b4c88f2814b5a39f0361d58eb0f2ca0a070365d86fac0e",
+          "seq": 3,
+          "sig": "ed25519:7c4c4f317e635f9a7a194d7e6e8c963e999dde0c4d0553911130cbdb5a3fd0ea1d2eae6a9af2d223b18592599ff5f006c050dd5688ce249b29ddfbf409e1a70f",
+          "ts": "2026-11-03T14:25:02.870Z",
+          "v": 1,
+          "verification": {
+            "evidence_sha256": "5d41402abc4b2a76b9719d911017c592ae8a2f3c1d2e6b0a4f7c9e1d3b5a7c90",
+            "kind": "tests",
+            "of": 0,
+            "result": "pass"
+          }
+        }
+      ]
+    },
+    {
+      "about": "Receipt 1 carries a field the format doesn't define, added after it was signed.",
+      "expect_level": 0,
+      "log_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "name": "unsigned-field-added",
+      "pinned_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "published_checkpoints": [
+        {
+          "count": 2,
+          "head": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "sig": "ed25519:2028c3812bf8df5df35cbeb942dacf02ac9fe55c26100b465a069783e5ecf7ae45783216bbe1d1bc2f1c83fa212407641c8e8ec98b42016ea8946a4ff5224f04",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        },
+        {
+          "count": 4,
+          "head": "sha256:8129d9230681afca0ffb2d321d6a09c049eb97e23b57c572ebf5eb67ec3e7f12",
+          "sig": "ed25519:6035923c69c0a4dfc1b41adf3da9d510805762ac49e128f264e005cefe880e9f1f43e05c57d3a4e9479e5999274488bb2d8e59908548a6a7ebaa7e1152379008",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        }
+      ],
+      "receipts": [
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "seq": 0,
+          "sig": "ed25519:1e897de075c1fba3d6cf3840caff9b302e52e333706db6c3ba383f223d7cc10622ef6f8b6228c5f61d27edd7eae469f7025f10aace9f06dbb0f7034885409605",
+          "ts": "2026-11-03T14:22:07.311Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "approved_by": "human:7f3a09c2",
+          "decision": {
+            "by": "gate",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:3f9487cde3fce1cfcd2cc773dc7f871cb4632b0d651bcbc25f008e446546362a",
+          "seq": 1,
+          "sig": "ed25519:80978e926e0107671eeb8627ea0dd879b7197d5e45f40b93a155aebf61e85441fe8e68e1a4ce3484633e94811eb2ddb19b18d6cc85ac40b692a1bef7f9f9cd0a",
+          "ts": "2026-11-03T14:22:09.020Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "prev": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "seq": 2,
+          "sig": "ed25519:b29e812c1a0080e4f9c07172c85b5a7529078ad249c22fb6dac08369de195a8002d1c8df3711ea16d739d1c8998c2fd23252e68b56ceee0ba63525a047e6a40c",
+          "ts": "2026-11-03T14:23:41.555Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:3795fd493c040bcf94f1df2da0fa887a795916efb502af948f7da6c5e8c29392",
+          "seq": 3,
+          "sig": "ed25519:de7b51b5c890855399ed5e5057084e5c3fcd82baa9c51e00b85d98355e5d1e7fc0e34faf44a17e3caf4cc11be2c6bde35e912116cfd609a4905438033c2b860d",
+          "ts": "2026-11-03T14:25:02.870Z",
+          "v": 1,
+          "verification": {
+            "evidence_sha256": "5d41402abc4b2a76b9719d911017c592ae8a2f3c1d2e6b0a4f7c9e1d3b5a7c90",
+            "kind": "tests",
+            "of": 0,
+            "result": "pass"
+          }
+        }
+      ]
+    },
+    {
+      "about": "Receipt 1 says \"verification\": null, added after it was signed. Absent optional fields are left out, never written as null.",
+      "expect_level": 0,
+      "log_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "name": "null-verification-added",
+      "pinned_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "published_checkpoints": [
+        {
+          "count": 2,
+          "head": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "sig": "ed25519:2028c3812bf8df5df35cbeb942dacf02ac9fe55c26100b465a069783e5ecf7ae45783216bbe1d1bc2f1c83fa212407641c8e8ec98b42016ea8946a4ff5224f04",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        },
+        {
+          "count": 4,
+          "head": "sha256:8129d9230681afca0ffb2d321d6a09c049eb97e23b57c572ebf5eb67ec3e7f12",
+          "sig": "ed25519:6035923c69c0a4dfc1b41adf3da9d510805762ac49e128f264e005cefe880e9f1f43e05c57d3a4e9479e5999274488bb2d8e59908548a6a7ebaa7e1152379008",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        }
+      ],
+      "receipts": [
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "seq": 0,
+          "sig": "ed25519:1e897de075c1fba3d6cf3840caff9b302e52e333706db6c3ba383f223d7cc10622ef6f8b6228c5f61d27edd7eae469f7025f10aace9f06dbb0f7034885409605",
+          "ts": "2026-11-03T14:22:07.311Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "gate",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:3f9487cde3fce1cfcd2cc773dc7f871cb4632b0d651bcbc25f008e446546362a",
+          "seq": 1,
+          "sig": "ed25519:80978e926e0107671eeb8627ea0dd879b7197d5e45f40b93a155aebf61e85441fe8e68e1a4ce3484633e94811eb2ddb19b18d6cc85ac40b692a1bef7f9f9cd0a",
+          "ts": "2026-11-03T14:22:09.020Z",
+          "v": 1,
+          "verification": null
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "prev": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "seq": 2,
+          "sig": "ed25519:b29e812c1a0080e4f9c07172c85b5a7529078ad249c22fb6dac08369de195a8002d1c8df3711ea16d739d1c8998c2fd23252e68b56ceee0ba63525a047e6a40c",
+          "ts": "2026-11-03T14:23:41.555Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:3795fd493c040bcf94f1df2da0fa887a795916efb502af948f7da6c5e8c29392",
+          "seq": 3,
+          "sig": "ed25519:de7b51b5c890855399ed5e5057084e5c3fcd82baa9c51e00b85d98355e5d1e7fc0e34faf44a17e3caf4cc11be2c6bde35e912116cfd609a4905438033c2b860d",
+          "ts": "2026-11-03T14:25:02.870Z",
+          "v": 1,
+          "verification": {
+            "evidence_sha256": "5d41402abc4b2a76b9719d911017c592ae8a2f3c1d2e6b0a4f7c9e1d3b5a7c90",
+            "kind": "tests",
+            "of": 0,
+            "result": "pass"
+          }
+        }
+      ]
+    },
+    {
+      "about": "Receipt 1's decision says \"review\": false, added after it was signed. review is written only when true.",
+      "expect_level": 0,
+      "log_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "name": "false-review-added",
+      "pinned_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "published_checkpoints": [
+        {
+          "count": 2,
+          "head": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "sig": "ed25519:2028c3812bf8df5df35cbeb942dacf02ac9fe55c26100b465a069783e5ecf7ae45783216bbe1d1bc2f1c83fa212407641c8e8ec98b42016ea8946a4ff5224f04",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        },
+        {
+          "count": 4,
+          "head": "sha256:8129d9230681afca0ffb2d321d6a09c049eb97e23b57c572ebf5eb67ec3e7f12",
+          "sig": "ed25519:6035923c69c0a4dfc1b41adf3da9d510805762ac49e128f264e005cefe880e9f1f43e05c57d3a4e9479e5999274488bb2d8e59908548a6a7ebaa7e1152379008",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        }
+      ],
+      "receipts": [
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "seq": 0,
+          "sig": "ed25519:1e897de075c1fba3d6cf3840caff9b302e52e333706db6c3ba383f223d7cc10622ef6f8b6228c5f61d27edd7eae469f7025f10aace9f06dbb0f7034885409605",
+          "ts": "2026-11-03T14:22:07.311Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "gate",
+            "level": 0,
+            "result": "escalate",
+            "review": false
+          },
+          "prev": "sha256:3f9487cde3fce1cfcd2cc773dc7f871cb4632b0d651bcbc25f008e446546362a",
+          "seq": 1,
+          "sig": "ed25519:80978e926e0107671eeb8627ea0dd879b7197d5e45f40b93a155aebf61e85441fe8e68e1a4ce3484633e94811eb2ddb19b18d6cc85ac40b692a1bef7f9f9cd0a",
+          "ts": "2026-11-03T14:22:09.020Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "prev": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "seq": 2,
+          "sig": "ed25519:b29e812c1a0080e4f9c07172c85b5a7529078ad249c22fb6dac08369de195a8002d1c8df3711ea16d739d1c8998c2fd23252e68b56ceee0ba63525a047e6a40c",
+          "ts": "2026-11-03T14:23:41.555Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:3795fd493c040bcf94f1df2da0fa887a795916efb502af948f7da6c5e8c29392",
+          "seq": 3,
+          "sig": "ed25519:de7b51b5c890855399ed5e5057084e5c3fcd82baa9c51e00b85d98355e5d1e7fc0e34faf44a17e3caf4cc11be2c6bde35e912116cfd609a4905438033c2b860d",
+          "ts": "2026-11-03T14:25:02.870Z",
+          "v": 1,
+          "verification": {
+            "evidence_sha256": "5d41402abc4b2a76b9719d911017c592ae8a2f3c1d2e6b0a4f7c9e1d3b5a7c90",
+            "kind": "tests",
+            "of": 0,
+            "result": "pass"
+          }
+        }
+      ]
+    }
+  ],
+  "format": "mohar receipts v1 conformance",
+  "notes": "Seeds are bytes 0x00..0x1f (the log's key) and 0x20..0x3f (another key), for testing only. Each case is a log: log_key is public.key in the log directory, pinned_key is the key the verifier was given some other way (null if none), published_checkpoints were kept outside the machine. A verifier must report expect_level. Level 3 has no cases yet.",
+  "spec": "spec/receipts-v1.md, spec version 1.0.0"
+}
