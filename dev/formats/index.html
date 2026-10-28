@@ -1112,6 +1112,9 @@
 
 
 <h1 id="receipts-and-checkpoints">Receipts and checkpoints<a class="headerlink" href="#receipts-and-checkpoints" title="Permanent link">&para;</a></h1>
+<p>The formal description, with the rules a verifier must follow and the conformance levels a tool can
+claim, is <a href="https://github.com/harshitwandhare/mohar/blob/main/spec/receipts-v1.md">the receipt spec, version 1</a>.
+This page is the short version.</p>
 <h2 id="receipt">Receipt<a class="headerlink" href="#receipt" title="Permanent link">&para;</a></h2>
 <p>One JSON object per line in <code>receipts.jsonl</code>. The full field list and the reasoning behind it are in
 <a href="../design/#7-receipts">the design, section 7</a>.</p>
@@ -1154,6 +1157,9 @@ checks it in Python with no code shared with the Rust implementation. To test an
 <li>verify each <code>sig</code> against <code>public_key</code> over the canonical bytes without <code>sig</code>;</li>
 <li>check the checkpoint's <code>head</code>, <code>count</code> and signature the same way.</li>
 </ol>
+<p><a href="https://github.com/harshitwandhare/mohar/blob/main/spec/vectors/conformance-v1.json"><code>spec/vectors/conformance-v1.json</code></a>
+holds small logs that reach Level 2, stop at Level 1 or reach no level, each with the level a verifier
+must report; <code>check.py</code> and the Rust tests both check every case.</p>
 
 
 
