@@ -215,6 +215,21 @@ test('figures that change while the simulator runs use tabular numerals', async 
   }
 });
 
+test('a number and its unit never break across lines', async ({ page }) => {
+  await page.goto('/');
+  const split = await page.evaluate(() => {
+    const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+      acceptNode: n => ['SCRIPT', 'STYLE'].includes(n.parentElement.tagName) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+    });
+    const found = [];
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+      found.push(...(n.data.match(/\d+(?:\.\d+)? (?:ms|s|min|days?|hours?)(?![A-Za-z])/g) || []));
+    }
+    return found;
+  });
+  expect(split).toEqual([]);
+});
+
 test('the hero picture stays inside its box and the hint under it is on the first screen', async ({ page }) => {
   await page.goto('/');
   const box = await page.locator('#seal3d').boundingBox();

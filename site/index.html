@@ -55,12 +55,12 @@
   Bash(npm run migrate -- --env=prod)
 
 <span class="dim">Allow this action?</span>  [y] yes   [n] no   [a] always
-<span class="ok">&gt; y</span>   <span class="dim">approved in 0.8 s, prompt 41 of 44 today</span>
+<span class="ok">&gt; y</span>   <span class="dim">approved in 0.8&nbsp;s, prompt 41 of 44 today</span>
 
 <span class="dim">mohar decide, same action</span>
   capability   db.migrate.prod   <span class="dim">(gated)</span>
   level        ask first
-  record       3 verified passes, 1 failure 6 days ago
+  record       3 verified passes, 1 failure 6&nbsp;days ago
   result       <span class="seal">escalate to the database owner</span>
   receipt      #4183  <span class="hash">sha256:a681d4e7fbebe401f4fcedec443476f9a7db7598379b2a2c5d03ec5acb87726d</span></code></pre>
       </div>
@@ -69,7 +69,7 @@
         <p>of Claude Code's manual permission prompts are accepted. <a href="https://www.anthropic.com/engineering/claude-code-auto-mode">Anthropic, March 2026</a></p>
       </div>
       <div class="fig-tile seal">
-        <p class="fig">16 min</p>
+        <p class="fig">16&nbsp;min</p>
         <p>to the first critical failure, median, when Zscaler's red team attacked enterprise AI systems. <a href="https://www.zscaler.com/press/zscaler-2026-ai-threat-report-83-year-over-year-surge-ai-activity-creates-growing-oversight">Zscaler ThreatLabz, January 2026</a></p>
       </div>
     </div>
@@ -148,7 +148,7 @@ $ echo $?
     <h2 id="lvl-h">How trust moves</h2>
     <div class="level-board">
       <div class="level-tile l-ask"><p class="lname">Ask first</p><p>Every action goes to a person.</p><p class="gets">The start, and where any gate violation or high-risk failure sends an agent.</p></div>
-      <div class="level-tile l-sup"><p class="lname">Supervised</p><p>Low-risk reversible actions run; 20% are sampled for review.</p><p class="gets">10 verified outcomes, a 95% Wilson lower bound of 0.80, and 7 days at the level below.</p></div>
+      <div class="level-tile l-sup"><p class="lname">Supervised</p><p>Low-risk reversible actions run; 20% are sampled for review.</p><p class="gets">10 verified outcomes, a 95% Wilson lower bound of 0.80, and 7&nbsp;days at the level below.</p></div>
       <div class="level-tile l-trust"><p class="lname">Trusted</p><p>Actions run inside the capability's gates; 5% are sampled.</p><p class="gets">30 verified outcomes and a lower bound of 0.95. Never for high-risk irreversible capabilities.</p></div>
     </div>
     <p class="note">Five passes out of five give a lower bound of about 0.57, so a lucky streak promotes nobody. Evidence fades with a 30-day half-life. Demotion is immediate; promotion always waits. These are starting values for the benchmark to test. <a href="design.html">Read the full design</a></p>
