@@ -86,6 +86,57 @@ fn a_receipt_edited_on_disk_is_refused_on_open() {
 }
 
 #[test]
+fn a_field_added_to_a_signed_receipt_or_checkpoint_is_refused_on_open() {
+    let dir = temp_dir("extra-field");
+    let mut log = FileLog::init(&dir).expect("init");
+    for i in 0..3 {
+        log.append(entry(i)).expect("append");
+    }
+    log.checkpoint("2026-10-14T15:00:00.000Z")
+        .expect("checkpoint");
+    drop(log);
+
+    // Each nested object too: the signature covers only the fields the format defines.
+    let receipts = dir.join("receipts.jsonl");
+    let clean = fs::read_to_string(&receipts).expect("read");
+    for (at, with) in [
+        ("{\"v\":1", "{\"note\":\"approved\",\"v\":1"),
+        ("\"args_sha256\"", "\"note\":\"approved\",\"args_sha256\""),
+        ("\"agent\":{", "\"agent\":{\"note\":\"approved\","),
+        ("\"decision\":{", "\"decision\":{\"note\":\"approved\","),
+    ] {
+        let lines: Vec<&str> = clean.lines().collect();
+        let tampered = format!(
+            "{}\n{}\n{}\n",
+            lines[0],
+            lines[1].replacen(at, with, 1),
+            lines[2]
+        );
+        assert_ne!(tampered, clean, "{at} not found");
+        fs::write(&receipts, tampered).expect("write");
+        match FileLog::open(&dir) {
+            Err(OpenError::Unreadable { line }) => assert_eq!(line, 2, "{at}"),
+            Err(other) => panic!("wrong error for {at}: {other}"),
+            Ok(_) => panic!("a receipt with an unsigned field must not open ({at})"),
+        }
+    }
+    fs::write(&receipts, &clean).expect("write");
+
+    let checkpoints = dir.join("checkpoints.jsonl");
+    let text = fs::read_to_string(&checkpoints).expect("read");
+    fs::write(
+        &checkpoints,
+        text.replacen("{", "{\"note\":\"approved\",", 1),
+    )
+    .expect("write");
+    match FileLog::open(&dir) {
+        Err(OpenError::UnreadableCheckpoint { line: 1, .. }) => {}
+        Err(other) => panic!("wrong error: {other}"),
+        Ok(_) => panic!("a checkpoint with an unsigned field must not open"),
+    }
+}
+
+#[test]
 fn a_last_line_cut_short_by_a_crash_is_reported() {
     let dir = temp_dir("truncated");
     let mut log = FileLog::init(&dir).expect("init");

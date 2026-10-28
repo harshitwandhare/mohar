@@ -49,3 +49,4 @@ jobs:
           persist-credentials: false
       - run: pip install cryptography==46.0.1
       - run: python spec/vectors/check.py spec/vectors/v1.json
+      - run: python spec/vectors/check.py spec/vectors/conformance-v1.json

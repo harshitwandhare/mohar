@@ -12,6 +12,7 @@ const SIG_PREFIX: &str = "ed25519:";
 
 /// A signed statement about the log at one point in time.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Checkpoint {
     /// Format version.
     pub v: u32,

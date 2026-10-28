@@ -1,5 +1,9 @@
 # Receipts and checkpoints
 
+The formal description, with the rules a verifier must follow and the conformance levels a tool can
+claim, is [the receipt spec, version 1](https://github.com/harshitwandhare/mohar/blob/main/spec/receipts-v1.md).
+This page is the short version.
+
 ## Receipt
 
 One JSON object per line in `receipts.jsonl`. The full field list and the reasoning behind it are in
@@ -48,3 +52,7 @@ checks it in Python with no code shared with the Rust implementation. To test an
 2. hash them and compare with `sha256` and with the next receipt's `prev`;
 3. verify each `sig` against `public_key` over the canonical bytes without `sig`;
 4. check the checkpoint's `head`, `count` and signature the same way.
+
+[`spec/vectors/conformance-v1.json`](https://github.com/harshitwandhare/mohar/blob/main/spec/vectors/conformance-v1.json)
+holds small logs that reach Level 2, stop at Level 1 or reach no level, each with the level a verifier
+must report; `check.py` and the Rust tests both check every case.
