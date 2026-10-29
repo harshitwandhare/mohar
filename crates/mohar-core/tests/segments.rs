@@ -351,3 +351,68 @@ fn a_strict_log_without_its_privacy_key_is_refused_after_rotation() {
         Err(OpenError::PrivacyKeyMissing(_))
     ));
 }
+
+#[test]
+fn with_every_segment_archived_the_active_file_starts_at_its_first_receipt() {
+    let dir = rotated("allgone", 20);
+    let segs = segments(&dir).expect("segments");
+    for s in &segs {
+        fs::remove_file(&s.path).expect("archive");
+    }
+    // The active file starts after the last segment, whose receipts are gone with it.
+    let in_active = mohar_core::store::read_receipts(&dir.join("receipts.jsonl"))
+        .expect("read")
+        .len() as u64;
+    let active_start = 20 - in_active;
+    assert!(active_start > 0);
+    let stats = verify(&dir, None).expect("verifies from the checkpoint at its start");
+    assert_eq!((stats.first, stats.receipts), (active_start, 20));
+    let mut log = FileLog::open(&dir).expect("opens");
+    assert_eq!(log.append(entry(20)).expect("append").seq, 20);
+}
+
+#[test]
+fn with_every_segment_archived_and_no_active_receipts_numbering_carries_on() {
+    let dir = temp_dir("allgone-empty");
+    let mut log = FileLog::init(&dir).expect("init");
+    log.set_segment_bytes(Some(1));
+    for i in 0..4 {
+        log.append(entry(i)).expect("append");
+    }
+    drop(log);
+    for s in segments(&dir).expect("segments") {
+        fs::remove_file(&s.path).expect("archive");
+    }
+    let stats = verify(&dir, None).expect("verifies");
+    assert_eq!((stats.first, stats.receipts), (4, 4));
+    let mut log = FileLog::open(&dir).expect("opens");
+    assert_eq!(
+        log.append(entry(4)).expect("append").seq,
+        4,
+        "never back to 0"
+    );
+    drop(log);
+    assert_eq!(verify(&dir, None).expect("verifies").receipts, 5);
+}
+
+#[test]
+fn a_log_that_never_rotated_still_must_start_at_receipt_zero() {
+    let dir = temp_dir("nohead");
+    let mut log = FileLog::init(&dir).expect("init");
+    for i in 0..6 {
+        log.append(entry(i)).expect("append");
+        if i == 2 {
+            log.checkpoint("2026-11-03T14:22:08.000Z")
+                .expect("checkpoint");
+        }
+    }
+    drop(log);
+    let path = dir.join("receipts.jsonl");
+    let text = fs::read_to_string(&path).expect("read");
+    let rest: Vec<&str> = text.lines().skip(3).collect();
+    fs::write(&path, rest.join("\n") + "\n").expect("write");
+    assert!(
+        verify(&dir, None).is_err(),
+        "cutting the head off isn't archiving"
+    );
+}

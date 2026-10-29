@@ -1,6 +1,6 @@
 # Mohar receipts, format version 1
 
-Spec version 1.0.0
+Spec version 1.1.0
 
 This document describes the receipts and checkpoints Mohar writes, apart from the Rust code, so a
 verifier can be written in any language. It covers receipt format `v: 1`. The reference implementation is
@@ -130,6 +130,34 @@ Lines end in LF. A verifier SHOULD skip blank lines and MUST fail any other line
 receipt or checkpoint. Published checkpoints use the same one-object-per-line form wherever they are kept
 (a file on another machine, a git repository).
 
+### 7.1 Segments
+
+A log that rotates also holds a `segments/` directory (added in spec 1.1.0). Each file in it is a closed
+segment: receipts in the same one-per-line form, named by the `seq` of its first receipt as 20 decimal
+digits followed by `.jsonl`, such as `00000000000000004012.jsonl`. `receipts.jsonl` holds the receipts after
+the last segment. The chain runs on across files unchanged: the first receipt of a segment links to the
+last receipt of the one before.
+
+For a log with a `segments/` directory, a verifier reads `checkpoints.jsonl` as well, and:
+
+- MUST fail a file in `segments/` with any other name;
+- reads the segments in order of their names, then `receipts.jsonl`, which may be missing;
+- MUST fail when a segment's name isn't the number of receipts read before it, counting from where the
+  log starts;
+- MUST fail a closed segment unless some checkpoint has `count` equal to the number of receipts in the
+  log at its end;
+- starts the log at the first segment's number. With no segments left, it starts at the `seq` of the
+  first receipt in `receipts.jsonl`, or, with no receipts, at the largest `count` in `checkpoints.jsonl`.
+  Starting anywhere but 0 needs a checkpoint with exactly that `count`: its `head` is what the first
+  receipt's `prev` must equal, and the verifier MUST fail if checkpoints with that `count` disagree on
+  `head` or none exists;
+- skips, apart from their signatures, checkpoints for a count at or before the start, since the receipts
+  they vouched for were archived.
+
+The checkpoints used are the log's own for Level 1, and the log's own together with the published ones
+for Level 2. A log without `segments/` is read exactly as before 1.1.0, so archiving is only possible once
+a log has rotated: cutting the start off a log that never rotated still fails.
+
 ## 8. Conformance levels
 
 A verifier reports the highest level a log reaches. A tool that writes or checks logs may claim a level
@@ -175,7 +203,10 @@ Every version is listed in [the changelog](../CHANGELOG.md) under the crate rele
 - [`vectors/conformance-v1.json`](vectors/conformance-v1.json): logs that reach Level 2, logs that stop at
   Level 1 (no pinned key, nothing published, a deleted tail, a rewrite with another key, a forged
   checkpoint) and logs that reach no level (a bad signature, a broken link, a removed receipt, uppercase
-  hex, an unknown version, unsigned keys), each with the level a verifier must report.
+  hex, an unknown version, unsigned keys), each with the level a verifier must report. Since 1.1.0 it
+  also has rotated logs (section 7.1): across segments, with every segment archived, and ones that must
+  fail (no checkpoint closing a segment or at the archive point, a missing segment, a segment named at
+  the wrong start, conflicting checkpoints, a misnamed file).
 
 The Rust tests regenerate both files from fixed seeds and check every case with the Rust verifier;
 `check.py` checks the same files in CI and must agree.

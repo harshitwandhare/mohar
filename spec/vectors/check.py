@@ -55,10 +55,10 @@ def known_fields(r):
     return all(set(r[part]) <= FIELDS[part] for part in FIELDS if part and part in r)
 
 
-def chain_ok(receipts, pub):
-    """Level 1: each receipt is version 1, in position, linked to the one before, and signed."""
-    prev = GENESIS
-    for i, r in enumerate(receipts):
+def chain_ok(receipts, pub, start=0, prev=GENESIS):
+    """Level 1: each receipt is version 1, in position, linked to the one before, and signed. A log
+    whose older segments were archived starts at `start`, after the head a checkpoint vouched for."""
+    for i, r in enumerate(receipts, start):
         if not known_fields(r) or (r.get("v"), r.get("seq")) != (1, i) or r.get("prev") != prev:
             return False
         if type(r["v"]) is not int or type(r["seq"]) is not int:
@@ -69,15 +69,32 @@ def chain_ok(receipts, pub):
     return True
 
 
-def checkpoints_ok(checkpoints, receipts, pub):
-    """The log still holds every receipt each checkpoint vouched for."""
+def checkpoints_ok(checkpoints, receipts, pub, start=0):
+    """The log still holds every receipt each checkpoint vouched for. Receipts before `start` were
+    archived, so checkpoints for them can only be checked for their signature."""
     for c in checkpoints:
         if set(c) - CHECKPOINT_FIELDS or c.get("v") != 1 or not signed(pub, c):
             return False
         n = c["count"]
-        if n and (len(receipts) < n or digest(receipts[n - 1]) != c["head"]):
+        if n > start and (start + len(receipts) < n or digest(receipts[n - 1 - start]) != c["head"]):
             return False
     return True
+
+
+def rotated_ok(log, checkpoints, pub):
+    """Section 7: the chain starts at the oldest segment present, or at receipt 0, from the head of a
+    signed checkpoint there; every closed segment ends at a checkpoint; and the checkpoints hold."""
+    start, receipts, ends = log
+    if not checkpoints_ok(checkpoints, receipts, pub, start):
+        return False
+    prev = GENESIS
+    if start:
+        heads = {c["head"] for c in checkpoints if c["count"] == start}
+        if len(heads) != 1:
+            return False
+        prev = heads.pop()
+    counts = {c["count"] for c in checkpoints}
+    return all(e in counts for e in ends) and chain_ok(receipts, pub, start, prev)
 
 
 def holds(check, *args):
@@ -88,8 +105,17 @@ def holds(check, *args):
         return False
 
 
-def level(receipts, log_key, pinned, published):
-    """The highest level in spec/receipts-v1.md the log reaches (Level 3 has no checks yet)."""
+def level(receipts, log_key, pinned, published, rotated=None):
+    """The highest level in spec/receipts-v1.md the log reaches (Level 3 has no checks yet). A rotated
+    log comes as (start, receipts, closed segment ends, its own checkpoints)."""
+    if rotated:
+        start, receipts, ends, local = rotated
+        log = (start, receipts, ends)
+        if not log_key or not holds(rotated_ok, log, local, log_key):
+            return 0
+        if not pinned or not published:
+            return 1
+        return 2 if holds(rotated_ok, log, local + published, pinned) else 1
     if not log_key or not holds(chain_ok, receipts, log_key):
         return 0
     if not pinned or not published or not holds(chain_ok, receipts, pinned):
@@ -109,19 +135,54 @@ def jsonl(path):
         return [json.loads(line, object_pairs_hook=no_repeats) for line in f if line.strip()]
 
 
+SEGMENT_NAME = re.compile(r"[0-9]{20}\.jsonl")
+
+
+def read_rotated(d):
+    """(start, receipts, closed segment ends, own checkpoints) of a log with a segments/ directory, or
+    None for one that never rotated. Raises ValueError for a layout that can't be read as one chain."""
+    seg_dir = os.path.join(d, "segments")
+    if not os.path.isdir(seg_dir):
+        return None
+    local_path, active_path = os.path.join(d, "checkpoints.jsonl"), os.path.join(d, "receipts.jsonl")
+    local = jsonl(local_path) if os.path.exists(local_path) else []
+    names = sorted(os.listdir(seg_dir))
+    if not all(SEGMENT_NAME.fullmatch(n) for n in names):
+        raise ValueError("a file in segments/ is not named by 20 digits")
+    segments = [(int(n[:20]), jsonl(os.path.join(seg_dir, n))) for n in names]
+    active = jsonl(active_path) if os.path.exists(active_path) else []
+    if segments:
+        start = segments[0][0]
+    elif active:
+        start = active[0]["seq"]
+        if type(start) is not int:
+            raise ValueError("seq is not an integer")
+    else:
+        start = max((c["count"] for c in local), default=0)
+    receipts, ends, at = [], [], start
+    for first, rs in segments:
+        if first != at:
+            raise ValueError(f"segment {first:020} doesn't start where the log so far ends, {at}")
+        receipts += rs
+        at += len(rs)
+        ends.append(at)
+    return start, receipts + active, ends, local
+
+
 def level_of_dir(d, pinned_path=None, checkpoint_paths=()):
     """Read a log directory the way it sits on disk; anything unreadable counts against it."""
     try:
-        receipts = jsonl(os.path.join(d, "receipts.jsonl"))
+        rotated = read_rotated(d)
+        receipts = rotated[1] if rotated else jsonl(os.path.join(d, "receipts.jsonl"))
         log_key = key(open(os.path.join(d, "public.key"), encoding="utf-8").read())
-    except (OSError, ValueError):
+    except (OSError, ValueError, KeyError, TypeError):
         return 0
     # A file the caller named that can't be read is an error, never "nothing to check".
     pinned = key(open(pinned_path, encoding="utf-8").read()) if pinned_path else None
     if pinned_path and not pinned:
         raise ValueError(f"{pinned_path} is not an ed25519 public key")
     published = [c for p in checkpoint_paths for c in jsonl(p)]
-    return level(receipts, log_key, pinned, published)
+    return level(receipts, log_key, pinned, published, rotated)
 
 
 def check_bytes(v):
@@ -159,6 +220,11 @@ def check_conformance(v):
                 with open(os.path.join(d, name), "w", encoding="utf-8", newline="\n") as f:
                     f.write(text)
             write("receipts.jsonl", "".join(json.dumps(r) + "\n" for r in case["receipts"]))
+            if "segments" in case:
+                os.mkdir(os.path.join(d, "segments"))
+                for s in case["segments"]:
+                    write(os.path.join("segments", s["name"]), "".join(json.dumps(r) + "\n" for r in s["receipts"]))
+                write("checkpoints.jsonl", "".join(json.dumps(c) + "\n" for c in case["local_checkpoints"]))
             write("public.key", case["log_key"] + "\n")
             pinned = None
             if case["pinned_key"]:
