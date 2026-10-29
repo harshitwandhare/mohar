@@ -39,6 +39,16 @@ One JSON object per line in `checkpoints.jsonl`:
 Ed25519 over the canonical JSON without `sig`. A verifier fails if the log holds fewer receipts than a
 checkpoint vouched for, or a different receipt at that position.
 
+## Segments
+
+A log that rotates keeps its closed files in `segments/`, each named by the `seq` of its first receipt
+in 20 digits (`segments/00000000000000004012.jsonl`), in the same format as `receipts.jsonl`. Every
+closed segment ends at a signed checkpoint: some checkpoint has `count` equal to the next segment's first
+`seq`. The chain runs on unchanged across files, so the first receipt of a segment links to the last of
+the one before. A verifier refuses a file in `segments/` with any other name, a segment that doesn't
+start where the previous one ended, and a closed segment with no checkpoint at its end. When the oldest
+segment present doesn't start at 0, verification starts from the checkpoint at its first `seq`.
+
 ## Test vectors
 
 [`spec/vectors/v1.json`](https://github.com/harshitwandhare/mohar/blob/main/spec/vectors/v1.json) holds

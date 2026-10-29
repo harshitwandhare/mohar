@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use mohar_core::policy::{Policy, Risk};
 use mohar_core::privacy::is_pseudonym;
-use mohar_core::store::{FileLog, for_each_receipt};
+use mohar_core::store::{FileLog, for_each_log_receipt};
 use mohar_core::trust::{Ledger, Outcome, Severity, sampled_for_review};
 use mohar_core::{Action, Decision, Entry, Receipt, Verification};
 use serde::Deserialize;
@@ -42,6 +42,8 @@ pub struct Config {
     pub exit_on_stdin_eof: bool,
     /// Where to send OpenTelemetry (OTLP/HTTP JSON), if anywhere. Loopback only.
     pub otlp_endpoint: Option<String>,
+    /// Rotate receipts.jsonl into a segment at this size; never when `None`.
+    pub segment_bytes: Option<u64>,
 }
 
 /// A decision that has no outcome yet: enough to write the follow-up receipt.
@@ -98,8 +100,9 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
         .as_deref()
         .map(Telemetry::start)
         .transpose()?;
-    let log = FileLog::open(dir).map_err(|e| e.to_string())?;
-    let (pending, ledger) = replay(&dir.join("receipts.jsonl"), &policy)?;
+    let mut log = FileLog::open(dir).map_err(|e| e.to_string())?;
+    log.set_segment_bytes(cfg.segment_bytes);
+    let (pending, ledger) = replay(dir, &policy)?;
     let listener = TcpListener::bind(cfg.addr).map_err(|e| format!("{}: {e}", cfg.addr))?;
     let local = listener.local_addr().map_err(|e| e.to_string())?;
     // Nobody may be reading stdout (a closed pipe on Windows); the daemon must not die over that.
@@ -206,11 +209,12 @@ fn load_policy(dir: &Path) -> Result<Policy, String> {
 }
 
 /// Read the log once: decisions still waiting for an outcome, and the trust ledger rebuilt from every
-/// verified outcome. Trust lives nowhere but the signed log.
-fn replay(receipts: &Path, policy: &Policy) -> Result<(HashMap<u64, Pending>, Ledger), String> {
+/// verified outcome. Trust lives nowhere but the signed log, so outcomes in archived segments no
+/// longer count.
+fn replay(dir: &Path, policy: &Policy) -> Result<(HashMap<u64, Pending>, Ledger), String> {
     let mut pending = HashMap::new();
     let mut ledger = Ledger::new();
-    for_each_receipt(receipts, |r: Receipt| match r.verification {
+    for_each_log_receipt(dir, |r: Receipt| match r.verification {
         Some(v) => {
             if v.kind != "host" {
                 pending.remove(&v.of);
