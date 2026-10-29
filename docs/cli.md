@@ -1,8 +1,16 @@
 # CLI reference
 
-`mohar [--dir <path>] <command>`
+`mohar [--dir <path>] [--segment-mib <n>] <command>`
 
 `--dir` is the log directory, `.mohar` by default. It applies to every command.
+
+`--segment-mib` is the size at which `append` and the daemon close `receipts.jsonl` into a segment, 64 by
+default; `0` never rotates. Closing a segment signs a checkpoint for the log as it stands, moves the file
+to `segments/<seq of its first receipt>.jsonl` (20 digits) and starts an empty `receipts.jsonl`. Old
+segments can be archived or deleted oldest first: `verify` then starts from the checkpoint that closed
+the last one removed, and fails if that checkpoint is gone or a segment is missing between two that
+remain. The daemon rebuilds trust from the segments still present, so outcomes in archived segments
+stop counting.
 
 Exit status: `0` on success, `1` when `verify` finds a break, `2` on any other error (the message goes
 to standard error).
@@ -68,9 +76,10 @@ refused rather than written as local paths.
 
 ## `mohar log [--last N]`
 
-Prints receipts, oldest first, one per line. Doesn't need the signing key or the writer lock.
+Prints receipts, oldest first, one per line, across every segment still present. Doesn't need the
+signing key or the writer lock.
 
-## `mohar verify [--public-key <file>] [--checkpoints <file | git:<clone>>]... [--trust-checkpoints]`
+## `mohar verify [--public-key <file>] [--checkpoints <file | git:<clone>>]... [--trust-checkpoints] [--from <count>]`
 
 Checks every receipt and every checkpoint against the public key (`public.key` in the log directory
 by default). Prints `ok: ...` or the first break with its index and reason. Doesn't need the signing
@@ -86,6 +95,12 @@ checkpoint's own signature has verified. Receipts before it are still parsed, ha
 change to any of them still fails; this is about five times faster on a log that is mostly covered by
 checkpoints. It can't catch a receipt the key holder wrote with a bad signature before a checkpoint, so
 leave it off when auditing someone else's log. The design notes (receipt format) give the argument.
+
+`--from <count>` starts at the signed checkpoint for that many receipts and reads nothing before it,
+for an auditor who already checked the log up to there. It is an error (exit 1) when no checkpoint has
+that count. The receipt after the checkpoint must link to its head, and every line after the start
+counts, so an old receipt copied further down still fails. The output then names the range checked:
+`ok: receipts 2 to 3 (2 of 4) and 1 checkpoints verified`.
 
 ## `mohar daemon [--addr <host:port>] [--max-inflight <n>] [--otlp-endpoint <url>]`
 

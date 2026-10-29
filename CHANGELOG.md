@@ -9,6 +9,12 @@ receipt format; each such change is called out.
 
 ### Added
 
+- Log segments. With `--segment-mib` (64 by default, 0 for never) a full `receipts.jsonl` is closed behind
+  a signed checkpoint and moved to `segments/`, named by the seq of its first receipt. `verify`, `log`,
+  opening the log and the daemon's trust replay all read across segments. Old segments can be archived
+  oldest first and the rest still verifies from the checkpoint that closed them; a missing middle segment,
+  a segment cut short or one without its closing checkpoint fails. `verify --from <count>` starts at any
+  signed checkpoint (#63).
 - `spec/receipts-v1.md`, the receipt format described apart from the Rust code (spec version 1.0.0), with
   conformance levels: a signed chain, then a pinned key with published checkpoints, then outcomes bound to
   the diff (defined, not yet reachable). `spec/vectors/conformance-v1.json` has seventeen logs with the
