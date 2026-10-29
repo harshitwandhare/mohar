@@ -266,3 +266,45 @@ test('every page uses the gold seal for its icons and header mark, and each one 
     expect((await request.get(icon.src)).status()).toBe(200);
   }
 });
+
+test('every control on each page shows a focus ring at 3:1 or more against what is behind it', async ({ page, browserName }, info) => {
+  // WebKit only tabs to links with a system setting turned on, and phones have no Tab key.
+  test.skip(browserName === 'webkit' || info.project.name === 'mobile', 'no keyboard tab order to walk');
+  const pages = readdirSync('site').filter(f => f.endsWith('.html'));
+  for (const file of pages) {
+    await page.goto('/' + (file === 'index.html' ? '' : file));
+    const total = await page.locator('a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])').count();
+    const missing = [];
+    let seen = 0;
+    for (let i = 0; i < total + 2 && seen < total; i++) {
+      await page.keyboard.press('Tab');
+      const ring = await page.evaluate(() => {
+        const el = document.activeElement;
+        if (!el || el === document.body) return null;
+        const s = getComputedStyle(el);
+        const r = el.getBoundingClientRect();
+        // The ring sits outside the control, so it is read against the first opaque surface behind it.
+        const rgb = c => (c.match(/[\d.]+/g) || []).map(Number);
+        const lum = c => {
+          const [R, G, B] = c.slice(0, 3).map(v => (v /= 255) <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+          return 0.2126 * R + 0.7152 * G + 0.0722 * B;
+        };
+        let behind = rgb(getComputedStyle(document.body).backgroundColor);
+        for (let e = el.parentElement; e; e = e.parentElement) {
+          const c = rgb(getComputedStyle(e).backgroundColor);
+          if (c.length >= 3 && (c[3] === undefined || c[3] > 0.5)) { behind = c; break; }
+        }
+        const [hi, lo] = [lum(rgb(s.outlineColor)), lum(behind)].sort((a, b) => b - a);
+        return {
+          name: el.tagName + ' ' + (el.textContent || el.getAttribute('aria-label') || '').trim().slice(0, 40),
+          ring: s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) >= 2 && (hi + 0.05) / (lo + 0.05) >= 3,
+          shown: r.width > 0 && r.height > 0,
+        };
+      });
+      if (!ring) continue;
+      seen++;
+      if (!ring.ring || !ring.shown) missing.push(ring.name);
+    }
+    expect(missing, file).toEqual([]);
+  }
+});

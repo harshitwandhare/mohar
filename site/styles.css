@@ -31,7 +31,7 @@ a { color: inherit; }
 img { max-width: 100%; height: auto; display: block; }
 .skip { position: absolute; left: -999px; }
 .skip:focus { left: var(--edge); top: 8px; background: var(--ink); color: var(--ground); padding: 8px 12px; }
-:focus-visible { outline: 3px solid var(--seal); outline-offset: 3px; }
+:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
 
 /* Header: the same on every page. Under 900px the links fold into a menu. */
 .bar { position: sticky; top: 0; z-index: 10; display: flex; justify-content: space-between; align-items: center; gap: 24px;
