@@ -268,6 +268,7 @@ fn verified(
         severity: Severity::for_capability(&policy.spec(capability)),
         exercises_failure: true,
         related: policy.related(capability),
+        verifier: kind.to_string(),
     })
 }
 

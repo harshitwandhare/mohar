@@ -27,6 +27,7 @@ fn pass(at: u64) -> Outcome {
         severity: Severity::S1,
         exercises_failure: false,
         related: vec![],
+        verifier: "tests".into(),
     }
 }
 
@@ -37,6 +38,7 @@ fn fail(at: u64, severity: Severity) -> Outcome {
         severity,
         exercises_failure: false,
         related: vec![],
+        verifier: "tests".into(),
     }
 }
 
@@ -303,7 +305,7 @@ proptest! {
         for (gap, passed, sev) in events {
             t += gap * 3_600;
             let severity = [Severity::S0, Severity::S1, Severity::S2, Severity::S3, Severity::S4][usize::from(sev)];
-            l.record(A, "fs.edit.docs", &Outcome { at: t, passed, severity, exercises_failure: true, related: vec![] });
+            l.record(A, "fs.edit.docs", &Outcome { at: t, passed, severity, exercises_failure: true, related: vec![], verifier: "tests".into() });
             if l.is_suspended(A) {
                 l.reinstate(A);
             }

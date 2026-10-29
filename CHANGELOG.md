@@ -9,6 +9,13 @@ receipt format; each such change is called out.
 
 ### Added
 
+- Remediation plans name the verifier that caught the failure and carry a 30-day deadline. Only passes
+  from that verifier, before the deadline, count toward the exit; an overdue plan holds the capability at
+  the level it was dropped to until a person extends it. The daemon now names the verifier of each outcome
+  by its kind, so a capability demoted on a test failure needs passing tests to leave remediation (#160).
+- A signed lesson book (`mohar_core::lessons`): lessons go back to their agent on the same capability, a
+  person can promote one to the team, and an agent's earlier lessons are withheld after a serious failure
+  until a person releases them. The book can't reach the trust ledger (#160).
 - Log segments. With `--segment-mib` (64 by default, 0 for never) a full `receipts.jsonl` is closed behind
   a signed checkpoint and moved to `segments/`, named by the seq of its first receipt. `verify`, `log`,
   opening the log and the daemon's trust replay all read across segments. Old segments can be archived
