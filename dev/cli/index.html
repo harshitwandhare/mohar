@@ -479,10 +479,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mohar-verify-public-key-file-checkpoints-file-gitclone-trust-checkpoints" class="md-nav__link">
+  <a href="#mohar-verify-public-key-file-checkpoints-file-gitclone-trust-checkpoints-from-count" class="md-nav__link">
     <span class="md-ellipsis">
       
-        mohar verify [--public-key &lt;file&gt;] [--checkpoints &lt;file | git:&lt;clone&gt;&gt;]... [--trust-checkpoints]
+        mohar verify [--public-key &lt;file&gt;] [--checkpoints &lt;file | git:&lt;clone&gt;&gt;]... [--trust-checkpoints] [--from &lt;count&gt;]
       
     </span>
   </a>
@@ -1181,10 +1181,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mohar-verify-public-key-file-checkpoints-file-gitclone-trust-checkpoints" class="md-nav__link">
+  <a href="#mohar-verify-public-key-file-checkpoints-file-gitclone-trust-checkpoints-from-count" class="md-nav__link">
     <span class="md-ellipsis">
       
-        mohar verify [--public-key &lt;file&gt;] [--checkpoints &lt;file | git:&lt;clone&gt;&gt;]... [--trust-checkpoints]
+        mohar verify [--public-key &lt;file&gt;] [--checkpoints &lt;file | git:&lt;clone&gt;&gt;]... [--trust-checkpoints] [--from &lt;count&gt;]
       
     </span>
   </a>
@@ -1278,8 +1278,15 @@
 
 
 <h1 id="cli-reference">CLI reference<a class="headerlink" href="#cli-reference" title="Permanent link">&para;</a></h1>
-<p><code>mohar [--dir &lt;path&gt;] &lt;command&gt;</code></p>
+<p><code>mohar [--dir &lt;path&gt;] [--segment-mib &lt;n&gt;] &lt;command&gt;</code></p>
 <p><code>--dir</code> is the log directory, <code>.mohar</code> by default. It applies to every command.</p>
+<p><code>--segment-mib</code> is the size at which <code>append</code> and the daemon close <code>receipts.jsonl</code> into a segment, 64 by
+default; <code>0</code> never rotates. Closing a segment signs a checkpoint for the log as it stands, moves the file
+to <code>segments/&lt;seq of its first receipt&gt;.jsonl</code> (20 digits) and starts an empty <code>receipts.jsonl</code>. Old
+segments can be archived or deleted oldest first: <code>verify</code> then starts from the checkpoint that closed
+the last one removed, and fails if that checkpoint is gone or a segment is missing between two that
+remain. The daemon rebuilds trust from the segments still present, so outcomes in archived segments
+stop counting.</p>
 <p>Exit status: <code>0</code> on success, <code>1</code> when <code>verify</code> finds a break, <code>2</code> on any other error (the message goes
 to standard error).</p>
 <h2 id="mohar-init-strict-privacy"><code>mohar init [--strict-privacy]</code><a class="headerlink" href="#mohar-init-strict-privacy" title="Permanent link">&para;</a></h2>
@@ -1364,8 +1371,9 @@ branch, an operator who stops publishing (the remote then shows the last checkpo
 which is still enough to catch receipts removed before it), or a stolen signing key. Other URLs are
 refused rather than written as local paths.</p>
 <h2 id="mohar-log-last-n"><code>mohar log [--last N]</code><a class="headerlink" href="#mohar-log-last-n" title="Permanent link">&para;</a></h2>
-<p>Prints receipts, oldest first, one per line. Doesn't need the signing key or the writer lock.</p>
-<h2 id="mohar-verify-public-key-file-checkpoints-file-gitclone-trust-checkpoints"><code>mohar verify [--public-key &lt;file&gt;] [--checkpoints &lt;file | git:&lt;clone&gt;&gt;]... [--trust-checkpoints]</code><a class="headerlink" href="#mohar-verify-public-key-file-checkpoints-file-gitclone-trust-checkpoints" title="Permanent link">&para;</a></h2>
+<p>Prints receipts, oldest first, one per line, across every segment still present. Doesn't need the
+signing key or the writer lock.</p>
+<h2 id="mohar-verify-public-key-file-checkpoints-file-gitclone-trust-checkpoints-from-count"><code>mohar verify [--public-key &lt;file&gt;] [--checkpoints &lt;file | git:&lt;clone&gt;&gt;]... [--trust-checkpoints] [--from &lt;count&gt;]</code><a class="headerlink" href="#mohar-verify-public-key-file-checkpoints-file-gitclone-trust-checkpoints-from-count" title="Permanent link">&para;</a></h2>
 <p>Checks every receipt and every checkpoint against the public key (<code>public.key</code> in the log directory
 by default). Prints <code>ok: ...</code> or the first break with its index and reason. Doesn't need the signing
 key, so anyone can verify a log they were given.</p>
@@ -1378,6 +1386,11 @@ checkpoint's own signature has verified. Receipts before it are still parsed, ha
 change to any of them still fails; this is about five times faster on a log that is mostly covered by
 checkpoints. It can't catch a receipt the key holder wrote with a bad signature before a checkpoint, so
 leave it off when auditing someone else's log. The design notes (receipt format) give the argument.</p>
+<p><code>--from &lt;count&gt;</code> starts at the signed checkpoint for that many receipts and reads nothing before it,
+for an auditor who already checked the log up to there. It is an error (exit 1) when no checkpoint has
+that count. The receipt after the checkpoint must link to its head, and every line after the start
+counts, so an old receipt copied further down still fails. The output then names the range checked:
+<code>ok: receipts 2 to 3 (2 of 4) and 1 checkpoints verified</code>.</p>
 <h2 id="mohar-daemon-addr-hostport-max-inflight-n-otlp-endpoint-url"><code>mohar daemon [--addr &lt;host:port&gt;] [--max-inflight &lt;n&gt;] [--otlp-endpoint &lt;url&gt;]</code><a class="headerlink" href="#mohar-daemon-addr-hostport-max-inflight-n-otlp-endpoint-url" title="Permanent link">&para;</a></h2>
 <p>Serves decisions and outcomes to agent hosts on this machine, from the log in <code>--dir</code>, which it holds
 open for writing while it runs. It listens on <code>127.0.0.1:7878</code> by default and refuses any address that

@@ -1331,6 +1331,12 @@ receipt format; each such change is called out.</p>
 <h2 id="unreleased"><a href="https://github.com/harshitwandhare/mohar/compare/v0.2.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
+<li>Log segments. With <code>--segment-mib</code> (64 by default, 0 for never) a full <code>receipts.jsonl</code> is closed behind
+  a signed checkpoint and moved to <code>segments/</code>, named by the seq of its first receipt. <code>verify</code>, <code>log</code>,
+  opening the log and the daemon's trust replay all read across segments. Old segments can be archived
+  oldest first and the rest still verifies from the checkpoint that closed them; a missing middle segment,
+  a segment cut short or one without its closing checkpoint fails. <code>verify --from &lt;count&gt;</code> starts at any
+  signed checkpoint (#63).</li>
 <li><code>spec/receipts-v1.md</code>, the receipt format described apart from the Rust code (spec version 1.0.0), with
   conformance levels: a signed chain, then a pinned key with published checkpoints, then outcomes bound to
   the diff (defined, not yet reachable). <code>spec/vectors/conformance-v1.json</code> has seventeen logs with the
