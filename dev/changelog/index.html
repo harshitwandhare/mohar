@@ -1331,6 +1331,13 @@ receipt format; each such change is called out.</p>
 <h2 id="unreleased"><a href="https://github.com/harshitwandhare/mohar/compare/v0.2.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
+<li>Remediation plans name the verifier that caught the failure and carry a 30-day deadline. Only passes
+  from that verifier, before the deadline, count toward the exit; an overdue plan holds the capability at
+  the level it was dropped to until a person extends it. The daemon now names the verifier of each outcome
+  by its kind, so a capability demoted on a test failure needs passing tests to leave remediation (#160).</li>
+<li>A signed lesson book (<code>mohar_core::lessons</code>): lessons go back to their agent on the same capability, a
+  person can promote one to the team, and an agent's earlier lessons are withheld after a serious failure
+  until a person releases them. The book can't reach the trust ledger (#160).</li>
 <li>Log segments. With <code>--segment-mib</code> (64 by default, 0 for never) a full <code>receipts.jsonl</code> is closed behind
   a signed checkpoint and moved to <code>segments/</code>, named by the seq of its first receipt. <code>verify</code>, <code>log</code>,
   opening the log and the daemon's trust replay all read across segments. Old segments can be archived
