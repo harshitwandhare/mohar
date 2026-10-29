@@ -12,6 +12,9 @@ receipt format; each such change is called out.
 - A near miss raises review sampling. When a gate stops an agent on a capability, its next 20 actions
   allowed on that capability are sampled for review at 50% instead of the level's rate. The daemon
   rebuilds the raised count from the log on restart (#150).
+- Receipt spec 1.1.0: section 7.1 describes log segments (names, the checkpoint that closes each one,
+  where a log with archived segments starts), with eight conformance vectors that the Rust verifier and
+  `check.py` both check. `check.py --log` reads rotated logs (#158).
 - Remediation plans name the verifier that caught the failure and carry a 30-day deadline. Only passes
   from that verifier, before the deadline, count toward the exit; an overdue plan holds the capability at
   the level it was dropped to until a person extends it. The daemon now names the verifier of each outcome

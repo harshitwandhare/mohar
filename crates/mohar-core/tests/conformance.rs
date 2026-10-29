@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 use ed25519_dalek::Signer;
 use mohar_core::checkpoint::{Checkpoint, verify_checkpoints};
+use mohar_core::store::{SignatureChecks, verify_dir};
 use mohar_core::{
     Log, Receipt, SigningKey, canonical_bytes, parse_public_key, public_key_string, receipt_hash,
     verify,
@@ -130,7 +131,7 @@ fn cases() -> Vec<Value> {
     let mut forged = checkpoints.clone();
     resign_checkpoint(&mut forged[1], b);
 
-    vec![
+    let mut out = vec![
         case(
             "level-2",
             "Every receipt verifies against the pinned key, and the log still holds what both published checkpoints vouched for.",
@@ -265,6 +266,124 @@ fn cases() -> Vec<Value> {
             "decision",
             json!({"by": "gate", "level": 0, "result": "escalate", "review": false}),
         ),
+    ];
+    out.extend(segment_cases(&good, &checkpoints));
+    out
+}
+
+/// The 20-digit name of a segment whose first receipt is `start`.
+fn seg(start: u64) -> String {
+    format!("{start:020}.jsonl")
+}
+
+/// A rotated log (spec section 7): `segments` are (file name, receipts) under segments/, `receipts` is
+/// receipts.jsonl, `local` is the log's own checkpoints.jsonl.
+#[allow(clippy::too_many_arguments)]
+fn segmented(
+    name: &str,
+    about: &str,
+    expect_level: u8,
+    segments: &[(String, &[Receipt])],
+    receipts: &[Receipt],
+    local: &[Checkpoint],
+    published: &[Checkpoint],
+) -> Value {
+    let mut c = case(
+        name,
+        about,
+        expect_level,
+        &SEED,
+        Some(&SEED),
+        receipts,
+        published,
+    );
+    c["segments"] = segments
+        .iter()
+        .map(|(n, r)| json!({"name": n, "receipts": r}))
+        .collect();
+    c["local_checkpoints"] = json!(local);
+    c
+}
+
+/// `good` has four receipts; `checkpoints` vouch for 2 and 4 of them.
+fn segment_cases(good: &[Receipt], checkpoints: &[Checkpoint]) -> Vec<Value> {
+    let (c2, c4) = (&checkpoints[0], &checkpoints[1]);
+    let mut conflicting = c2.clone();
+    conflicting.head = receipt_hash(&good[0]).expect("hash");
+    resign_checkpoint(&mut conflicting, &SEED);
+    vec![
+        segmented(
+            "segments-pinned-and-published",
+            "Receipts 0 and 1 were closed into a segment behind the checkpoint at 2; receipts.jsonl holds 2 and 3. The chain runs on across the files.",
+            2,
+            &[(seg(0), &good[..2])],
+            &good[2..],
+            &[c2.clone(), c4.clone()],
+            std::slice::from_ref(c4),
+        ),
+        segmented(
+            "segments-all-archived",
+            "Every closed segment was archived, so receipts.jsonl alone remains. It starts at its first receipt, 2, where a signed checkpoint vouches for the log.",
+            2,
+            &[],
+            &good[2..],
+            &[c2.clone(), c4.clone()],
+            std::slice::from_ref(c4),
+        ),
+        segmented(
+            "segments-oldest-archived-without-checkpoint",
+            "Every closed segment was archived and no checkpoint vouches for the log at 2, where what remains starts.",
+            0,
+            &[],
+            &good[2..],
+            std::slice::from_ref(c4),
+            std::slice::from_ref(c4),
+        ),
+        segmented(
+            "segment-not-closed",
+            "The segment ends after 2 receipts but no checkpoint has count 2.",
+            0,
+            &[(seg(0), &good[..2])],
+            &good[2..],
+            std::slice::from_ref(c4),
+            std::slice::from_ref(c4),
+        ),
+        segmented(
+            "segment-missing-between",
+            "The segment holding receipt 2 is gone: the one before ends at 2, the next is named 3.",
+            0,
+            &[(seg(0), &good[..2]), (seg(3), &good[3..])],
+            &[],
+            &[c2.clone(), c4.clone()],
+            std::slice::from_ref(c4),
+        ),
+        segmented(
+            "segment-named-at-the-wrong-start",
+            "The receipts run on unbroken, but the second segment is named 3 while the first ends at 2, so its name and its content disagree.",
+            0,
+            &[(seg(0), &good[..2]), (seg(3), &good[2..])],
+            &[],
+            &[c2.clone(), c4.clone()],
+            std::slice::from_ref(c4),
+        ),
+        segmented(
+            "segments-conflicting-checkpoints",
+            "Every closed segment was archived, and two checkpoints signed with the log's key vouch for different heads at 2, where what remains starts.",
+            0,
+            &[],
+            &good[2..],
+            &[c2.clone(), conflicting.clone(), c4.clone()],
+            std::slice::from_ref(c4),
+        ),
+        segmented(
+            "segment-misnamed",
+            "The segment is named 0.jsonl instead of 20 digits, so a verifier can't tell where it sits.",
+            0,
+            &[("0.jsonl".to_string(), &good[..2])],
+            &good[2..],
+            &[c2.clone(), c4.clone()],
+            std::slice::from_ref(c4),
+        ),
     ]
 }
 
@@ -297,6 +416,9 @@ fn unsigned_field(
 
 /// The level a log reaches, worked out with the Rust verifier.
 fn level(case: &Value) -> u8 {
+    if case.get("segments").is_some() {
+        return level_on_disk(case);
+    }
     let Ok(receipts) = serde_json::from_value::<Vec<Receipt>>(case["receipts"].clone()) else {
         return 0;
     };
@@ -323,11 +445,68 @@ fn level(case: &Value) -> u8 {
     2
 }
 
+/// Write a rotated case out as a log directory and verify it the way `mohar verify` does.
+fn level_on_disk(case: &Value) -> u8 {
+    let dir = std::env::temp_dir().join(format!(
+        "mohar-conf-{}-{}",
+        case["name"].as_str().expect("name"),
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("segments")).expect("mkdir");
+    let lines = |v: &Value| -> String {
+        v.as_array()
+            .expect("array")
+            .iter()
+            .map(|x| {
+                x.to_string()
+                    + "
+"
+            })
+            .collect()
+    };
+    for s in case["segments"].as_array().expect("segments") {
+        let name = s["name"].as_str().expect("name");
+        std::fs::write(dir.join("segments").join(name), lines(&s["receipts"])).expect("segment");
+    }
+    std::fs::write(dir.join("receipts.jsonl"), lines(&case["receipts"])).expect("receipts");
+    std::fs::write(
+        dir.join("checkpoints.jsonl"),
+        lines(&case["local_checkpoints"]),
+    )
+    .expect("local");
+    std::fs::write(
+        dir.join("published.jsonl"),
+        lines(&case["published_checkpoints"]),
+    )
+    .expect("published");
+    let key = |k: &str| case[k].as_str().and_then(parse_public_key);
+    let Some(log_key) = key("log_key") else {
+        return 0;
+    };
+    if verify_dir(&dir, &[], &log_key, SignatureChecks::Every, None).is_err() {
+        return 0;
+    }
+    let Some(pinned) = key("pinned_key") else {
+        return 1;
+    };
+    let published = dir.join("published.jsonl");
+    let none_published = case["published_checkpoints"]
+        .as_array()
+        .is_none_or(|a| a.is_empty());
+    if none_published
+        || verify_dir(&dir, &[&published], &pinned, SignatureChecks::Every, None).is_err()
+    {
+        return 1;
+    }
+    2
+}
+
 fn build() -> Value {
     json!({
         "format": "mohar receipts v1 conformance",
-        "spec": "spec/receipts-v1.md, spec version 1.0.0",
-        "notes": "Seeds are bytes 0x00..0x1f (the log's key) and 0x20..0x3f (another key), for testing only. Each case is a log: log_key is public.key in the log directory, pinned_key is the key the verifier was given some other way (null if none), published_checkpoints were kept outside the machine. A verifier must report expect_level. Level 3 has no cases yet.",
+        "spec": "spec/receipts-v1.md, spec version 1.1.0",
+        "notes": "Seeds are bytes 0x00..0x1f (the log's key) and 0x20..0x3f (another key), for testing only. Each case is a log: log_key is public.key in the log directory, pinned_key is the key the verifier was given some other way (null if none), published_checkpoints were kept outside the machine. A rotated log also has segments (file name under segments/ and its receipts, oldest first) and local_checkpoints (checkpoints.jsonl in the log directory); receipts is then receipts.jsonl. A verifier must report expect_level. Level 3 has no cases yet.",
         "cases": cases(),
     })
 }

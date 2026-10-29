@@ -212,6 +212,36 @@ fn log_files(dir: &Path) -> Result<Vec<(Option<u64>, PathBuf)>, OpenError> {
     Ok(files)
 }
 
+/// Where verification of a rotated log must start when every closed segment has been archived, so
+/// receipts.jsonl has no name saying where it begins: at its first receipt, or, with no receipts, at
+/// the furthest of the log's own checkpoints (rotation always signs one at the boundary). Either way a signed checkpoint
+/// must vouch for that point. `None` for a log that never rotated, or one with segments left.
+fn archived_start(
+    dir: &Path,
+    files: &[(Option<u64>, PathBuf)],
+    checkpoints: &[Checkpoint],
+) -> Result<Option<u64>, OpenError> {
+    let [(None, active)] = files else {
+        return Ok(None);
+    };
+    if !dir.join(SEGMENT_DIR).exists() {
+        return Ok(None);
+    }
+    let mut first = None;
+    // A crash during rotation can leave it missing; that reads as no receipts.
+    if let Ok(file) = File::open(active) {
+        for line in BufReader::new(file).lines() {
+            let line = line.map_err(io(active))?;
+            if !line.trim().is_empty() {
+                // A line that doesn't parse is left for the verifier to report.
+                first = serde_json::from_str::<Receipt>(&line).ok().map(|r| r.seq);
+                break;
+            }
+        }
+    }
+    Ok(first.or_else(|| checkpoints.iter().map(|c| c.count).max()))
+}
+
 #[cfg(unix)]
 fn sync_dir(dir: &Path) -> Result<(), OpenError> {
     File::open(dir).and_then(|d| d.sync_all()).map_err(io(dir))
@@ -421,12 +451,15 @@ impl FileLog {
         let checkpoint_path = dir.join(CHECKPOINT_FILE);
         // The daemon's own log, signed with the key it just read: receipts its checkpoints cover are
         // checked by hash, the rest in full. `mohar verify` checks every signature.
+        let files = log_files(dir)?;
+        let checkpoints = local_checkpoints(&checkpoint_path, &[])?;
+        let from = archived_start(dir, &files, &checkpoints)?;
         let (stats, active_start) = verify_files(
-            &log_files(dir)?,
-            local_checkpoints(&checkpoint_path, &[])?,
+            &files,
+            checkpoints,
             &key.verifying_key(),
             SignatureChecks::AfterLastCheckpoint,
-            None,
+            from,
         )?;
         let identities = Identities::open(dir)?;
         // Missing only if a crash came between moving a full file into segments/ and creating its
@@ -851,8 +884,17 @@ pub fn verify_dir(
     checks: SignatureChecks,
     from: Option<u64>,
 ) -> Result<Stats, VerifyFileError> {
-    let all = local_checkpoints(&dir.join(CHECKPOINT_FILE), external)?;
-    verify_files(&log_files(dir)?, all, key, checks, from).map(|(s, _)| s)
+    let local = dir.join(CHECKPOINT_FILE);
+    let all = local_checkpoints(&local, external)?;
+    let files = log_files(dir)?;
+    // Where an emptied, rotated log starts is the log's own business: published checkpoints only
+    // confirm it.
+    let from = from.max(archived_start(
+        dir,
+        &files,
+        &local_checkpoints(&local, &[])?,
+    )?);
+    verify_files(&files, all, key, checks, from).map(|(s, _)| s)
 }
 
 /// Call `f` on each receipt of the log in `dir`, across every segment still present, oldest first.
