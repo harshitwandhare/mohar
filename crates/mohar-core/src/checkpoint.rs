@@ -168,6 +168,18 @@ impl CheckpointWatcher {
         })
     }
 
+    /// The stream starts at position `start`: checkpoints vouching for receipts before it can't be
+    /// checked, since those receipts were archived or deliberately skipped.
+    pub(crate) fn skip_before(&mut self, start: u64) {
+        while self
+            .pending
+            .get(self.cursor)
+            .is_some_and(|(at, _, _)| *at < start)
+        {
+            self.cursor += 1;
+        }
+    }
+
     /// The receipt at position `seq` has just verified and hashes to `hash`.
     pub(crate) fn observe(&mut self, seq: u64, hash: &str) {
         while let Some((at, checkpoint, head)) = self.pending.get(self.cursor) {

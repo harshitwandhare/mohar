@@ -5,7 +5,15 @@
 //! public.key      ed25519:<hex>, for anyone verifying the log.
 //! receipts.jsonl  one receipt per line, oldest first, appended and synced before append returns.
 //! writer.lock     held exclusively by the one process allowed to append; readers don't need it.
+//! checkpoints.jsonl  signed checkpoints, one per line.
+//! segments/       closed segments, named by the seq of their first receipt (20 digits), each one
+//!                 ended by a signed checkpoint. receipts.jsonl continues where the last one stops.
 //! ```
+//!
+//! With a segment size set, receipts.jsonl is closed once it reaches that size: a checkpoint is signed
+//! for the log as it stands, the file moves into `segments/` and a new, empty one takes its place.
+//! Segments can be archived oldest first; verification then starts from the checkpoint that closed
+//! the last one removed. A missing segment between two present ones is a gap and fails.
 //!
 //! A log in strict privacy mode (see [`crate::privacy`]) also holds:
 //!
@@ -40,6 +48,10 @@ const CHECKPOINT_FILE: &str = "checkpoints.jsonl";
 const LOCK_FILE: &str = "writer.lock";
 const PRIVACY_KEY_FILE: &str = "privacy.key";
 const IDENTITIES_FILE: &str = "identities.jsonl";
+const SEGMENT_DIR: &str = "segments";
+const SEGMENT_SUFFIX: &str = ".jsonl";
+/// Digits in a segment's name, enough for any u64, so names sort in log order.
+const SEGMENT_DIGITS: usize = 20;
 
 /// A checkpoint is signed automatically after every this many receipts.
 pub const CHECKPOINT_EVERY: u64 = 1000;
@@ -88,9 +100,127 @@ pub enum OpenError {
         /// 1-based line number.
         line: usize,
     },
+    /// A line of a closed segment isn't a complete receipt.
+    #[error("{} line {line} is not a complete receipt", path.display())]
+    UnreadableSegment {
+        /// The segment file.
+        path: PathBuf,
+        /// 1-based line number.
+        line: usize,
+    },
+    /// The segments don't fit together, or one isn't closed by a signed checkpoint.
+    #[error("segments: {0}")]
+    Segment(SegmentBreak),
+    /// A rotation moved the full file away but couldn't create the next one. Nothing more is written
+    /// until the log is opened again, which finishes the rotation.
+    #[error("rotation of {0} did not finish; open the log again")]
+    Unfinished(PathBuf),
     /// A receipt couldn't be built or signed.
     #[error(transparent)]
     Receipt(#[from] Error),
+}
+
+/// Why the segments of a log don't add up to one verifiable chain.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum SegmentBreak {
+    /// A file in `segments/` isn't named by a 20-digit receipt number.
+    #[error("{} is not a segment name", path.display())]
+    BadName {
+        /// The file.
+        path: PathBuf,
+    },
+    /// A segment doesn't start where the one before it ended: one is missing or was cut short.
+    #[error("{} starts at receipt {found}, but the log so far ends at {expected}", path.display())]
+    Gap {
+        /// The segment, or receipts.jsonl.
+        path: PathBuf,
+        /// Receipts read before it.
+        expected: u64,
+        /// Where its name says it starts.
+        found: u64,
+    },
+    /// No signed checkpoint vouches for the log at the end of this closed segment.
+    #[error("{} ends at {count} receipts with no signed checkpoint there", path.display())]
+    Unclosed {
+        /// The segment.
+        path: PathBuf,
+        /// Receipts in the log at its end.
+        count: u64,
+    },
+    /// Verification starts after receipt 0 (older segments archived, or a starting point asked for),
+    /// and no signed checkpoint says what the log held there.
+    #[error("no signed checkpoint at {count} receipts to start from")]
+    NoAnchor {
+        /// Where verification would start.
+        count: u64,
+    },
+}
+
+/// A closed segment of a log.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Segment {
+    /// Sequence number of its first receipt.
+    pub start: u64,
+    /// The file.
+    pub path: PathBuf,
+}
+
+fn segment_name(start: u64) -> String {
+    format!("{start:0width$}{SEGMENT_SUFFIX}", width = SEGMENT_DIGITS)
+}
+
+/// The closed segments of the log in `dir`, oldest first; none if it never rotated. Anything else in
+/// `segments/` is refused, so a misnamed segment can't be silently left out.
+pub fn segments(dir: &Path) -> Result<Vec<Segment>, OpenError> {
+    let seg_dir = dir.join(SEGMENT_DIR);
+    let read = match fs::read_dir(&seg_dir) {
+        Ok(r) => r,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(io(&seg_dir)(e)),
+    };
+    let mut out = Vec::new();
+    for item in read {
+        let path = item.map_err(io(&seg_dir))?.path();
+        let start = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .and_then(|n| n.strip_suffix(SEGMENT_SUFFIX))
+            .filter(|n| n.len() == SEGMENT_DIGITS && n.bytes().all(|b| b.is_ascii_digit()))
+            .and_then(|n| n.parse::<u64>().ok());
+        match start {
+            Some(start) if path.is_file() => out.push(Segment { start, path }),
+            _ => return Err(OpenError::Segment(SegmentBreak::BadName { path })),
+        }
+    }
+    out.sort_by_key(|s| s.start);
+    Ok(out)
+}
+
+/// Every file of the log in order: the closed segments, then receipts.jsonl, which a crash during
+/// rotation can leave missing once there are segments.
+fn log_files(dir: &Path) -> Result<Vec<(Option<u64>, PathBuf)>, OpenError> {
+    let closed = segments(dir)?;
+    let active = dir.join(LOG_FILE);
+    let keep_active = closed.is_empty() || active.exists();
+    let mut files: Vec<(Option<u64>, PathBuf)> = closed
+        .into_iter()
+        .map(|s| (Some(s.start), s.path))
+        .collect();
+    if keep_active {
+        files.push((None, active));
+    }
+    Ok(files)
+}
+
+#[cfg(unix)]
+fn sync_dir(dir: &Path) -> Result<(), OpenError> {
+    File::open(dir).and_then(|d| d.sync_all()).map_err(io(dir))
+}
+
+/// Windows has no directory sync; a rename there is made durable by the file system's own journal.
+#[cfg(not(unix))]
+fn sync_dir(_: &Path) -> Result<(), OpenError> {
+    Ok(())
 }
 
 fn io(path: &Path) -> impl FnOnce(std::io::Error) -> OpenError + '_ {
@@ -106,10 +236,19 @@ pub struct FileLog {
     _lock: File,
     key: SigningKey,
     file: File,
+    dir: PathBuf,
     path: PathBuf,
     checkpoint_path: PathBuf,
     last_hash: String,
     len: u64,
+    /// Seq of the first receipt in receipts.jsonl.
+    active_start: u64,
+    /// Size of receipts.jsonl.
+    active_bytes: u64,
+    /// Rotate once receipts.jsonl reaches this many bytes; never when `None`.
+    segment_bytes: Option<u64>,
+    /// Set when a rotation stopped halfway; appends are refused until the log is reopened.
+    unfinished: bool,
     /// Set in strict privacy mode.
     identities: Option<Identities>,
 }
@@ -141,7 +280,7 @@ impl Identities {
                 .map_err(|_| OpenError::BadKey(key_path.clone()))?,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 // With the mapping erased too, the log itself still shows the mode it was made in.
-                if path.exists() || first_agent_is_pseudonym(&dir.join(LOG_FILE))? {
+                if path.exists() || first_agent_is_pseudonym(dir)? {
                     return Err(OpenError::PrivacyKeyMissing(key_path));
                 }
                 return Ok(None);
@@ -192,13 +331,22 @@ impl Identities {
     }
 }
 
-/// Whether the log's first receipt names its agent by a pseudonym: only a strict-privacy log writes
-/// one, since the daemon refuses them as input. Called after the chain verified, so the line parses.
-fn first_agent_is_pseudonym(path: &Path) -> Result<bool, OpenError> {
+/// Whether the log's oldest receipt still present names its agent by a pseudonym: only a
+/// strict-privacy log writes one, since the daemon refuses them as input. Called after the chain
+/// verified, so the line parses.
+fn first_agent_is_pseudonym(dir: &Path) -> Result<bool, OpenError> {
     let mut line = String::new();
-    BufReader::new(File::open(path).map_err(io(path))?)
-        .read_line(&mut line)
-        .map_err(io(path))?;
+    for (_, path) in log_files(dir)? {
+        if !path.exists() {
+            continue;
+        }
+        BufReader::new(File::open(&path).map_err(io(&path))?)
+            .read_line(&mut line)
+            .map_err(io(&path))?;
+        if !line.trim().is_empty() {
+            break;
+        }
+    }
     Ok(serde_json::from_str::<Receipt>(&line).is_ok_and(|r| is_pseudonym(&r.agent.id)))
 }
 
@@ -215,7 +363,10 @@ impl FileLog {
     }
 
     fn create(dir: &Path, strict: bool) -> Result<Self, OpenError> {
-        if dir.join(KEY_FILE).exists() || dir.join(LOG_FILE).exists() {
+        if dir.join(KEY_FILE).exists()
+            || dir.join(LOG_FILE).exists()
+            || dir.join(SEGMENT_DIR).exists()
+        {
             return Err(OpenError::AlreadyExists(dir.to_path_buf()));
         }
         fs::create_dir_all(dir).map_err(io(dir))?;
@@ -270,28 +421,72 @@ impl FileLog {
         let checkpoint_path = dir.join(CHECKPOINT_FILE);
         // The daemon's own log, signed with the key it just read: receipts its checkpoints cover are
         // checked by hash, the rest in full. `mohar verify` checks every signature.
-        let stats = verify_log_with(
-            &path,
-            &checkpoint_path,
-            &[],
+        let (stats, active_start) = verify_files(
+            &log_files(dir)?,
+            local_checkpoints(&checkpoint_path, &[])?,
             &key.verifying_key(),
             SignatureChecks::AfterLastCheckpoint,
+            None,
         )?;
         let identities = Identities::open(dir)?;
+        // Missing only if a crash came between moving a full file into segments/ and creating its
+        // successor; verification has just confirmed the segments end at a checkpoint.
         let file = OpenOptions::new()
+            .create(true)
             .append(true)
             .open(&path)
             .map_err(io(&path))?;
+        let active_bytes = file.metadata().map_err(io(&path))?.len();
         Ok(Self {
             _lock: lock,
             key,
             file,
+            dir: dir.to_path_buf(),
             path,
             checkpoint_path,
             last_hash: stats.head,
             len: stats.receipts,
+            active_start,
+            active_bytes,
+            segment_bytes: None,
+            unfinished: false,
             identities,
         })
+    }
+
+    /// Close receipts.jsonl into a segment once it reaches `bytes`, or never with `None` (the
+    /// default). The receipt that crosses the limit stays in the segment it was written to.
+    pub fn set_segment_bytes(&mut self, bytes: Option<u64>) {
+        self.segment_bytes = bytes;
+    }
+
+    /// Sign a checkpoint for the log as it stands, move receipts.jsonl into `segments/`, and start
+    /// an empty one. A crash at any point leaves a log that opens: before the move nothing changed but
+    /// a checkpoint, after it the missing file is recreated on open.
+    fn rotate(&mut self, ts: &str) -> Result<(), OpenError> {
+        // `append` signs one itself at every CHECKPOINT_EVERY receipts.
+        if !self.len.is_multiple_of(CHECKPOINT_EVERY) {
+            self.checkpoint(ts)?;
+        }
+        let seg_dir = self.dir.join(SEGMENT_DIR);
+        fs::create_dir_all(&seg_dir).map_err(io(&seg_dir))?;
+        let to = seg_dir.join(segment_name(self.active_start));
+        fs::rename(&self.path, &to).map_err(io(&to))?;
+        self.unfinished = true;
+        sync_dir(&seg_dir)?;
+        sync_dir(&self.dir)?;
+        let file = OpenOptions::new()
+            .create_new(true)
+            .append(true)
+            .open(&self.path)
+            .map_err(io(&self.path))?;
+        file.sync_all().map_err(io(&self.path))?;
+        sync_dir(&self.dir)?;
+        self.file = file;
+        self.active_start = self.len;
+        self.active_bytes = 0;
+        self.unfinished = false;
+        Ok(())
     }
 
     /// The seed for review sampling, derived from the signing key so it needs no file of its own and
@@ -324,6 +519,11 @@ impl FileLog {
     /// mode the agent id and target are replaced by their pseudonyms first, and the mapping back is
     /// synced before the receipt is written.
     pub fn append(&mut self, mut entry: Entry) -> Result<Receipt, OpenError> {
+        // Set only when the file system fails between a rename and a create, which tests can't
+        // arrange portably.
+        if self.unfinished {
+            return Err(OpenError::Unfinished(self.path.clone()));
+        }
         if let Some(ids) = &mut self.identities {
             entry.agent_id = ids.record(entry.agent_id)?;
             entry.action.target = ids.record(entry.action.target)?;
@@ -335,8 +535,15 @@ impl FileLog {
         self.file.sync_data().map_err(io(&self.path))?;
         self.last_hash = receipt_hash(&r)?;
         self.len += 1;
+        self.active_bytes += line.len() as u64;
         if self.len.is_multiple_of(CHECKPOINT_EVERY) {
             self.checkpoint(&r.ts)?;
+        }
+        if self
+            .segment_bytes
+            .is_some_and(|max| self.active_bytes >= max)
+        {
+            self.rotate(&r.ts)?;
         }
         Ok(r)
     }
@@ -380,6 +587,9 @@ pub struct Stats {
     pub checkpoints: usize,
     /// Hash of the last receipt, or the all-zero genesis hash for an empty log.
     pub head: String,
+    /// Seq of the first receipt checked: 0, unless older segments were archived or verification
+    /// was asked to start at a checkpoint.
+    pub first: u64,
 }
 
 /// Receipts read and checked together. This bounds memory, whatever the size of the log.
@@ -595,7 +805,14 @@ pub enum SignatureChecks {
 
 /// Verify the chain in a receipts file line by line. Memory use doesn't depend on the log's length.
 pub fn verify_file(path: &Path, key: &VerifyingKey) -> Result<Stats, VerifyFileError> {
-    verify_stream(path, Vec::new(), key, SignatureChecks::Every)
+    verify_files(
+        &[(None, path.to_path_buf())],
+        Vec::new(),
+        key,
+        SignatureChecks::Every,
+        None,
+    )
+    .map(|(s, _)| s)
 }
 
 /// Verify the chain in `receipts`, and every checkpoint in `checkpoints` (which may not exist yet)
@@ -619,15 +836,44 @@ pub fn verify_log_with(
     key: &VerifyingKey,
     checks: SignatureChecks,
 ) -> Result<Stats, VerifyFileError> {
-    let mut all = if checkpoints.exists() {
-        read_checkpoints(checkpoints)?
+    let all = local_checkpoints(checkpoints, external)?;
+    verify_files(&[(None, receipts.to_path_buf())], all, key, checks, None).map(|(s, _)| s)
+}
+
+/// Verify the whole log in `dir`, every segment and receipts.jsonl, against its checkpoints and those
+/// in `external`. With `from`, verification starts at the signed checkpoint for that many receipts
+/// and nothing before it is read; without it, it starts at the oldest segment still present, which
+/// must be receipt 0 or a signed checkpoint.
+pub fn verify_dir(
+    dir: &Path,
+    external: &[&Path],
+    key: &VerifyingKey,
+    checks: SignatureChecks,
+    from: Option<u64>,
+) -> Result<Stats, VerifyFileError> {
+    let all = local_checkpoints(&dir.join(CHECKPOINT_FILE), external)?;
+    verify_files(&log_files(dir)?, all, key, checks, from).map(|(s, _)| s)
+}
+
+/// Call `f` on each receipt of the log in `dir`, across every segment still present, oldest first.
+/// Nothing is verified; use [`verify_dir`] for that.
+pub fn for_each_log_receipt(dir: &Path, mut f: impl FnMut(Receipt)) -> Result<(), OpenError> {
+    for (_, path) in log_files(dir)? {
+        for_each_receipt(&path, &mut f)?;
+    }
+    Ok(())
+}
+
+fn local_checkpoints(local: &Path, external: &[&Path]) -> Result<Vec<Checkpoint>, OpenError> {
+    let mut all = if local.exists() {
+        read_checkpoints(local)?
     } else {
         Vec::new()
     };
     for path in external {
         all.extend(read_checkpoints(path)?);
     }
-    verify_stream(receipts, all, key, checks)
+    Ok(all)
 }
 
 /// Append `checkpoint` to `path`, outside the log directory, and sync it to disk. Existing lines are
@@ -644,12 +890,16 @@ pub fn publish_checkpoint(path: &Path, checkpoint: &Checkpoint) -> Result<(), Op
     f.sync_data().map_err(io(path))
 }
 
-fn verify_stream(
-    path: &Path,
+/// Verify `files` as one chain, in order. A closed segment carries the seq its name says it starts
+/// at; the last file may be receipts.jsonl, which carries none. Returns the stats and the seq at which
+/// the last file started.
+fn verify_files(
+    files: &[(Option<u64>, PathBuf)],
     checkpoints: Vec<Checkpoint>,
     key: &VerifyingKey,
     checks: SignatureChecks,
-) -> Result<Stats, VerifyFileError> {
+    from: Option<u64>,
+) -> Result<(Stats, u64), VerifyFileError> {
     // Every checkpoint's signature is checked here, before any of them is trusted.
     let mut watcher = CheckpointWatcher::new(&checkpoints, key).map_err(OpenError::Checkpoint)?;
     let signed_from = match checks {
@@ -658,29 +908,108 @@ fn verify_stream(
             checkpoints.iter().map(|c| c.count).max().unwrap_or(0)
         }
     };
-    let mut chain = ChainVerifier::new(key);
-    verify_lines(path, key, signed_from, |outcome| match outcome {
-        Outcome::Line(r, checked) => {
-            let seq = chain.count();
-            chain
-                .push_prechecked(&r, checked)
-                .map_err(OpenError::Chain)?;
-            watcher.observe(seq, chain.head());
-            Ok(())
+    let oldest = files.first().and_then(|(s, _)| *s).unwrap_or(0);
+    let start = from.unwrap_or(0).max(oldest);
+    let mut chain = if start == 0 {
+        ChainVerifier::new(key)
+    } else {
+        // Every checkpoint at `start` must agree on the head; the signatures were checked above.
+        let mut at = checkpoints
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.count == start);
+        let Some((_, anchor)) = at.next() else {
+            return Err(OpenError::Segment(SegmentBreak::NoAnchor { count: start }));
+        };
+        // Two signed checkpoints for the same count with different heads mean the key signed two
+        // histories; only the key holder can make that, so no test log here has one.
+        if let Some((checkpoint, _)) = at.find(|(_, c)| c.head != anchor.head) {
+            return Err(OpenError::Checkpoint(CheckpointBreak::HeadMismatch {
+                checkpoint,
+                seq: start - 1,
+            }));
         }
-        Outcome::Unreadable(line) => Err(OpenError::Unreadable { line }),
-        Outcome::Lost => Err(OpenError::Chain(ChainBreak {
-            index: chain.count() as usize,
-            kind: BreakKind::BadSignature,
-        })),
-    })?;
+        ChainVerifier::resume(key, start, anchor.head.clone())
+    };
+    watcher.skip_before(start);
+    let closed_at = |count: u64| checkpoints.iter().any(|c| c.count == count);
+    // Until the first receipt at or after `start` is accepted, older ones are passed over. After
+    // that every line counts, so an old receipt copied in later still breaks the chain.
+    let mut started = start == 0;
+    let mut active_start = 0;
+    for (i, (named, path)) in files.iter().enumerate() {
+        // A closed segment wholly before the start isn't read.
+        if files
+            .get(i + 1)
+            .and_then(|(next, _)| *next)
+            .is_some_and(|next| next <= start)
+        {
+            continue;
+        }
+        active_start = chain.count();
+        verify_lines(path, key, signed_from, |outcome| match outcome {
+            Outcome::Line(r, checked) => {
+                if !started && r.seq < start {
+                    return Ok(());
+                }
+                started = true;
+                let seq = chain.count();
+                chain
+                    .push_prechecked(&r, checked)
+                    .map_err(OpenError::Chain)?;
+                watcher.observe(seq, chain.head());
+                Ok(())
+            }
+            Outcome::Unreadable(line) => Err(match named {
+                Some(_) => OpenError::UnreadableSegment {
+                    path: path.clone(),
+                    line,
+                },
+                None => OpenError::Unreadable { line },
+            }),
+            Outcome::Lost => Err(OpenError::Chain(ChainBreak {
+                index: chain.count() as usize,
+                kind: BreakKind::BadSignature,
+            })),
+        })?;
+        if named.is_some() {
+            let count = chain.count();
+            // The next segment must start where this one ended. receipts.jsonl has no name to
+            // check, so a segment cut short before it shows up as an end with no checkpoint. The
+            // first file read needs no check: verification starts inside it.
+            if let Some((Some(next), next_path)) = files.get(i + 1)
+                && *next != count
+            {
+                return Err(OpenError::Segment(SegmentBreak::Gap {
+                    path: next_path.clone(),
+                    expected: count,
+                    found: *next,
+                }));
+            }
+            if !closed_at(count) {
+                return Err(OpenError::Segment(SegmentBreak::Unclosed {
+                    path: path.clone(),
+                    count,
+                }));
+            }
+            started = true;
+        }
+    }
     let receipts = chain.count();
     watcher.finish(receipts).map_err(OpenError::Checkpoint)?;
-    Ok(Stats {
-        receipts,
-        checkpoints: checkpoints.len(),
-        head: chain.head().to_string(),
-    })
+    // With receipts.jsonl missing, the one recreated in its place starts after the last segment.
+    if files.last().is_none_or(|(named, _)| named.is_some()) {
+        active_start = receipts;
+    }
+    Ok((
+        Stats {
+            receipts,
+            checkpoints: checkpoints.len(),
+            head: chain.head().to_string(),
+            first: start,
+        },
+        active_start,
+    ))
 }
 
 #[cfg(test)]

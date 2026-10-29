@@ -502,6 +502,16 @@ impl<'k> ChainVerifier<'k> {
         }
     }
 
+    /// A verifier that starts after the first `count` receipts, whose last hashes to `head`: what a
+    /// signed checkpoint vouches for. The receipts before it aren't looked at.
+    pub(crate) fn resume(key: &'k VerifyingKey, count: u64, head: String) -> Self {
+        Self {
+            key,
+            expected_prev: head,
+            next_index: count as usize,
+        }
+    }
+
     /// Check the next receipt in the chain. On failure the verifier is left where it was.
     ///
     /// Anything that can't be checked counts as a failure.

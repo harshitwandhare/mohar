@@ -404,3 +404,48 @@ fn a_git_clone_inside_the_log_directory_is_refused() {
     assert_eq!(out.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&out.stderr).contains("outside the log directory"));
 }
+
+#[test]
+fn verify_from_a_checkpoint_and_read_across_segments() {
+    let dir = temp_dir("segments");
+    assert!(mohar(&dir, &["init"]).status.success());
+    for t in ["a", "b"] {
+        assert!(append(&dir, t).status.success());
+    }
+    assert!(mohar(&dir, &["checkpoint"]).status.success());
+    // What a rotation leaves: the full file moved under segments/, closed by that checkpoint.
+    fs::create_dir_all(dir.join("segments")).expect("mkdir");
+    fs::rename(
+        dir.join("receipts.jsonl"),
+        dir.join("segments").join(format!("{:020}.jsonl", 0)),
+    )
+    .expect("move");
+    for t in ["c", "d"] {
+        let out = append(&dir, t);
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+    let log = String::from_utf8(mohar(&dir, &["log"]).stdout).expect("utf8");
+    assert_eq!(log.lines().count(), 4, "{log}");
+
+    let all = mohar(&dir, &["verify"]);
+    assert!(
+        String::from_utf8_lossy(&all.stdout).contains("ok: 4 receipts and 1 checkpoints verified"),
+        "{}",
+        String::from_utf8_lossy(&all.stdout)
+    );
+    let from = mohar(&dir, &["verify", "--from", "2"]);
+    assert!(from.status.success());
+    assert!(
+        String::from_utf8_lossy(&from.stdout)
+            .contains("ok: receipts 2 to 3 (2 of 4) and 1 checkpoints verified"),
+        "{}",
+        String::from_utf8_lossy(&from.stdout)
+    );
+    let none = mohar(&dir, &["verify", "--from", "1"]);
+    assert_eq!(none.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&none.stdout).contains("no signed checkpoint at 1 receipts"));
+}

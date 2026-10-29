@@ -12,7 +12,7 @@ use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::{Parser, Subcommand, ValueEnum};
-use mohar_core::store::{FileLog, OpenError, SignatureChecks, for_each_receipt, verify_log_with};
+use mohar_core::store::{FileLog, OpenError, SignatureChecks, for_each_log_receipt, verify_dir};
 use mohar_core::{Action, Decision, Entry, Receipt, parse_public_key};
 
 #[derive(Parser)]
@@ -25,6 +25,10 @@ struct Cli {
     /// Log directory.
     #[arg(long, global = true, default_value = ".mohar")]
     dir: PathBuf,
+    /// Close receipts.jsonl into a segment under segments/ once it reaches this many MiB; 0 never
+    /// rotates. Applies to commands that write receipts.
+    #[arg(long, global = true, default_value_t = 64)]
+    segment_mib: u64,
     #[command(subcommand)]
     command: Command,
 }
@@ -113,6 +117,9 @@ enum Command {
         /// before it are checked by their hash chain. Faster on large logs; see docs/cli.md.
         #[arg(long)]
         trust_checkpoints: bool,
+        /// Start at the signed checkpoint for this many receipts; nothing before it is read.
+        #[arg(long)]
+        from: Option<u64>,
     },
 }
 
@@ -154,6 +161,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             by,
         } => {
             let mut log = FileLog::open(&cli.dir).map_err(|e| e.to_string())?;
+            log.set_segment_bytes(segment_bytes(cli.segment_mib));
             let r = log
                 .append(Entry {
                     ts: now_rfc3339(),
@@ -189,6 +197,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
                     io_timeout: std::time::Duration::from_secs(5),
                     exit_on_stdin_eof,
                     otlp_endpoint,
+                    segment_bytes: segment_bytes(cli.segment_mib),
                 },
             )?;
         }
@@ -228,13 +237,12 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
                     r.decision.by
                 );
             };
-            let path = cli.dir.join("receipts.jsonl");
             match last {
-                None => for_each_receipt(&path, |r| print(&r)),
+                None => for_each_log_receipt(&cli.dir, |r| print(&r)),
                 Some(n) => {
                     // Only the last `n` receipts are ever held.
                     let mut tail = VecDeque::new();
-                    for_each_receipt(&path, |r| {
+                    for_each_log_receipt(&cli.dir, |r| {
                         if n == 0 {
                             return;
                         }
@@ -252,6 +260,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             public_key,
             checkpoints,
             trust_checkpoints,
+            from,
         } => {
             let key_path = public_key.unwrap_or_else(|| cli.dir.join("public.key"));
             let text = std::fs::read_to_string(&key_path)
@@ -269,16 +278,18 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             } else {
                 SignatureChecks::Every
             };
-            match verify_log_with(
-                &cli.dir.join("receipts.jsonl"),
-                &cli.dir.join("checkpoints.jsonl"),
-                &external,
-                &key,
-                checks,
-            ) {
-                Ok(stats) => println!(
+            match verify_dir(&cli.dir, &external, &key, checks, from) {
+                Ok(stats) if stats.first == 0 => println!(
                     "ok: {} receipts and {} checkpoints verified",
                     stats.receipts, stats.checkpoints
+                ),
+                Ok(stats) => println!(
+                    "ok: receipts {} to {} ({} of {}) and {} checkpoints verified",
+                    stats.first,
+                    stats.receipts.saturating_sub(1),
+                    stats.receipts - stats.first,
+                    stats.receipts,
+                    stats.checkpoints
                 ),
                 Err(OpenError::Chain(b)) => {
                     println!("broken: receipt {}: {:?}", b.index, b.kind);
@@ -296,6 +307,11 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
         }
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// The segment size in bytes for `--segment-mib`, where 0 means never rotate.
+fn segment_bytes(mib: u64) -> Option<u64> {
+    (mib > 0).then(|| mib.saturating_mul(1 << 20))
 }
 
 /// UTC now as RFC 3339 with milliseconds, without a date-time dependency.

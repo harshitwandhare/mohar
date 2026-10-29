@@ -116,7 +116,7 @@ software alone certifies nothing.
 | SOC 2 CC6.1 Logical access | Restrict access to information assets | Capabilities, gates, ceilings, earned levels | design sections 3 and 4 | Designed (Phase 3) |
 | SOC 2 CC7.2 System monitoring | Monitor components for anomalies | Receipts plus OpenTelemetry metrics and traces | #62 | Planned (Phase 2) |
 | SOC 2 CC8.1 Change management | Authorise, test and approve changes | Every agent change recorded with who authorised it and how it was verified | design sections 5 and 7 | Built for recording; verifiers Phase 2 |
-| ISO/IEC 27001:2022 A.8.15 Logging | Produce, keep, protect and analyse logs | Tamper-evident receipts and checkpoints, retention by segment | #63 | Built, segments planned |
+| ISO/IEC 27001:2022 A.8.15 Logging | Produce, keep, protect and analyse logs | Tamper-evident receipts and checkpoints, retention by segment | #63 | Built |
 | ISO/IEC 27001:2022 A.8.24 Use of cryptography | Rules for effective use of cryptography | Ed25519, SHA-256, RFC 8785 canonical form, published test vectors | spec/vectors | Built |
 | ISO/IEC 42001 AI system records and oversight | Traceability and human oversight of AI systems | Receipts per AI action; escalation to accountable people | design sections 6 and 7 | Partly built |
 | EU AI Act Art. 12 and 14 | Automatic logs over the lifetime; human oversight | As above | as above | Partly built |
