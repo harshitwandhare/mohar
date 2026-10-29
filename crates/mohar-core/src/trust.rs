@@ -25,6 +25,8 @@ const MINOR_WINDOW_DAYS: u64 = 14;
 const MINORS_FOR_MEANINGFUL: usize = 3;
 /// Consecutive verified passes that end remediation.
 pub const REMEDIATION_PASSES: u32 = 5;
+/// Days a remediation plan has before it is overdue.
+pub const REMEDIATION_DAYS: u64 = 30;
 /// Seconds a person must spend on a review before their accept counts toward promotion.
 pub const MIN_REVIEW_SECS: u64 = 30;
 /// Reviews per reviewer that the approval rate is taken over.
@@ -84,6 +86,23 @@ pub struct Outcome {
     /// Capabilities that share this one's scope (the same paths, hosts or database): an S3 drops them
     /// too.
     pub related: Vec<String>,
+    /// The verifier that decided it, such as `tests` or `human`. A failure names the verifier its
+    /// remediation plan needs passes from.
+    pub verifier: String,
+}
+
+/// A remediation plan: what a demoted capability must show, and by when.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Plan {
+    /// Only passes from this verifier count toward the exit.
+    pub verifier: String,
+    /// Consecutive passes still needed.
+    pub passes_left: u32,
+    /// Whether one of them must still exercise the failure that caused the demotion.
+    pub must_exercise: bool,
+    /// After this time (seconds since the Unix epoch) passes stop counting, the capability stays at
+    /// the level it was dropped to, and the plan is overdue until a person extends it.
+    pub deadline: u64,
 }
 
 /// A person's review behind a `human` outcome.
@@ -115,9 +134,8 @@ struct Record {
     minors: Vec<u64>,
     /// When the last serious (S3 or S4) failure happened.
     last_serious: Option<u64>,
-    /// Consecutive passes still needed to leave remediation, and whether one of them must exercise the
-    /// failure that caused it.
-    remediation: Option<(u32, bool)>,
+    /// The open remediation plan, if any.
+    remediation: Option<Plan>,
 }
 
 /// One reviewer's recent decisions, for the rubber-stamping rule (docs/design.md section 4).
@@ -227,17 +245,26 @@ impl Ledger {
             .or_default();
         r.outcomes.push((o.at, o.passed));
         if o.passed {
-            if let Some((left, needs_exercise)) = r.remediation {
-                let needs = needs_exercise && !o.exercises_failure;
-                r.remediation = match left.saturating_sub(1) {
-                    0 if !needs => None,
+            if let Some(plan) = &mut r.remediation
+                && plan.verifier == o.verifier
+                && o.at <= plan.deadline
+            {
+                plan.must_exercise &= !o.exercises_failure;
+                match plan.passes_left.saturating_sub(1) {
+                    0 if !plan.must_exercise => r.remediation = None,
                     // The last pass didn't exercise the failure; one more is needed that does.
-                    0 => Some((1, true)),
-                    n => Some((n, needs)),
-                };
+                    0 => plan.passes_left = 1,
+                    n => plan.passes_left = n,
+                }
             }
             return;
         }
+        let plan = |must_exercise| Plan {
+            verifier: o.verifier.clone(),
+            passes_left: REMEDIATION_PASSES,
+            must_exercise,
+            deadline: o.at.saturating_add(REMEDIATION_DAYS * DAY),
+        };
         let mut severity = o.severity;
         if severity == Severity::S1 {
             r.minors
@@ -253,19 +280,19 @@ impl Ledger {
             Severity::S2 => {
                 r.level = r.level.saturating_sub(1);
                 r.since = o.at;
-                r.remediation = Some((REMEDIATION_PASSES, true));
+                r.remediation = Some(plan(true));
             }
             Severity::S3 | Severity::S4 => {
                 r.level = ASK_FIRST;
                 r.since = o.at;
                 r.last_serious = Some(o.at);
-                r.remediation = Some((REMEDIATION_PASSES, true));
+                r.remediation = Some(plan(true));
                 if severity == Severity::S3 {
                     for other in &o.related {
                         let rr = self.records.entry(Self::key(agent, other)).or_default();
                         rr.level = ASK_FIRST;
                         rr.since = o.at;
-                        rr.remediation = Some((REMEDIATION_PASSES, false));
+                        rr.remediation = Some(plan(false));
                     }
                 }
             }
@@ -320,6 +347,38 @@ impl Ledger {
     /// Lift a suspension. Only a person does this, and the caller records it as a receipt.
     pub fn reinstate(&mut self, agent: &str) {
         self.suspended.remove(agent);
+    }
+
+    /// The open remediation plan for an agent on a capability.
+    pub fn plan(&self, agent: &str, capability: &str) -> Option<Plan> {
+        self.records
+            .get(&Self::key(agent, capability))
+            .and_then(|r| r.remediation.clone())
+    }
+
+    /// Every (agent, capability) whose plan's deadline has passed at `now`: a person should be told.
+    pub fn overdue(&self, now: u64) -> Vec<(String, String)> {
+        self.records
+            .iter()
+            .filter(|(_, r)| r.remediation.as_ref().is_some_and(|p| now > p.deadline))
+            .map(|(k, _)| k.clone())
+            .collect()
+    }
+
+    /// A person moves a plan's deadline to `deadline`. Only later, never earlier, so an extension
+    /// can't make passes already counted stop counting. Returns whether the plan changed.
+    pub fn extend_remediation(&mut self, agent: &str, capability: &str, deadline: u64) -> bool {
+        match self
+            .records
+            .get_mut(&Self::key(agent, capability))
+            .and_then(|r| r.remediation.as_mut())
+        {
+            Some(p) if deadline > p.deadline => {
+                p.deadline = deadline;
+                true
+            }
+            _ => false,
+        }
     }
 
     /// Whether a capability is in remediation for an agent.
