@@ -9,6 +9,9 @@ receipt format; each such change is called out.
 
 ### Added
 
+- A near miss raises review sampling. When a gate stops an agent on a capability, its next 20 actions
+  allowed on that capability are sampled for review at 50% instead of the level's rate. The daemon
+  rebuilds the raised count from the log on restart (#150).
 - Remediation plans name the verifier that caught the failure and carry a 30-day deadline. Only passes
   from that verifier, before the deadline, count toward the exit; an overdue plan holds the capability at
   the level it was dropped to until a person extends it. The daemon now names the verifier of each outcome

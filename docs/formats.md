@@ -23,8 +23,10 @@ One JSON object per line in `receipts.jsonl`. The full field list and the reason
   existing test vector, are unchanged; `verification` sorts last in the canonical form.
 - **Review sample**: a decision the agent's record allowed may carry `"review": true` inside `decision`,
   meaning the action was drawn for a person to check after it ran (20% at Supervised, 5% at Trusted).
-  The draw is SHA-256 over a seed derived from the signing key and the receipt's `seq`, so whoever holds
-  the key can recompute it. The key is left out when false, so older receipts read the same, and it is
+  After a gate stops an agent on a capability (a near miss), its next 20 actions allowed on that
+  capability are drawn at 50%; the stop and the actions are all in the log, so the rate can be worked out
+  again from it. The draw is SHA-256 over a seed derived from the signing key and the receipt's `seq`, so
+  whoever holds the key can recompute it. The key is left out when false, so older receipts read the same, and it is
   signed like every other field.
 
 ## Checkpoint

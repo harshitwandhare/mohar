@@ -25,6 +25,10 @@ const MINOR_WINDOW_DAYS: u64 = 14;
 const MINORS_FOR_MEANINGFUL: usize = 3;
 /// Consecutive verified passes that end remediation.
 pub const REMEDIATION_PASSES: u32 = 5;
+/// Review sampling, in actions per thousand, on a capability right after a near miss.
+pub const NEAR_MISS_PER_MILLE: u64 = 500;
+/// Allowed actions sampled at the raised rate after a near miss.
+pub const NEAR_MISS_ACTIONS: u32 = 20;
 /// Days a remediation plan has before it is overdue.
 pub const REMEDIATION_DAYS: u64 = 30;
 /// Seconds a person must spend on a review before their accept counts toward promotion.
@@ -136,6 +140,8 @@ struct Record {
     last_serious: Option<u64>,
     /// The open remediation plan, if any.
     remediation: Option<Plan>,
+    /// Allowed actions still to be sampled at the raised rate after a near miss.
+    raised: u32,
 }
 
 /// One reviewer's recent decisions, for the rubber-stamping rule (docs/design.md section 4).
@@ -349,6 +355,32 @@ impl Ledger {
         self.suspended.remove(agent);
     }
 
+    /// A gate or a person stopped an action on `capability` that would have been a mistake (S0). The
+    /// level and the evidence stay as they are; the next [`NEAR_MISS_ACTIONS`] allowed actions on it
+    /// are sampled for review at [`NEAR_MISS_PER_MILLE`].
+    pub fn near_miss(&mut self, agent: &str, capability: &str) {
+        self.records
+            .entry(Self::key(agent, capability))
+            .or_default()
+            .raised = NEAR_MISS_ACTIONS;
+    }
+
+    /// How many in a thousand allowed actions by `agent` on `capability` at `level` go to a person.
+    pub fn review_rate(&self, agent: &str, capability: &str, level: u8) -> u64 {
+        match self.records.get(&Self::key(agent, capability)) {
+            Some(r) if r.raised > 0 => NEAR_MISS_PER_MILLE,
+            _ => review_per_mille(level),
+        }
+    }
+
+    /// An action on `capability` ran on the agent's record; it used up one raised draw, if any were
+    /// left. Call it for every such action, in log order, so replay arrives at the same count.
+    pub fn count_allowed(&mut self, agent: &str, capability: &str) {
+        if let Some(r) = self.records.get_mut(&Self::key(agent, capability)) {
+            r.raised = r.raised.saturating_sub(1);
+        }
+    }
+
     /// The open remediation plan for an agent on a capability.
     pub fn plan(&self, agent: &str, capability: &str) -> Option<Plan> {
         self.records
@@ -435,6 +467,12 @@ pub fn review_per_mille(level: u8) -> u64 {
 /// of a secret seed and the sequence number, so it is the same every time it is recomputed from the
 /// log and the seed, and an agent without the seed can't tell which of its actions will be checked.
 pub fn sampled_for_review(seed: &[u8; 32], seq: u64, level: u8) -> bool {
+    sampled_at(seed, seq, review_per_mille(level))
+}
+
+/// [`sampled_for_review`] at an explicit rate, in actions per thousand, such as the one
+/// [`Ledger::review_rate`] gives.
+pub fn sampled_at(seed: &[u8; 32], seq: u64, per_mille: u64) -> bool {
     let digest = Sha256::new()
         .chain_update(b"mohar review sample v1")
         .chain_update(seed)
@@ -443,5 +481,5 @@ pub fn sampled_for_review(seed: &[u8; 32], seq: u64, level: u8) -> bool {
     let mut first = [0u8; 8];
     first.copy_from_slice(&digest[..8]);
     // 2^64 mod 1000 is 616, so the bias toward small residues is under one part in 10^16.
-    u64::from_be_bytes(first) % 1000 < review_per_mille(level)
+    u64::from_be_bytes(first) % 1000 < per_mille
 }

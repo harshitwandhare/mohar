@@ -1415,3 +1415,55 @@ fn an_otlp_endpoint_off_the_machine_stops_the_daemon() {
     assert_eq!(out.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&out.stderr).contains("loopback"));
 }
+
+#[test]
+fn a_gate_stop_raises_review_sampling_for_twenty_actions_and_survives_a_restart() {
+    use mohar_core::trust::{NEAR_MISS_PER_MILLE, review_per_mille, sampled_at};
+    let dir = fresh_log("near-miss");
+    let policy = json!({"version": 1,
+        "capabilities": {"fs.edit.docs": {"risk": "low", "reversible": true, "ceiling": 2}},
+        "rules": [{"tools": ["Edit"], "paths": ["docs/**"], "capability": "fs.edit.docs"}],
+        "gates": {"protected_paths": ["docs/secret.md"]}});
+    std::fs::write(dir.join("policy.json"), policy.to_string()).expect("policy");
+    let worker = "agent:claude-code/docs-writer";
+    earn_docs_trust(&dir, worker);
+    let seed = mohar_core::store::FileLog::open(&dir)
+        .expect("open")
+        .review_seed();
+    let ask = |port: u16, target: &str| {
+        let b = json!({"agent": worker, "tool": "Edit", "target": target, "args_sha256": SHA});
+        post(port, "/v1/decide", &b.to_string()).1
+    };
+    let mut d = Daemon::start(&dir, &[]);
+    let stopped = ask(d.port, "docs/secret.md");
+    assert_eq!(
+        (stopped["result"].as_str(), stopped["gate"].as_str()),
+        (Some("deny"), Some("protected_path"))
+    );
+    for allowed in 0..40u64 {
+        if allowed == 5 || allowed == 15 {
+            // Both the near miss and the raised draws already used come back from the log alone.
+            d.stop();
+            d = Daemon::start(&dir, &[]);
+        }
+        let a = ask(d.port, "docs/a.md");
+        assert_eq!(
+            (a["result"].as_str(), a["level"].as_u64()),
+            (Some("allow"), Some(1))
+        );
+        let seq = a["receipt_seq"].as_u64().expect("seq");
+        let rate = if allowed < 20 {
+            NEAR_MISS_PER_MILLE
+        } else {
+            review_per_mille(1)
+        };
+        assert_eq!(
+            a["review"].as_bool(),
+            Some(sampled_at(&seed, seq, rate)),
+            "allowed action {} (receipt {seq}) drawn at {rate} per mille",
+            allowed + 1
+        );
+    }
+    d.stop();
+    verify(&dir);
+}
