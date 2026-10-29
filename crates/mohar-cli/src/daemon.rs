@@ -16,7 +16,7 @@ use std::time::Duration;
 use mohar_core::policy::{Policy, Risk};
 use mohar_core::privacy::is_pseudonym;
 use mohar_core::store::{FileLog, for_each_log_receipt};
-use mohar_core::trust::{Ledger, Outcome, Severity, sampled_for_review};
+use mohar_core::trust::{Ledger, Outcome, Severity, sampled_at};
 use mohar_core::{Action, Decision, Entry, Receipt, Verification};
 use serde::Deserialize;
 
@@ -230,6 +230,14 @@ fn replay(dir: &Path, policy: &Policy) -> Result<(HashMap<u64, Pending>, Ledger)
             }
         }
         None => {
+            // A gate stop is a near miss (S0) unless it only stopped a suspended agent; an action
+            // run on the record uses up one raised review draw. The live path does the same.
+            let (by, result) = (r.decision.by.as_str(), r.decision.result.as_str());
+            if by == "gate" && result == "deny" && !ledger.is_suspended(&r.agent.id) {
+                ledger.near_miss(&r.agent.id, &r.action.capability);
+            } else if by == "score" && result == "allow" {
+                ledger.count_allowed(&r.agent.id, &r.action.capability);
+            }
             pending.insert(
                 r.seq,
                 Pending {
@@ -561,8 +569,12 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         .ledger
         .decide(&agent, &action.capability, &classified.spec, now);
     // What runs on the agent's own record is sampled for a person to check afterwards, so a record
-    // built on unchecked luck gets caught. The draw is fixed by the log's seed and the receipt number.
+    // built on unchecked luck gets caught. The draw is fixed by the log's seed and the receipt number,
+    // at the level's rate or the raised one after a near miss.
     let next_seq = inner.log.len();
+    let rate = inner
+        .ledger
+        .review_rate(&agent, &action.capability, verdict.level);
     let decision = match &stop {
         Some(_) => Decision {
             result: "deny".to_string(),
@@ -584,7 +596,7 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
             review: verdict.result == "allow"
                 && !suspended
                 && classified.spec.risk != Risk::None
-                && sampled_for_review(&state.review_seed, next_seq, verdict.level),
+                && sampled_at(&state.review_seed, next_seq, rate),
         },
     };
     let entry = Entry {
@@ -600,6 +612,13 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         Err(e) => return (500, json!({ "error": e.to_string() })),
     };
     let capability = action.capability.clone();
+    // Both follow from the receipt just written, the same way replay reads them back.
+    if stop.is_some() && !suspended {
+        inner.ledger.near_miss(&agent, &capability);
+    }
+    if decision.result == "allow" && decision.by == "score" {
+        inner.ledger.count_allowed(&agent, &capability);
+    }
     inner.pending.insert(
         receipt.seq,
         Pending {
