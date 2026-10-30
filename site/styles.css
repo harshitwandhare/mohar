@@ -31,12 +31,14 @@ a { color: inherit; }
 img { max-width: 100%; height: auto; display: block; }
 .skip { position: absolute; left: -999px; }
 .skip:focus { left: var(--edge); top: 8px; background: var(--ink); color: var(--ground); padding: 8px 12px; }
+/* Tap targets are 44px or more each way (WCAG 2.5.5); links inside sentences are exempt. */
+.skip { display: inline-flex; align-items: center; min-height: 44px; }
 :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
 
 /* Header: the same on every page. Under 900px the links fold into a menu. */
 .bar { position: sticky; top: 0; z-index: 10; display: flex; justify-content: space-between; align-items: center; gap: 24px;
   height: 64px; padding: 0 var(--edge); background: var(--ground); }
-.wordmark { flex-shrink: 0; font-weight: 800; font-size: 19px; letter-spacing: -0.01em; text-decoration: none; display: flex; align-items: center; gap: 10px; }
+.wordmark { flex-shrink: 0; font-weight: 800; font-size: 19px; letter-spacing: -0.01em; text-decoration: none; display: flex; align-items: center; gap: 10px; min-height: 44px; }
 .wordmark img { width: 28px; height: 28px; }
 .bar nav { display: flex; align-items: center; gap: 4px; font-size: 15px; }
 .bar nav a { display: inline-flex; align-items: center; min-height: 44px; text-decoration: none; color: var(--soft); padding: 8px 12px; border-radius: var(--radius); transition: color .15s ease, background .15s ease; }
@@ -146,7 +148,7 @@ figcaption { color: var(--soft); font-size: var(--s-small); margin-top: 10px; }
   .doc .doc-layout { grid-template-columns: minmax(0, 1fr); gap: 24px; padding-top: 20px; }
   /* On a phone the contents list is one row of chips that scrolls sideways. */
   .toc { position: static; max-height: none; display: flex; gap: 8px; overflow-x: auto; margin: 0 calc(-1 * var(--edge)); padding: 0 var(--edge) 6px; scrollbar-width: none; }
-  .toc a { flex: none; white-space: nowrap; padding: 8px 14px; background: var(--field); border-radius: 999px; }
+  .toc a { flex: none; white-space: nowrap; padding: 0 14px; min-height: 44px; display: inline-flex; align-items: center; background: var(--field); border-radius: 999px; }
 }
 .prose { max-width: 76ch; min-width: 0; }
 .prose h1 { font-size: var(--s-heading); margin-top: 0; }

@@ -308,3 +308,23 @@ test('every control on each page shows a focus ring at 3:1 or more against what 
     expect(missing, file).toEqual([]);
   }
 });
+
+test('on a phone every control outside running text is at least 44px each way', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const files = readdirSync('site').filter(f => f.endsWith('.html'));
+  const small = [];
+  for (const file of files) {
+    await page.goto('/' + (file === 'index.html' ? '' : file));
+    small.push(...(await page.evaluate(() => {
+      // A link inside a sentence is exempt (WCAG 2.5.5): enlarging it would push the lines apart.
+      const inline = el => el.tagName === 'A' && el.closest('p, li, td, dd, figcaption, blockquote');
+      return [...document.querySelectorAll('a[href], button, summary, input, select, textarea')]
+        .filter(el => !inline(el))
+        .map(el => ({ el, r: el.getBoundingClientRect() }))
+        .filter(({ el, r }) => r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden')
+        .filter(({ r }) => r.width < 44 - 0.5 || r.height < 44 - 0.5)
+        .map(({ el, r }) => `${el.tagName.toLowerCase()} "${(el.textContent || el.getAttribute('aria-label') || '').trim().slice(0, 30)}" ${Math.round(r.width)}x${Math.round(r.height)}`);
+    })).map(m => `${file}: ${m}`));
+  }
+  expect(small).toEqual([]);
+});
