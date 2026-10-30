@@ -13,11 +13,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use mohar_core::lessons::{Book, Lesson};
 use mohar_core::policy::{Policy, Risk};
 use mohar_core::privacy::is_pseudonym;
 use mohar_core::store::{FileLog, for_each_log_receipt};
 use mohar_core::trust::{Ledger, Outcome, Severity, sampled_at};
-use mohar_core::{Action, Decision, Entry, Receipt, Verification};
+use mohar_core::{Action, Decision, Entry, Receipt, VERSION, Verification, receipt_hash};
 use serde::Deserialize;
 
 use crate::telemetry::{self, Event, Telemetry};
@@ -31,6 +32,8 @@ const MAX_BODY: usize = 64 * 1024;
 const MAX_FIELD: usize = 512;
 /// Longest target (a path, a branch, a command line).
 const MAX_TARGET: usize = 4096;
+/// Lessons handed back with a decision: the most recent ones, so the answer stays small.
+const MAX_LESSONS: usize = 5;
 
 pub struct Config {
     pub addr: SocketAddr,
@@ -83,6 +86,8 @@ struct Inner {
     baselines: HashMap<(String, String), Option<HashSet<String>>>,
     /// Trust per agent and capability, rebuilt from the log on start.
     ledger: Ledger,
+    /// Lessons from verified failures, rebuilt from the same receipts.
+    lessons: Book,
 }
 
 /// Serve until the process is stopped. Prints `listening on ADDR` once bound, so callers that ask
@@ -102,7 +107,7 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
         .transpose()?;
     let mut log = FileLog::open(dir).map_err(|e| e.to_string())?;
     log.set_segment_bytes(cfg.segment_bytes);
-    let (pending, ledger) = replay(dir, &policy)?;
+    let (pending, ledger, lessons) = replay(dir, &policy, &log)?;
     let listener = TcpListener::bind(cfg.addr).map_err(|e| format!("{}: {e}", cfg.addr))?;
     let local = listener.local_addr().map_err(|e| e.to_string())?;
     // Nobody may be reading stdout (a closed pipe on Windows); the daemon must not die over that.
@@ -134,6 +139,7 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
             log,
             pending,
             ledger,
+            lessons,
             tasks: HashMap::new(),
             ran: HashSet::new(),
             baselines: HashMap::new(),
@@ -208,13 +214,21 @@ fn load_policy(dir: &Path) -> Result<Policy, String> {
     }
 }
 
-/// Read the log once: decisions still waiting for an outcome, and the trust ledger rebuilt from every
-/// verified outcome. Trust lives nowhere but the signed log, so outcomes in archived segments no
-/// longer count.
-fn replay(dir: &Path, policy: &Policy) -> Result<(HashMap<u64, Pending>, Ledger), String> {
+/// Read the log once: decisions still waiting for an outcome, and the trust ledger and lesson book
+/// rebuilt from every verified outcome. Trust and lessons live nowhere but the signed log, so outcomes
+/// in archived segments no longer count.
+fn replay(
+    dir: &Path,
+    policy: &Policy,
+    log: &FileLog,
+) -> Result<(HashMap<u64, Pending>, Ledger, Book), String> {
     let mut pending = HashMap::new();
     let mut ledger = Ledger::new();
-    for_each_log_receipt(dir, |r: Receipt| match r.verification {
+    let mut lessons = Book::new(log.verifying_key());
+    // Signing a lesson has no failing input today; if one appears, the daemon doesn't start on a
+    // book it couldn't rebuild.
+    let mut failed = None;
+    for_each_log_receipt(dir, |r: Receipt| match &r.verification {
         Some(v) => {
             if v.kind != "host" {
                 pending.remove(&v.of);
@@ -227,6 +241,9 @@ fn replay(dir: &Path, policy: &Policy) -> Result<(HashMap<u64, Pending>, Ledger)
                 parse_rfc3339(&r.ts),
             ) {
                 ledger.record(&r.agent.id, &r.action.capability, &o);
+                if let Err(e) = learn(&mut lessons, log, &r, &o) {
+                    failed.get_or_insert(e);
+                }
             }
         }
         None => {
@@ -249,7 +266,53 @@ fn replay(dir: &Path, policy: &Policy) -> Result<(HashMap<u64, Pending>, Ledger)
         }
     })
     .map_err(|e| e.to_string())?;
-    Ok((pending, ledger))
+    match failed {
+        Some(e) => Err(e),
+        None => Ok((pending, ledger, lessons)),
+    }
+}
+
+/// Keep the lesson book in step with an outcome that counted. Everything comes from the receipt as
+/// written, so the live path and replay build the same book. A failure becomes a lesson, and an S3 or
+/// S4 also puts what the agent learned up to then under review. A pass is the fix for every lesson the
+/// agent has on that capability still waiting for one.
+fn learn(book: &mut Book, log: &FileLog, r: &Receipt, o: &Outcome) -> Result<(), String> {
+    let hash = receipt_hash(r).map_err(|e| e.to_string())?;
+    let (agent, capability) = (&r.agent.id, &r.action.capability);
+    let sign = |l: Lesson| log.sign_lesson(l).map_err(|e| e.to_string());
+    if o.passed {
+        for id in book.unfixed(agent, capability) {
+            // `unfixed` names only lessons in the book.
+            let Some(mut l) = book.get(id).cloned() else {
+                continue;
+            };
+            l.fix.clone_from(&hash);
+            l.receipts.push(hash.clone());
+            book.record_fix(id, sign(l)?).map_err(|e| e.to_string())?;
+        }
+        return Ok(());
+    }
+    let at = parse_rfc3339(&r.ts);
+    if o.severity >= Severity::S3 {
+        book.quarantine(agent, at);
+    }
+    let kind = r.verification.as_ref().map_or("", |v| v.kind.as_str());
+    let lesson = Lesson {
+        v: VERSION,
+        agent: agent.clone(),
+        capability: capability.clone(),
+        at,
+        failure: hash.clone(),
+        finding: format!(
+            "the {kind} verifier failed {} on {}",
+            r.action.tool, r.action.target
+        ),
+        fix: String::new(),
+        receipts: vec![hash],
+        sig: String::new(),
+    };
+    book.add(sign(lesson)?).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// The trust outcome an outcome receipt stands for, if it counts. The host's own report that a tool
@@ -612,6 +675,20 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         Err(e) => return (500, json!({ "error": e.to_string() })),
     };
     let capability = action.capability.clone();
+    let lessons: Vec<serde_json::Value> = {
+        let all = inner.lessons.for_context(&agent, &capability);
+        all[all.len().saturating_sub(MAX_LESSONS)..]
+            .iter()
+            .map(|l| {
+                json!({
+                    "at": l.at,
+                    "finding": l.finding,
+                    "failure": l.failure,
+                    "fix": (!l.fix.is_empty()).then_some(&l.fix),
+                })
+            })
+            .collect()
+    };
     // Both follow from the receipt just written, the same way replay reads them back.
     if stop.is_some() && !suspended {
         inner.ledger.near_miss(&agent, &capability);
@@ -658,6 +735,7 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
             "review": decision.review,
             "gate": stop.as_ref().map(|g| g.gate),
             "reason": stop.map(|g| g.reason),
+            "lessons": lessons,
         }),
     )
 }
@@ -739,7 +817,6 @@ fn append_outcome(
         .get(&seq)
         .cloned()
         .ok_or("no pending decision")?;
-    let counted = verified(kind, result, &p.action.capability, policy, now_secs());
     let (agent, capability) = (p.agent_id.clone(), p.action.capability.clone());
     let entry = Entry {
         ts: crate::now_rfc3339(),
@@ -754,6 +831,8 @@ fn append_outcome(
         }),
     };
     let r = inner.log.append(entry).map_err(|e| e.to_string())?;
+    // Timed by the receipt, as replay times it, so a restart rebuilds the same state.
+    let counted = verified(kind, result, &capability, policy, parse_rfc3339(&r.ts));
     if kind == "host" {
         inner.ran.insert(seq);
     } else {
@@ -762,6 +841,7 @@ fn append_outcome(
     }
     if let Some(o) = counted {
         inner.ledger.record(&agent, &capability, &o);
+        learn(&mut inner.lessons, &inner.log, &r, &o)?;
     }
     Ok(r.seq)
 }
@@ -1038,6 +1118,7 @@ mod tests {
         State {
             review_seed: log.review_seed(),
             log: Mutex::new(Inner {
+                lessons: Book::new(log.verifying_key()),
                 log,
                 pending: HashMap::new(),
                 calls: HashMap::new(),

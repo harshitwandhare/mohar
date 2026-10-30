@@ -533,6 +533,19 @@ impl FileLog {
             .into()
     }
 
+    /// The log's public key.
+    pub fn verifying_key(&self) -> VerifyingKey {
+        self.key.verifying_key()
+    }
+
+    /// Sign a lesson with the log's key, so a [`crate::lessons::Book`] for this log takes it.
+    pub fn sign_lesson(
+        &self,
+        lesson: crate::lessons::Lesson,
+    ) -> Result<crate::lessons::Lesson, Error> {
+        crate::lessons::sign(&self.key, lesson)
+    }
+
     /// Whether this log is in strict privacy mode.
     pub fn is_strict(&self) -> bool {
         self.identities.is_some()

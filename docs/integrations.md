@@ -107,7 +107,7 @@ don't. That covers agents with no usable hook after the fact: their work can't m
 Every adapter makes the same two calls to the daemon on the local machine:
 
 ```
-POST /v1/decide   { agent, tool, target, args_sha256, call_id? }  ->  { result, level, receipt_seq }
+POST /v1/decide   { agent, tool, target, args_sha256, call_id? }  ->  { result, level, receipt_seq, lessons }
 POST /v1/outcome  { receipt_seq, verifier, result, evidence_sha256 }  ->  { receipt_seq }
 ```
 

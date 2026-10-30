@@ -9,6 +9,10 @@ receipt format; each such change is called out.
 
 ### Added
 
+- The daemon keeps a lesson book. Every verified failure becomes a lesson signed with the log's key, the
+  next verified pass on that capability is recorded as its fix, an S3 or S4 failure withholds the agent's
+  earlier lessons, and `/v1/decide` returns the five most recent lessons for the capability. The book is
+  rebuilt from the outcome receipts on start (#164).
 - A near miss raises review sampling. When a gate stops an agent on a capability, its next 20 actions
   allowed on that capability are sampled for review at 50% instead of the level's rate. The daemon
   rebuilds the raised count from the log on restart (#150).
