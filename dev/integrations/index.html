@@ -1435,7 +1435,7 @@ don't. That covers agents with no usable hook after the fact: their work can't m
 </table>
 <h2 id="the-interface-every-adapter-uses">The interface every adapter uses<a class="headerlink" href="#the-interface-every-adapter-uses" title="Permanent link">&para;</a></h2>
 <p>Every adapter makes the same two calls to the daemon on the local machine:</p>
-<div class="highlight"><pre><span></span><code>POST /v1/decide   { agent, tool, target, args_sha256, call_id? }  -&gt;  { result, level, receipt_seq }
+<div class="highlight"><pre><span></span><code>POST /v1/decide   { agent, tool, target, args_sha256, call_id? }  -&gt;  { result, level, receipt_seq, lessons }
 POST /v1/outcome  { receipt_seq, verifier, result, evidence_sha256 }  -&gt;  { receipt_seq }
 </code></pre></div>
 <p>If the daemon can't be reached, adapters on enforcing hosts deny. That is the fail-closed rule from the

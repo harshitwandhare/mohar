@@ -1413,10 +1413,19 @@ and cumulative metrics: <code>mohar.decisions</code> by result, <code>mohar.outc
 targets or arguments. Export runs on its own thread; a collector that is down or slow loses telemetry
 and never delays or changes a decision. Without the flag nothing is collected.</p>
 <p>Two endpoints, JSON in and out:</p>
-<div class="highlight"><pre><span></span><code>POST /v1/decide   {agent, tool, target, args_sha256, call_id?}  -&gt;  {result, level, receipt_seq}
+<div class="highlight"><pre><span></span><code>POST /v1/decide   {agent, tool, target, args_sha256, call_id?}  -&gt;  {result, level, receipt_seq, lessons}
 POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256}  -&gt;  {receipt_seq}
 POST /v1/verify   {agent, task}  -&gt;  {verified, result}
 </code></pre></div>
+<p>Lessons: every verified failure (any verifier but <code>host</code>, and only <code>fail</code>, never <code>unknown</code>) becomes a
+lesson for that agent on that capability, signed with the log's key. <code>/v1/decide</code> returns the five most
+recent for the capability it classified, oldest first, each as <code>{at, finding, failure, fix}</code>: when it
+was verified (seconds since the epoch), what failed (<code>the tests verifier failed Edit on docs/a.md</code>), the
+hash of the outcome receipt that failed, and the hash of the next verified pass by that agent on that
+capability, or <code>null</code> until there is one. After an S3 or S4 failure the agent's lessons up to then are
+withheld until a person releases them. The book is rebuilt from the outcome receipts on every start, so
+there is no separate file to edit or lose. In strict privacy mode the finding names the pseudonymous
+target, as the receipt does.</p>
 <p><code>/v1/verify</code> verifies a finished task and records one outcome for every decision in the task that ran and
 changes something, from the first verifier that fails:</p>
 <ol>

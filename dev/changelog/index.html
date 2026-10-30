@@ -1331,6 +1331,10 @@ receipt format; each such change is called out.</p>
 <h2 id="unreleased"><a href="https://github.com/harshitwandhare/mohar/compare/v0.2.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
+<li>The daemon keeps a lesson book. Every verified failure becomes a lesson signed with the log's key, the
+  next verified pass on that capability is recorded as its fix, an S3 or S4 failure withholds the agent's
+  earlier lessons, and <code>/v1/decide</code> returns the five most recent lessons for the capability. The book is
+  rebuilt from the outcome receipts on start (#164).</li>
 <li>A near miss raises review sampling. When a gate stops an agent on a capability, its next 20 actions
   allowed on that capability are sampled for review at 50% instead of the level's rate. The daemon
   rebuilds the raised count from the log on restart (#150).</li>
