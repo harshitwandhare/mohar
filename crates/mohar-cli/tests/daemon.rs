@@ -1467,3 +1467,100 @@ fn a_gate_stop_raises_review_sampling_for_twenty_actions_and_survives_a_restart(
     d.stop();
     verify(&dir);
 }
+
+/// Ask for a decision as `worker`, then give it an outcome. Returns the decision's answer.
+fn decide_then(port: u16, worker: &str, target: &str, verifier: &str, result: &str) -> Value {
+    let b = json!({"agent": worker, "tool": "Edit", "target": target, "args_sha256": SHA});
+    let a = post(port, "/v1/decide", &b.to_string()).1;
+    let seq = a["receipt_seq"].as_u64().expect("seq");
+    let o =
+        json!({"receipt_seq": seq, "verifier": verifier, "result": result, "evidence_sha256": SHA});
+    assert_eq!(post(port, "/v1/outcome", &o.to_string()).0, 200);
+    a
+}
+
+/// The lessons the daemon hands back with a decision on `target`.
+fn lessons_for(port: u16, worker: &str, target: &str) -> Vec<Value> {
+    let b = json!({"agent": worker, "tool": "Edit", "target": target, "args_sha256": SHA});
+    let a = post(port, "/v1/decide", &b.to_string()).1;
+    a["lessons"].as_array().expect("lessons array").clone()
+}
+
+#[test]
+fn a_failed_outcome_comes_back_as_a_lesson_on_that_capability_and_after_a_restart() {
+    let dir = fresh_log("lessons");
+    let worker = "agent:claude-code/docs-writer";
+    let d = Daemon::start(&dir, &[]);
+    assert!(lessons_for(d.port, worker, "docs/a.md").is_empty());
+    decide_then(d.port, worker, "docs/a.md", "tests", "fail");
+    // Neither a host report nor an unknown result is a verified failure.
+    decide_then(d.port, worker, "docs/b.md", "host", "fail");
+    decide_then(d.port, worker, "docs/c.md", "tests", "unknown");
+    let lessons = lessons_for(d.port, worker, "docs/a.md");
+    assert_eq!(lessons.len(), 1, "{lessons:?}");
+    let finding = lessons[0]["finding"].as_str().expect("finding");
+    assert!(
+        finding.contains("tests") && finding.contains("docs/a.md"),
+        "{finding}"
+    );
+    assert!(
+        lessons[0]["failure"]
+            .as_str()
+            .is_some_and(|h| h.starts_with("sha256:")),
+        "{lessons:?}"
+    );
+    assert!(lessons[0]["fix"].is_null(), "not fixed yet");
+    assert!(
+        lessons_for(d.port, worker, "src/main.rs").is_empty(),
+        "another capability"
+    );
+    assert!(
+        lessons_for(d.port, "agent:claude-code/other", "docs/a.md").is_empty(),
+        "another agent"
+    );
+    decide_then(d.port, worker, "docs/a.md", "tests", "pass");
+    let fixed = lessons_for(d.port, worker, "docs/a.md");
+    assert_eq!(fixed.len(), 1);
+    assert!(
+        fixed[0]["fix"]
+            .as_str()
+            .is_some_and(|h| h.starts_with("sha256:") && h != lessons[0]["failure"]),
+        "{fixed:?}"
+    );
+    d.stop();
+    let d = Daemon::start(&dir, &[]);
+    assert_eq!(
+        lessons_for(d.port, worker, "docs/a.md"),
+        fixed,
+        "the log alone rebuilds the book"
+    );
+    d.stop();
+    verify(&dir);
+}
+
+#[test]
+fn a_serious_failure_withholds_the_agent_s_lessons_and_a_restart_keeps_them_withheld() {
+    let dir = fresh_log("quarantine");
+    let policy = json!({"version": 1,
+        "capabilities": {
+            "fs.edit.docs":   {"risk": "low",  "reversible": true, "ceiling": 2},
+            "fs.edit.config": {"risk": "high", "reversible": true, "ceiling": 1}},
+        "rules": [
+            {"tools": ["Edit"], "paths": ["docs/**"], "capability": "fs.edit.docs"},
+            {"tools": ["Edit"], "paths": ["site/**"], "capability": "fs.edit.config"}]});
+    std::fs::write(dir.join("policy.json"), policy.to_string()).expect("policy");
+    let worker = "agent:claude-code/site-worker";
+    let d = Daemon::start(&dir, &[]);
+    decide_then(d.port, worker, "docs/a.md", "tests", "fail");
+    assert_eq!(lessons_for(d.port, worker, "docs/a.md").len(), 1);
+    decide_then(d.port, worker, "site/vercel.json", "tests", "fail");
+    assert!(
+        lessons_for(d.port, worker, "docs/a.md").is_empty(),
+        "an S3 puts what the agent learned before it under review"
+    );
+    assert!(lessons_for(d.port, worker, "site/vercel.json").is_empty());
+    d.stop();
+    let d = Daemon::start(&dir, &[]);
+    assert!(lessons_for(d.port, worker, "docs/a.md").is_empty());
+    d.stop();
+}

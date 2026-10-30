@@ -47,6 +47,9 @@ pub enum LessonError {
     /// Its signature doesn't match its content and the log's key, or its version is unknown.
     #[error("lesson signature does not verify")]
     BadSignature,
+    /// It isn't the same lesson with only its fix added, or the lesson already has one.
+    #[error("not a fix for that lesson")]
+    NotAFix,
 }
 
 fn signing_bytes(l: &Lesson) -> Result<Vec<u8>, Error> {
@@ -109,6 +112,41 @@ impl Book {
         }
         self.lessons.push(lesson);
         Ok(self.lessons.len() - 1)
+    }
+
+    /// The lesson with this id.
+    pub fn get(&self, id: usize) -> Option<&Lesson> {
+        self.lessons.get(id)
+    }
+
+    /// Ids of `agent`'s lessons on `capability` that have no fix yet, oldest first.
+    pub fn unfixed(&self, agent: &str, capability: &str) -> Vec<usize> {
+        self.lessons
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| l.agent == agent && l.capability == capability && l.fix.is_empty())
+            .map(|(id, _)| id)
+            .collect()
+    }
+
+    /// Replace lesson `id` with `fixed`: the same lesson, signed again, with `fix` set and that hash
+    /// added at the end of `receipts`. Nothing else may change, and a lesson gets one fix only.
+    pub fn record_fix(&mut self, id: usize, fixed: Lesson) -> Result<(), LessonError> {
+        if !signature_ok(&fixed, &self.key) {
+            return Err(LessonError::BadSignature);
+        }
+        let Some(old) = self.lessons.get_mut(id) else {
+            return Err(LessonError::NotAFix);
+        };
+        let mut expected = old.clone();
+        expected.fix.clone_from(&fixed.fix);
+        expected.receipts.push(fixed.fix.clone());
+        expected.sig.clone_from(&fixed.sig);
+        if !old.fix.is_empty() || fixed.fix.is_empty() || expected != fixed {
+            return Err(LessonError::NotAFix);
+        }
+        *old = fixed;
+        Ok(())
     }
 
     /// A person promotes a lesson to the team: every agent on its capability gets it. Returns false

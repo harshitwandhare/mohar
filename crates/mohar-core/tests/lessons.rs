@@ -201,3 +201,82 @@ fn a_lesson_round_trips_through_json_and_refuses_unknown_fields() {
     let extra = text.replacen('{', "{\"level\":2,", 1);
     assert!(serde_json::from_str::<Lesson>(&extra).is_err());
 }
+
+fn unfixed(agent: &str, capability: &str, at: u64, finding: &str) -> Lesson {
+    let mut l = lesson(agent, capability, at, finding);
+    l.fix.clear();
+    sign(&key(), l).expect("signs")
+}
+
+fn with_fix(l: &Lesson, fix: &str) -> Lesson {
+    let mut l = l.clone();
+    l.fix = fix.into();
+    l.receipts.push(fix.into());
+    sign(&key(), l).expect("signs")
+}
+
+#[test]
+fn a_fix_is_recorded_once_on_the_lesson_it_belongs_to() {
+    let mut book = Book::new(key().verifying_key());
+    let open = book
+        .add(unfixed(A, "db.migrate", DAY, "dropped a column"))
+        .expect("adds");
+    let other = book
+        .add(unfixed(A, "fs.edit.docs", DAY, "broke a link"))
+        .expect("adds");
+    book.add(unfixed(B, "db.migrate", DAY, "someone else's"))
+        .expect("adds");
+    assert_eq!(book.unfixed(A, "db.migrate"), [open]);
+    let fix = "sha256:".to_string() + &"cd".repeat(32);
+    let fixed = with_fix(book.get(open).expect("there"), &fix);
+    assert_eq!(book.record_fix(open, fixed.clone()), Ok(()));
+    assert_eq!(book.get(open), Some(&fixed));
+    assert!(book.unfixed(A, "db.migrate").is_empty());
+    assert_eq!(book.unfixed(A, "fs.edit.docs"), [other]);
+    assert_eq!(
+        book.record_fix(open, with_fix(&fixed, &fix)),
+        Err(LessonError::NotAFix),
+        "already fixed"
+    );
+    assert!(book.get(99).is_none());
+    assert_eq!(
+        book.record_fix(99, fixed),
+        Err(LessonError::NotAFix),
+        "no such lesson"
+    );
+}
+
+#[test]
+fn a_fix_cannot_rewrite_what_the_lesson_says() {
+    let mut book = Book::new(key().verifying_key());
+    let id = book
+        .add(unfixed(A, "db.migrate", DAY, "dropped a column"))
+        .expect("adds");
+    let fix = "sha256:".to_string() + &"cd".repeat(32);
+    let original = book.get(id).expect("there").clone();
+    let rewrites: [fn(&mut Lesson); 6] = [
+        |l| l.finding = "nothing went wrong".into(),
+        |l| l.agent = B.into(),
+        |l| l.capability = "fs.edit.docs".into(),
+        |l| l.at += 1,
+        |l| l.failure = "sha256:".to_string() + &"00".repeat(32),
+        |l| l.receipts.clear(),
+    ];
+    for rewrite in rewrites {
+        let mut l = original.clone();
+        rewrite(&mut l);
+        let changed = with_fix(&l, &fix);
+        assert_eq!(book.record_fix(id, changed), Err(LessonError::NotAFix));
+    }
+    let mut empty = original.clone();
+    empty.receipts.push(String::new());
+    assert_eq!(
+        book.record_fix(id, sign(&key(), empty).expect("signs")),
+        Err(LessonError::NotAFix),
+        "an empty fix is no fix"
+    );
+    let mut forged = with_fix(&original, &fix);
+    forged.sig = original.sig.clone();
+    assert_eq!(book.record_fix(id, forged), Err(LessonError::BadSignature));
+    assert_eq!(book.get(id), Some(&original));
+}

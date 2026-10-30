@@ -131,10 +131,20 @@ and never delays or changes a decision. Without the flag nothing is collected.
 Two endpoints, JSON in and out:
 
 ```
-POST /v1/decide   {agent, tool, target, args_sha256, call_id?}  ->  {result, level, receipt_seq}
+POST /v1/decide   {agent, tool, target, args_sha256, call_id?}  ->  {result, level, receipt_seq, lessons}
 POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256}  ->  {receipt_seq}
 POST /v1/verify   {agent, task}  ->  {verified, result}
 ```
+
+Lessons: every verified failure (any verifier but `host`, and only `fail`, never `unknown`) becomes a
+lesson for that agent on that capability, signed with the log's key. `/v1/decide` returns the five most
+recent for the capability it classified, oldest first, each as `{at, finding, failure, fix}`: when it
+was verified (seconds since the epoch), what failed (`the tests verifier failed Edit on docs/a.md`), the
+hash of the outcome receipt that failed, and the hash of the next verified pass by that agent on that
+capability, or `null` until there is one. After an S3 or S4 failure the agent's lessons up to then are
+withheld until a person releases them. The book is rebuilt from the outcome receipts on every start, so
+there is no separate file to edit or lose. In strict privacy mode the finding names the pseudonymous
+target, as the receipt does.
 
 `/v1/verify` verifies a finished task and records one outcome for every decision in the task that ran and
 changes something, from the first verifier that fails:
