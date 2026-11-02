@@ -116,11 +116,47 @@ pub struct Receipt {
         deserialize_with = "present"
     )]
     pub verification: Option<Verification>,
+    /// Present only on a receipt that records what a person did to the trust state: promoted a
+    /// lesson, released a quarantine or extended a remediation plan. Never on the same receipt as
+    /// `verification`.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    pub person: Option<Person>,
 }
 
-// The two optional fields are written only when they say something. Reading `"review": false` or
-// `"verification": null` as if the key were absent would give a receipt a second spelling with the same
-// signature, and a field nobody signed, so both are refused.
+/// What a person did, on a receipt of its own. The receipt's `agent` and `action.capability` name what
+/// it applies to, `action.tool` is `mohar`, and `decision.by` is `human`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Person {
+    /// `promote` a lesson to the team, `release` an agent's quarantined lessons, or `extend` a
+    /// remediation plan's deadline.
+    pub act: String,
+    /// The person, by stable (and in strict privacy mode, pseudonymous) id.
+    pub by: String,
+    /// For `promote`: the hash of the failed outcome receipt the lesson came from.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    pub lesson: Option<String>,
+    /// For `extend`: the new deadline, in seconds since the Unix epoch.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    pub until: Option<u64>,
+}
+
+// The optional fields are written only when they say something. Reading `"review": false` or
+// `"verification": null` (or `"person": null`, `"lesson": null`, `"until": null`) as if the key were absent
+// would give a receipt a second spelling with the same signature, and a field nobody signed, so all are
+// refused.
 
 fn only_true<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
     if bool::deserialize(d)? {
@@ -130,8 +166,10 @@ fn only_true<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
     }
 }
 
-fn present<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Verification>, D::Error> {
-    Verification::deserialize(d).map(Some)
+fn present<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(
+    d: D,
+) -> Result<Option<T>, D::Error> {
+    T::deserialize(d).map(Some)
 }
 
 /// The fields a caller supplies; the log fills in the rest.
@@ -147,6 +185,8 @@ pub struct Entry {
     pub decision: Decision,
     /// The outcome this receipt records, if it is a follow-up.
     pub verification: Option<Verification>,
+    /// What a person did, if this receipt records that instead of an agent's action.
+    pub person: Option<Person>,
 }
 
 /// Errors from building or signing receipts.
@@ -260,6 +300,10 @@ fn canonical_with(r: &Receipt, with_sig: bool) -> Result<Vec<u8>, Error> {
         || r.verification
             .as_ref()
             .is_some_and(|v| v.of > MAX_PLAIN_INT)
+        || r.person
+            .as_ref()
+            .and_then(|p| p.until)
+            .is_some_and(|u| u > MAX_PLAIN_INT)
     {
         let mut copy = r.clone();
         if !with_sig {
@@ -298,6 +342,18 @@ fn fast_canonical(r: &Receipt, with_sig: bool) -> Vec<u8> {
         o.extend_from_slice(br#","review":true"#);
     }
     o.extend_from_slice(b"},");
+    // "person" sorts between "decision" and "prev"; its own keys are act, by, lesson, until.
+    if let Some(p) = &r.person {
+        s(&mut o, r#""person":{"act":"#, &p.act);
+        s(&mut o, r#","by":"#, &p.by);
+        if let Some(lesson) = &p.lesson {
+            s(&mut o, r#","lesson":"#, lesson);
+        }
+        if let Some(until) = p.until {
+            let _ = write!(o, r#","until":{until}"#);
+        }
+        o.extend_from_slice(b"},");
+    }
     s(&mut o, r#""prev":"#, &r.prev);
     let _ = write!(o, r#","seq":{}"#, r.seq);
     if with_sig && !r.sig.is_empty() {
@@ -379,6 +435,7 @@ pub(crate) fn seal(
         action: entry.action,
         decision: entry.decision,
         sig: String::new(),
+        person: entry.person,
         verification: entry.verification,
     };
     let sig = key.0.sign(&signing_bytes(&r)?);
@@ -574,7 +631,7 @@ pub fn verify(receipts: &[Receipt], key: &VerifyingKey) -> Result<(), ChainBreak
 #[allow(clippy::expect_used)]
 mod tests {
     use super::{
-        Action, Agent, BreakKind, ChainVerifier, Decision, Prechecked, Receipt, SigningKey,
+        Action, Agent, BreakKind, ChainVerifier, Decision, Person, Prechecked, Receipt, SigningKey,
         Verification, canonical, hex, signing_bytes, unhex,
     };
     use proptest::prelude::*;
@@ -620,6 +677,7 @@ mod tests {
                 review: false,
             },
             sig,
+            person: None,
             verification,
         }
     }
@@ -635,9 +693,12 @@ mod tests {
             verification in proptest::option::of((text(), text(), any::<u64>(), text())
                 .prop_map(|(evidence_sha256, kind, of, result)| Verification { evidence_sha256, kind, of, result })),
             review in any::<bool>(),
+            person in proptest::option::of((text(), text(), proptest::option::of(text()), proptest::option::of(any::<u64>()))
+                .prop_map(|(act, by, lesson, until)| Person { act, by, lesson, until })),
         ) {
             let mut r = receipt(s, n, sig, verification);
             r.decision.review = review;
+            r.person = person;
             let general = serde_jcs::to_vec(&r).expect("jcs");
             prop_assert_eq!(canonical(&r).expect("fast"), general);
             let mut unsigned = r.clone();
@@ -695,6 +756,7 @@ mod tests {
                     by: "score".into(),
                     review: false,
                 },
+                person: None,
                 verification: None,
             })
             .expect("append")

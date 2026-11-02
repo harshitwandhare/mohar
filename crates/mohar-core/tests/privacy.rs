@@ -33,6 +33,7 @@ fn entry(agent: &str, target: &str) -> Entry {
             by: "score".into(),
             review: false,
         },
+        person: None,
         verification: None,
     }
 }

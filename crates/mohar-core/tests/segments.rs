@@ -33,6 +33,7 @@ fn entry(i: u64) -> Entry {
             by: "score".into(),
             review: false,
         },
+        person: None,
         verification: None,
     }
 }
