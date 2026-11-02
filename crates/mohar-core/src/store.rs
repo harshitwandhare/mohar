@@ -380,6 +380,33 @@ fn first_agent_is_pseudonym(dir: &Path) -> Result<bool, OpenError> {
     Ok(serde_json::from_str::<Receipt>(&line).is_ok_and(|r| is_pseudonym(&r.agent.id)))
 }
 
+/// How long `open` keeps asking for a lock that is held. A process that forks while it has a log
+/// open hands the child a copy of the lock descriptor, and the lock stays held until the child runs
+/// exec (#167): a writer in this process that just closed its log can't reopen it for that window.
+/// A real second writer holds the lock for much longer than this, so it is still refused.
+const LOCK_WAIT: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// Take the writer lock, retrying a held lock for up to [`LOCK_WAIT`]. `Err(None)` means another
+/// holder kept it the whole time; `Err(Some(e))` means the OS refused the lock call itself (no
+/// locking on this file system), and the log must never be written without the lock.
+fn take_lock(lock: &File) -> Result<(), Option<std::io::Error>> {
+    let deadline = std::time::Instant::now() + LOCK_WAIT;
+    let mut pause = std::time::Duration::from_micros(100);
+    loop {
+        match lock.try_lock() {
+            Ok(()) => return Ok(()),
+            Err(std::fs::TryLockError::Error(e)) => return Err(Some(e)),
+            Err(std::fs::TryLockError::WouldBlock) if std::time::Instant::now() >= deadline => {
+                return Err(None);
+            }
+            Err(std::fs::TryLockError::WouldBlock) => {
+                std::thread::sleep(pause);
+                pause = (pause * 2).min(std::time::Duration::from_millis(10));
+            }
+        }
+    }
+}
+
 impl FileLog {
     /// Create a new log in `dir` with a fresh signing key. Refuses to touch an existing log.
     pub fn init(dir: &Path) -> Result<Self, OpenError> {
@@ -431,15 +458,10 @@ impl FileLog {
             .write(true)
             .open(&lock_path)
             .map_err(io(&lock_path))?;
-        match lock.try_lock() {
-            Ok(()) => {}
-            Err(std::fs::TryLockError::WouldBlock) => {
-                return Err(OpenError::Locked(dir.to_path_buf()));
-            }
-            // The OS refused the lock call itself (no locking on this file system): fail, never write
-            // without the lock.
-            Err(std::fs::TryLockError::Error(e)) => return Err(io(&lock_path)(e)),
-        }
+        take_lock(&lock).map_err(|e| match e {
+            None => OpenError::Locked(dir.to_path_buf()),
+            Some(e) => io(&lock_path)(e),
+        })?;
         let key_path = dir.join(KEY_FILE);
         let seed = fs::read(&key_path).map_err(io(&key_path))?;
         let seed: [u8; 32] = seed
