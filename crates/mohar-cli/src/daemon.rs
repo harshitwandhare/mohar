@@ -118,6 +118,11 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
         seqs.sort_unstable();
         let _ = writeln!(out, "{}", pending_summary(&seqs));
     }
+    let mut overdue = ledger.overdue(now_secs());
+    overdue.sort();
+    for (agent, capability) in &overdue {
+        let _ = writeln!(out, "{}", overdue_notice(agent, capability));
+    }
     let _ = out.flush();
     if cfg.exit_on_stdin_eof {
         // The process that started the daemon closes stdin to stop it. Exiting this way, not by being
@@ -173,6 +178,14 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
         });
     }
     Ok(())
+}
+
+/// The startup line telling a person that a remediation plan ran past its deadline: passes no longer
+/// count, so the capability stays where it was dropped until someone extends the plan.
+fn overdue_notice(agent: &str, capability: &str) -> String {
+    format!(
+        "remediation overdue: {agent} on {capability}; passes stop counting until a person extends the plan"
+    )
 }
 
 /// The startup line naming decisions a crash or restart left without an outcome, so a person can give
@@ -689,6 +702,15 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
             })
             .collect()
     };
+    // The plan the capability is under, if any; `overdue` once its deadline has passed.
+    let remediation = inner.ledger.plan(&agent, &capability).map(|p| {
+        json!({
+            "verifier": p.verifier,
+            "passes_left": p.passes_left,
+            "deadline": p.deadline,
+            "overdue": now_secs() > p.deadline,
+        })
+    });
     // Both follow from the receipt just written, the same way replay reads them back.
     if stop.is_some() && !suspended {
         inner.ledger.near_miss(&agent, &capability);
@@ -736,6 +758,7 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
             "gate": stop.as_ref().map(|g| g.gate),
             "reason": stop.map(|g| g.reason),
             "lessons": lessons,
+            "remediation": remediation,
         }),
     )
 }

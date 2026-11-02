@@ -1564,3 +1564,91 @@ fn a_serious_failure_withholds_the_agent_s_lessons_and_a_restart_keeps_them_with
     assert!(lessons_for(d.port, worker, "docs/a.md").is_empty());
     d.stop();
 }
+
+/// A decision and a failed `tests` outcome on `capability`, written `days_ago`.
+fn fail_long_ago(dir: &Path, worker: &str, capability: &str, target: &str, days_ago: u64) {
+    use mohar_core::store::FileLog;
+    use mohar_core::{Action, Decision, Entry, Verification};
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_secs();
+    let ts = rfc3339(now - days_ago * 86_400);
+    let mut log = FileLog::open(dir).expect("open");
+    let action = Action {
+        capability: capability.into(),
+        tool: "Edit".into(),
+        target: target.into(),
+        args_sha256: SHA.into(),
+    };
+    let decision = Decision {
+        result: "escalate".into(),
+        level: 0,
+        by: "score".into(),
+        review: false,
+    };
+    let d = log
+        .append(Entry {
+            ts: ts.clone(),
+            agent_id: worker.into(),
+            action: action.clone(),
+            decision: decision.clone(),
+            verification: None,
+        })
+        .expect("decision");
+    log.append(Entry {
+        ts,
+        agent_id: worker.into(),
+        action,
+        decision,
+        verification: Some(Verification {
+            evidence_sha256: SHA.into(),
+            kind: "tests".into(),
+            of: d.seq,
+            result: "fail".into(),
+        }),
+    })
+    .expect("outcome");
+}
+
+#[test]
+fn a_plan_past_its_deadline_is_announced_and_marked_overdue() {
+    let dir = fresh_log("overdue");
+    let policy = json!({"version": 1,
+        "capabilities": {
+            "fs.edit.config": {"risk": "high", "reversible": true, "ceiling": 1},
+            "fs.edit.ci":     {"risk": "high", "reversible": true, "ceiling": 1}},
+        "rules": [
+            {"tools": ["Edit"], "paths": ["site/**"], "capability": "fs.edit.config"},
+            {"tools": ["Edit"], "paths": [".github/**"], "capability": "fs.edit.ci"}]});
+    std::fs::write(dir.join("policy.json"), policy.to_string()).expect("policy");
+    let worker = "agent:claude-code/site-worker";
+    // Thirty days to remediate: forty days ago is overdue, five days ago is not.
+    fail_long_ago(&dir, worker, "fs.edit.config", "site/vercel.json", 40);
+    fail_long_ago(&dir, worker, "fs.edit.ci", ".github/ci.yml", 5);
+    let d = Daemon::start(&dir, &[]);
+    assert_eq!(
+        d.next_line().as_deref(),
+        Some(
+            "remediation overdue: agent:claude-code/site-worker on fs.edit.config; \
+             passes stop counting until a person extends the plan"
+        )
+    );
+    let plan = |target: &str| {
+        let b = json!({"agent": worker, "tool": "Edit", "target": target, "args_sha256": SHA});
+        post(d.port, "/v1/decide", &b.to_string()).1["remediation"].clone()
+    };
+    let late = plan("site/vercel.json");
+    assert_eq!(
+        (late["overdue"].as_bool(), late["verifier"].as_str()),
+        (Some(true), Some("tests"))
+    );
+    assert_eq!(plan(".github/ci.yml")["overdue"], json!(false));
+    let b = json!({"agent": "agent:claude-code/new", "tool": "Edit", "target": "site/a", "args_sha256": SHA});
+    assert!(
+        post(d.port, "/v1/decide", &b.to_string()).1["remediation"].is_null(),
+        "no plan, no field value"
+    );
+    d.stop();
+}

@@ -93,6 +93,12 @@ fn pre_tool_use(daemon: &str, p: &Value) -> String {
         },
         _ => ("deny", reason("unexpected answer from the daemon; denying")),
     };
+    // The person deciding is the one who can extend an overdue plan, so the reason says so.
+    let why = if answer["remediation"]["overdue"] == json!(true) {
+        format!("{why}; its remediation plan is overdue and needs a person to extend it")
+    } else {
+        why
+    };
     let mut out = decision_json(decision, &why);
     if let Some(context) = lessons_context(&answer["lessons"]) {
         out["hookSpecificOutput"]["additionalContext"] = json!(context);
@@ -477,5 +483,27 @@ mod tests {
                 "{body}"
             );
         }
+    }
+
+    #[test]
+    fn an_overdue_plan_is_named_in_the_reason() {
+        let (url, _) = fake(
+            200,
+            r#"{"result": "escalate", "receipt_seq": 3, "remediation": {"overdue": true}}"#,
+        );
+        let (decision, why) = answer_of(&run(&url, &pre("Edit", json!({"file_path": "a"}))));
+        assert_eq!(decision, "ask");
+        assert!(
+            why.ends_with(
+                "(receipt 3); its remediation plan is overdue and needs a person to extend it"
+            ),
+            "{why}"
+        );
+        let (url, _) = fake(
+            200,
+            r#"{"result": "escalate", "remediation": {"overdue": false}}"#,
+        );
+        let (_, why) = answer_of(&run(&url, &pre("Edit", json!({"file_path": "a"}))));
+        assert!(!why.contains("overdue"), "{why}");
     }
 }
