@@ -151,7 +151,7 @@ recent for the capability it classified, oldest first, each as `{at, finding, fa
 was verified (seconds since the epoch), what failed (`the tests verifier failed Edit on docs/a.md`), the
 hash of the outcome receipt that failed, and the hash of the next verified pass by that agent on that
 capability, or `null` until there is one. After an S3 or S4 failure the agent's lessons up to then are
-withheld until a person releases them. The book is rebuilt from the outcome receipts on every start, so
+withheld until a person releases them, apart from the lesson of that failure itself. The book is rebuilt from the outcome receipts on every start, so
 there is no separate file to edit or lose. In strict privacy mode the finding names the pseudonymous
 target, as the receipt does.
 

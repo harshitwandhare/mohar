@@ -90,8 +90,9 @@ pub struct Book {
     key: VerifyingKey,
     lessons: Vec<Lesson>,
     team: BTreeSet<usize>,
-    /// Per agent, the time up to which its lessons are withheld.
-    quarantine: BTreeMap<String, u64>,
+    /// Per agent, the time up to which its lessons are withheld, and the failure that set it: that
+    /// failure's own lesson stays visible.
+    quarantine: BTreeMap<String, (u64, String)>,
 }
 
 impl Book {
@@ -165,11 +166,19 @@ impl Book {
     }
 
     /// After a serious failure at `at`, withhold every lesson `agent` built up until then, its team
-    /// lessons included, until [`Book::release`]. A later failure widens the window; an earlier one
-    /// never narrows it.
-    pub fn quarantine(&mut self, agent: &str, at: u64) {
-        let until = self.quarantine.entry(agent.to_string()).or_insert(at);
-        *until = (*until).max(at);
+    /// lessons included, until [`Book::release`]. The lesson from that failure itself (the one whose
+    /// `failure` is `own`) stays visible: Mohar wrote it from the verified failure, not the agent, and it
+    /// is the one most likely to stop a repeat (#175). A later failure widens the window and takes over
+    /// as the visible one; an earlier one never narrows it.
+    pub fn quarantine(&mut self, agent: &str, at: u64, own: &str) {
+        match self.quarantine.get_mut(agent) {
+            Some((until, _)) if *until > at => {}
+            Some(q) => *q = (at, own.to_string()),
+            None => {
+                self.quarantine
+                    .insert(agent.to_string(), (at, own.to_string()));
+            }
+        }
     }
 
     /// A person has looked at the quarantined lessons and lets them through again.
@@ -185,7 +194,7 @@ impl Book {
     fn withheld(&self, l: &Lesson) -> bool {
         self.quarantine
             .get(&l.agent)
-            .is_some_and(|until| l.at <= *until)
+            .is_some_and(|(until, own)| l.at <= *until && l.failure != *own)
     }
 
     /// The lessons to hand `agent` as context on `capability`, oldest first: its own and the team's,

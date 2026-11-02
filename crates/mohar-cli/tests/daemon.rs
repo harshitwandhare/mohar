@@ -1560,10 +1560,12 @@ fn a_serious_failure_withholds_the_agent_s_lessons_and_a_restart_keeps_them_with
         lessons_for(d.port, worker, "docs/a.md").is_empty(),
         "an S3 puts what the agent learned before it under review"
     );
-    assert!(lessons_for(d.port, worker, "site/vercel.json").is_empty());
+    // The serious failure's own lesson stays visible (#175).
+    assert_eq!(lessons_for(d.port, worker, "site/vercel.json").len(), 1);
     d.stop();
     let d = Daemon::start(&dir, &[]);
     assert!(lessons_for(d.port, worker, "docs/a.md").is_empty());
+    assert_eq!(lessons_for(d.port, worker, "site/vercel.json").len(), 1);
     d.stop();
 }
 
@@ -1679,7 +1681,11 @@ fn what_a_person_does_is_a_receipt_and_survives_a_restart() {
             .is_some_and(|l| l.starts_with("remediation overdue"))
     );
     let before = ask(d.port, worker);
-    assert_eq!(before["lessons"], json!([]), "quarantined");
+    assert_eq!(
+        before["lessons"].as_array().map(Vec::len),
+        Some(1),
+        "the serious failure's own lesson stays visible"
+    );
     assert_eq!(before["remediation"]["overdue"], json!(true));
 
     // Refused, and nothing written: not a quarantined agent, an unknown lesson, an earlier deadline,

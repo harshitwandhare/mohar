@@ -310,7 +310,7 @@ fn learn(book: &mut Book, log: &FileLog, r: &Receipt, o: &Outcome) -> Result<(),
     }
     let at = parse_rfc3339(&r.ts);
     if o.severity >= Severity::S3 {
-        book.quarantine(agent, at);
+        book.quarantine(agent, at, &hash);
     }
     let kind = r.verification.as_ref().map_or("", |v| v.kind.as_str());
     let lesson = Lesson {
@@ -1359,7 +1359,7 @@ mod tests {
         };
         book.add(log.sign_lesson(lesson).expect("sign"))
             .expect("add");
-        book.quarantine("a", 1_000);
+        book.quarantine("a", 2_000, "a later serious failure");
         (ledger, book)
     }
 

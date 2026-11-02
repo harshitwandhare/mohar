@@ -34,6 +34,10 @@ fn signed(agent: &str, capability: &str, at: u64, finding: &str) -> Lesson {
     sign(&key(), lesson(agent, capability, at, finding)).expect("signs")
 }
 
+fn failure(at: u64) -> String {
+    lesson(A, "", at, "").failure
+}
+
 fn findings(book: &Book, agent: &str, capability: &str) -> Vec<String> {
     book.for_context(agent, capability)
         .iter()
@@ -113,7 +117,7 @@ fn after_a_serious_failure_older_lessons_are_withheld_until_a_person_releases_th
         .add(signed(A, "fs.edit.docs", DAY, "old team lesson"))
         .expect("adds");
     assert!(book.promote(team));
-    book.quarantine(A, 2 * DAY);
+    book.quarantine(A, 2 * DAY, &failure(2 * DAY));
     assert!(book.is_quarantined(A));
     assert!(findings(&book, A, "db.migrate").is_empty());
     assert!(
@@ -139,8 +143,8 @@ fn a_second_serious_failure_widens_the_quarantine_and_never_narrows_it() {
     let mut book = Book::new(key().verifying_key());
     book.add(signed(A, "db.migrate", 5 * DAY, "middle"))
         .expect("adds");
-    book.quarantine(A, 6 * DAY);
-    book.quarantine(A, 2 * DAY);
+    book.quarantine(A, 6 * DAY, &failure(6 * DAY));
+    book.quarantine(A, 2 * DAY, &failure(2 * DAY));
     assert!(findings(&book, A, "db.migrate").is_empty());
 }
 
@@ -279,4 +283,22 @@ fn a_fix_cannot_rewrite_what_the_lesson_says() {
     forged.sig = original.sig.clone();
     assert_eq!(book.record_fix(id, forged), Err(LessonError::BadSignature));
     assert_eq!(book.get(id), Some(&original));
+}
+
+#[test]
+fn the_serious_failure_s_own_lesson_stays_visible_and_only_the_latest_one() {
+    let mut book = Book::new(key().verifying_key());
+    book.add(signed(A, "db.migrate", DAY, "old")).expect("adds");
+    book.add(signed(A, "db.migrate", 2 * DAY, "first serious"))
+        .expect("adds");
+    book.quarantine(A, 2 * DAY, &failure(2 * DAY));
+    assert_eq!(findings(&book, A, "db.migrate"), ["first serious"]);
+    // A later serious failure puts the first one's lesson under review with the rest.
+    book.add(signed(A, "db.migrate", 4 * DAY, "second serious"))
+        .expect("adds");
+    book.quarantine(A, 4 * DAY, &failure(4 * DAY));
+    assert_eq!(findings(&book, A, "db.migrate"), ["second serious"]);
+    // An earlier one arriving late changes neither the window nor which lesson shows.
+    book.quarantine(A, 3 * DAY, &failure(DAY));
+    assert_eq!(findings(&book, A, "db.migrate"), ["second serious"]);
 }
