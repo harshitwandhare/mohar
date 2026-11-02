@@ -247,9 +247,11 @@ before hashing and signing.
   every signature unless asked with `--trust-checkpoints`, and an auditor should leave it that way.
 
 Receipt format work is aligned with the IETF drafts on attenuating agent tokens and delegation rather
-than inventing a competing token format. Receipts will also export as a superset of the individual draft
+than inventing a competing token format. Receipts also export to the individual draft
 `draft-sharif-agent-audit-trail` (hash-chained records with a principal, a record phase and a trust level,
-mapped to SOC 2 and ISO 42001), so an auditor who already reads that format can read Mohar's. That draft
+mapped to SOC 2 and ISO 42001), so an auditor who already reads that format can read Mohar's. The export
+is not a superset: capability, level and which decision an outcome answers have no place there, and the
+draft requires a few fields Mohar doesn't record. Section 12 of the receipt spec lists both. That draft
 notes a hash chain alone can't detect records removed from its end; Mohar's signed checkpoints, anchored
 outside the machine, are the answer to that.
 

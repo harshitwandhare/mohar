@@ -253,3 +253,72 @@ python spec/vectors/check.py --log .mohar --pinned-key owner.key --checkpoints p
 - A verifier that reads the key from the log directory checks only that the log agrees with itself. Pin
   the key.
 - The format records decisions and outcomes; it doesn't make them correct.
+
+## 12. Mapping to other formats
+
+Two individual Internet-Drafts describe signed, chained records of what an agent did. Neither is an IETF
+standard. [`spec/vectors/export.py`](vectors/export.py) converts the `person-receipt` conformance log into
+both, signs the result again with the test seed (neither format signs the bytes Mohar signs), and checks
+it against each draft's own rules. CI rebuilds both files in [`spec/vectors/export/`](vectors/export/)
+and fails if they change or if either check fails. The export is one way: nothing reads these formats
+back into Mohar.
+
+Both drafts were read on 2026-11-01.
+
+### 12.1 draft-sharif-agent-audit-trail-09 (26 October 2026)
+
+| Mohar | sharif-09 | Notes |
+|---|---|---|
+| `seq` | `sequence_number` | Same meaning. |
+| `prev` | `prev_hash` | Recomputed: SHA-256 of the previous record's JCS form, plain hex, `null` for the first. |
+| `ts` | `timestamp` | Copied. |
+| `agent.id` | `agent_id` | Prefixed `urn:mohar:agent:` to make it a URI. |
+| `agent.key` | `principal.principal_id`, `signer_kid` | The daemon that signed, as a `service` principal. |
+| `action.tool` | `action_detail.tool_name` | |
+| `action.args_sha256` | `action_detail.parameters_hash` | |
+| `action.capability`, `action.target` | none | Lost. `policy_ref` carries the capability on person records only. |
+| `decision.result` | `outcome` | allow to `success`, escalate to `escalated`, deny to `denied`. |
+| `decision.by` = `human` | `human_override` | The operator is not in a v1 decision receipt, so `operator_id` is `unknown`. |
+| `decision.level`, `decision.by`, `decision.review` | none | Lost. `trust_level` means identity assurance there, not earned trust. |
+| `verification` | `action_type` `tool_response`, `action_detail.output_hash`, `outcome` | pass to `success`, fail to `failure`. |
+| `verification.kind`, `verification.of` | none | Lost; `parent_record_id` links to the previous record, not to the decision. |
+| `person` | `action_type` `decision`, `decision_type` `mohar.<act>`, `human_override.operator_id` | `until` and `lesson` are lost. |
+| `sig` | `signature`, `sig_alg` `Ed25519` | A new signature over SHA-256 of the JCS form, base64url. |
+
+Fields sharif-09 requires that Mohar doesn't record, and what the export writes: `record_id` and
+`session_id` (UUIDs derived from a hash, version bits set), `agent_version` (`0.0.0`), `trust_level`
+(`L0`: the agent itself holds no key), `principal.authority_ref` (`null`), `record_phase` (`pre_execution`
+for decisions, `post_execution` for outcomes, `concurrent` for person acts).
+
+### 12.2 draft-sahu-agent-action-receipts-00 (16 August 2026)
+
+| Mohar | sahu-00 | Notes |
+|---|---|---|
+| `seq` | `step_id` | As a decimal string. |
+| `action.tool` | `action_id` | |
+| `action`, `decision`, `verification`, `person` | `params` | Kept whole, plus `mohar_seq`, so nothing is lost. |
+| `decision.result`, `verification.result` | `success` | `true` for allow, a pass, or a person act; `false` otherwise. |
+| `ts` | `ts_ms` | Milliseconds since the epoch. |
+| `agent.id` | `actor.agent` | |
+| `prev` | `prev_hash` | Recomputed over the exact bytes of the previous line, absent on the first. |
+| `agent.key`, `sig` | `public_key`, `signature` | A new Ed25519 signature over the draft's ordered bytes, in hex. |
+
+### 12.3 Open questions for the drafts' authors
+
+- sharif-09 requires `record_id` and `session_id` to be UUIDv4, which is random. A converter that must
+  give the same output for the same input can only derive them from a hash with the version bits set.
+  Is a hash-derived identifier with version 4 acceptable, or should the draft allow UUIDv8 or any string?
+- sharif-09's `trust_level` measures how well the agent's identity is attested. A record has no field
+  for authority the agent has earned on a kind of action. Would the authors take an optional field for
+  it, or should it go inside `action_detail`?
+- sharif-09 has no outcome for "the tool ran, nothing checked it yet". Mohar's `unknown` result is
+  written as `success`, which overstates it. Would `unverified` fit the `outcome` list?
+- sharif-09 links an outcome to the record before it (`parent_record_id`), not to the decision it
+  answers. Is `authorization_record_id`, defined for `decision`, meant for that on `tool_response`?
+- sahu-00 tells verifiers to ignore members it doesn't define and leave them out of the signed bytes.
+  An unsigned member can then ride along on a valid receipt, the problem section 2 of this spec refuses
+  by failing any unknown key. Would the draft consider refusing them, or signing them?
+- sahu-00 hashes the exact bytes of the previous line, so any re-serialization breaks the chain, while
+  the signature covers a canonical form. A log rewritten in canonical form keeps valid signatures and
+  loses its chain. Is that intended?
+
