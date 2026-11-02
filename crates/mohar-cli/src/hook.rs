@@ -93,7 +93,50 @@ fn pre_tool_use(daemon: &str, p: &Value) -> String {
         },
         _ => ("deny", reason("unexpected answer from the daemon; denying")),
     };
-    decision_json(decision, &why)
+    // The person deciding is the one who can extend an overdue plan, so the reason says so.
+    let why = if answer["remediation"]["overdue"] == json!(true) {
+        format!("{why}; its remediation plan is overdue and needs a person to extend it")
+    } else {
+        why
+    };
+    let mut out = decision_json(decision, &why);
+    if let Some(context) = lessons_context(&answer["lessons"]) {
+        out["hookSpecificOutput"]["additionalContext"] = json!(context);
+    }
+    out.to_string()
+}
+
+/// The longest finding handed to the agent; a target can be arbitrarily long.
+const MAX_FINDING: usize = 300;
+
+/// The daemon's lessons for this agent and capability, as text the host gives the model with the call
+/// (`additionalContext`). Nothing when there are none or the answer has no usable list.
+fn lessons_context(lessons: &Value) -> Option<String> {
+    let lines: Vec<String> = lessons
+        .as_array()?
+        .iter()
+        .filter_map(|l| {
+            let finding = l["finding"].as_str().filter(|f| !f.is_empty())?;
+            let finding: String = finding.chars().take(MAX_FINDING).collect();
+            let fixed = if l["fix"].is_string() {
+                " (since fixed)"
+            } else {
+                ""
+            };
+            Some(format!("- {finding}{fixed}"))
+        })
+        .collect();
+    if lines.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "Mohar lessons from verified failures on this capability:
+{}",
+        lines.join(
+            "
+"
+        )
+    ))
 }
 
 /// Record that the tool ran. This is the host's report, not verification, and never counts toward
@@ -133,7 +176,7 @@ fn task_done(daemon: &str, p: &Value) {
     }
 }
 
-fn decision_json(decision: &str, reason: &str) -> String {
+fn decision_json(decision: &str, reason: &str) -> Value {
     json!({
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -141,11 +184,10 @@ fn decision_json(decision: &str, reason: &str) -> String {
             "permissionDecisionReason": reason,
         }
     })
-    .to_string()
 }
 
 fn deny(reason: &str) -> String {
-    decision_json("deny", reason)
+    decision_json("deny", reason).to_string()
 }
 
 /// Agents are identified by role, not by session, so their record carries across sessions.
@@ -389,5 +431,79 @@ mod tests {
         let (refusing, asked) = fake(400, r#"{"error": "agent and task must be non-empty"}"#);
         assert_eq!(run(&refusing, &stop), "");
         assert_eq!(asked.recv().expect("asked").0, "/v1/verify");
+    }
+
+    #[test]
+    fn lessons_in_the_answer_reach_the_agent_as_context() {
+        let body = json!({"result": "allow", "receipt_seq": 9, "lessons": [
+            {"finding": "the tests verifier failed Edit on src/a.rs", "failure": "x"},
+            {"finding": "the diff verifier failed Edit on src/b.rs", "failure": "y", "fix": "z"},
+            {"finding": "", "failure": "w"},
+            {"failure": "no finding"},
+            {"finding": "x".repeat(MAX_FINDING + 50), "failure": "v"},
+        ]});
+        let (url, _) = fake(200, &body.to_string());
+        let out: Value =
+            serde_json::from_str(&run(&url, &pre("Edit", json!({"file_path": "src/a.rs"}))))
+                .expect("json");
+        let h = &out["hookSpecificOutput"];
+        assert_eq!(h["permissionDecision"], "allow");
+        let context = h["additionalContext"].as_str().expect("context");
+        let lines: Vec<&str> = context.lines().collect();
+        assert_eq!(
+            lines[..3],
+            [
+                "Mohar lessons from verified failures on this capability:",
+                "- the tests verifier failed Edit on src/a.rs",
+                "- the diff verifier failed Edit on src/b.rs (since fixed)",
+            ]
+        );
+        assert_eq!(lines.len(), 4, "empty and missing findings are skipped");
+        assert_eq!(
+            lines[3].chars().count(),
+            2 + MAX_FINDING,
+            "long findings are cut"
+        );
+    }
+
+    #[test]
+    fn no_lessons_means_no_context() {
+        for body in [
+            r#"{"result": "allow"}"#,
+            r#"{"result": "allow", "lessons": []}"#,
+            r#"{"result": "allow", "lessons": "nope"}"#,
+            r#"{"result": "allow", "lessons": [{"finding": ""}]}"#,
+        ] {
+            let (url, _) = fake(200, body);
+            let out: Value =
+                serde_json::from_str(&run(&url, &pre("Read", json!({"file_path": "a"}))))
+                    .expect("json");
+            assert!(
+                out["hookSpecificOutput"].get("additionalContext").is_none(),
+                "{body}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_overdue_plan_is_named_in_the_reason() {
+        let (url, _) = fake(
+            200,
+            r#"{"result": "escalate", "receipt_seq": 3, "remediation": {"overdue": true}}"#,
+        );
+        let (decision, why) = answer_of(&run(&url, &pre("Edit", json!({"file_path": "a"}))));
+        assert_eq!(decision, "ask");
+        assert!(
+            why.ends_with(
+                "(receipt 3); its remediation plan is overdue and needs a person to extend it"
+            ),
+            "{why}"
+        );
+        let (url, _) = fake(
+            200,
+            r#"{"result": "escalate", "remediation": {"overdue": false}}"#,
+        );
+        let (_, why) = answer_of(&run(&url, &pre("Edit", json!({"file_path": "a"}))));
+        assert!(!why.contains("overdue"), "{why}");
     }
 }
