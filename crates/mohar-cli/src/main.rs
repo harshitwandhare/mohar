@@ -178,6 +178,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
                         by,
                         review: false,
                     },
+                    person: None,
                     verification: None,
                 })
                 .map_err(|e| e.to_string())?;

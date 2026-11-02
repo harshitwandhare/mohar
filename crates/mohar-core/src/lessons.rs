@@ -119,6 +119,11 @@ impl Book {
         self.lessons.get(id)
     }
 
+    /// The id of the lesson learned from the failed outcome receipt with this hash.
+    pub fn by_failure(&self, failure: &str) -> Option<usize> {
+        self.lessons.iter().position(|l| l.failure == failure)
+    }
+
     /// Ids of `agent`'s lessons on `capability` that have no fix yet, oldest first.
     pub fn unfixed(&self, agent: &str, capability: &str) -> Vec<usize> {
         self.lessons

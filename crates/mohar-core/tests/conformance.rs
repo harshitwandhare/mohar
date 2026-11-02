@@ -11,8 +11,8 @@ use ed25519_dalek::Signer;
 use mohar_core::checkpoint::{Checkpoint, verify_checkpoints};
 use mohar_core::store::{SignatureChecks, verify_dir};
 use mohar_core::{
-    Log, Receipt, SigningKey, canonical_bytes, parse_public_key, public_key_string, receipt_hash,
-    verify,
+    Action, Decision, Entry, Log, Person, Receipt, SigningKey, canonical_bytes, parse_public_key,
+    public_key_string, receipt_hash, verify,
 };
 use serde_json::{Value, json};
 
@@ -61,6 +61,41 @@ fn log(seed: &[u8; 32]) -> (Vec<Receipt>, Vec<Checkpoint>) {
             );
         }
     }
+    (log.receipts().to_vec(), checkpoints)
+}
+
+/// [`log`] with a fifth receipt after the last checkpoint: a person extending a remediation plan on
+/// the first decision's capability (spec 1.2.0).
+fn person_log(seed: &[u8; 32]) -> (Vec<Receipt>, Vec<Checkpoint>) {
+    let (receipts, checkpoints) = log(seed);
+    let mut log = Log::new(SigningKey::from_seed(seed));
+    for e in entries() {
+        log.append(e).expect("append");
+    }
+    log.append(Entry {
+        ts: "2026-11-03T16:02:44.108Z".into(),
+        agent_id: receipts[0].agent.id.clone(),
+        action: Action {
+            capability: "fs.edit.tests".into(),
+            tool: "mohar".into(),
+            target: String::new(),
+            args_sha256: "5d1c0e7a".into(),
+        },
+        decision: Decision {
+            result: "allow".into(),
+            level: 0,
+            by: "human".into(),
+            review: false,
+        },
+        verification: None,
+        person: Some(Person {
+            act: "extend".into(),
+            by: "human:7f3a09c2".into(),
+            lesson: None,
+            until: Some(1_796_000_000),
+        }),
+    })
+    .expect("append");
     (log.receipts().to_vec(), checkpoints)
 }
 
@@ -268,7 +303,51 @@ fn cases() -> Vec<Value> {
         ),
     ];
     out.extend(segment_cases(&good, &checkpoints));
+    out.extend(person_cases());
     out
+}
+
+/// Spec 1.2.0: a receipt recording what a person did, and the ways to sneak a field into one.
+fn person_cases() -> Vec<Value> {
+    let (good, checkpoints) = person_log(&SEED);
+    let added = |name: &str, about: &str, at: &[&str], value: Value| {
+        let mut c = case(name, about, 0, &SEED, Some(&SEED), &good, &checkpoints);
+        let mut target = &mut c["receipts"][4];
+        for key in &at[..at.len() - 1] {
+            target = &mut target[*key];
+        }
+        target[at[at.len() - 1]] = value;
+        c
+    };
+    vec![
+        case(
+            "person-receipt",
+            "Receipt 4 records a person extending a remediation plan: a person object, no verification, decision by human and tool mohar.",
+            2,
+            &SEED,
+            Some(&SEED),
+            &good,
+            &checkpoints,
+        ),
+        added(
+            "null-person-added",
+            "Receipt 4 says \"person\": null in place of the person object it was signed with.",
+            &["person"],
+            Value::Null,
+        ),
+        added(
+            "null-lesson-added",
+            "Receipt 4's person object says \"lesson\": null, added after it was signed. Absent optional fields are left out, never written as null.",
+            &["person", "lesson"],
+            Value::Null,
+        ),
+        added(
+            "unsigned-person-field-added",
+            "Receipt 4's person object carries a field the format doesn't define, added after it was signed.",
+            &["person", "note"],
+            json!("approved in standup"),
+        ),
+    ]
 }
 
 /// The 20-digit name of a segment whose first receipt is `start`.
@@ -505,7 +584,7 @@ fn level_on_disk(case: &Value) -> u8 {
 fn build() -> Value {
     json!({
         "format": "mohar receipts v1 conformance",
-        "spec": "spec/receipts-v1.md, spec version 1.1.0",
+        "spec": "spec/receipts-v1.md, spec version 1.2.0",
         "notes": "Seeds are bytes 0x00..0x1f (the log's key) and 0x20..0x3f (another key), for testing only. Each case is a log: log_key is public.key in the log directory, pinned_key is the key the verifier was given some other way (null if none), published_checkpoints were kept outside the machine. A rotated log also has segments (file name under segments/ and its receipts, oldest first) and local_checkpoints (checkpoints.jsonl in the log directory); receipts is then receipts.jsonl. A verifier must report expect_level. Level 3 has no cases yet.",
         "cases": cases(),
     })

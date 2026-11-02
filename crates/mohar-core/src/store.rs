@@ -584,7 +584,7 @@ impl FileLog {
     }
 
     /// Sign `entry`, write it, and sync it to disk before returning the receipt. In strict privacy
-    /// mode the agent id and target are replaced by their pseudonyms first, and the mapping back is
+    /// mode the agent id, target and person are replaced by their pseudonyms first, and the mapping back is
     /// synced before the receipt is written.
     pub fn append(&mut self, mut entry: Entry) -> Result<Receipt, OpenError> {
         // Set only when the file system fails between a rename and a create, which tests can't
@@ -595,6 +595,9 @@ impl FileLog {
         if let Some(ids) = &mut self.identities {
             entry.agent_id = ids.record(entry.agent_id)?;
             entry.action.target = ids.record(entry.action.target)?;
+            if let Some(person) = &mut entry.person {
+                person.by = ids.record(std::mem::take(&mut person.by))?;
+            }
         }
         let r = seal(&self.key, self.len, self.last_hash.clone(), entry)?;
         let mut line = serde_json::to_vec(&r).map_err(|e| Error::Canonical(e.to_string()))?;

@@ -9,6 +9,14 @@ receipt format; each such change is called out.
 
 ### Added
 
+- Receipt spec 1.2.0: section 5.1, person acts. Promoting a lesson to the team, releasing an agent's
+  quarantined lessons and extending a remediation plan are each a signed receipt carrying a `person`
+  object, written by `POST /v1/person` and replayed on start, so they survive a restart. Four conformance
+  vectors, checked by Rust and `check.py` (#87).
+- An overdue remediation plan is announced: one line per plan when the daemon starts, `remediation` in
+  the `/v1/decide` answer, and a note in the reason the Claude Code hook shows the person (#172).
+- The Claude Code hook hands the daemon's lessons to the agent with each call, as `additionalContext`
+  (#169).
 - The daemon keeps a lesson book. Every verified failure becomes a lesson signed with the log's key, the
   next verified pass on that capability is recorded as its fix, an S3 or S4 failure withholds the agent's
   earlier lessons, and `/v1/decide` returns the five most recent lessons for the capability. The book is
@@ -40,6 +48,9 @@ receipt format; each such change is called out.
 
 ### Fixed
 
+- Reopening a log right after closing it no longer fails with `Locked` while another thread of the
+  same process is starting a child process. The child held a copy of the lock until it ran exec; `open`
+  now waits up to 250 ms for the lock (#167).
 - A receipt or checkpoint with a key the format doesn't define, or with `"review": false` or
   `"verification": null` written out, no longer verifies. Each was dropped while parsing, so the
   signature still matched and the extra field rode along unsigned; the new conformance vectors found it.

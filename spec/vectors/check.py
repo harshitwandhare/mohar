@@ -16,11 +16,12 @@ from cryptography.exceptions import InvalidSignature
 
 GENESIS = "sha256:" + "0" * 64
 FIELDS = {
-    None: {"v", "seq", "prev", "ts", "agent", "action", "decision", "sig", "verification"},
+    None: {"v", "seq", "prev", "ts", "agent", "action", "decision", "sig", "verification", "person"},
     "agent": {"id", "key"},
     "action": {"capability", "tool", "target", "args_sha256"},
     "decision": {"result", "level", "by", "review"},
     "verification": {"evidence_sha256", "kind", "of", "result"},
+    "person": {"act", "by", "lesson", "until"},
 }
 CHECKPOINT_FIELDS = {"v", "count", "head", "ts", "sig"}
 
@@ -47,10 +48,14 @@ def signed(pub, obj):
 
 def known_fields(r):
     """Every key is one the format defines, and the optional ones appear only when they say something
-    (review only as true, verification only as an object). Anything else has a second spelling."""
+    (review only as true, verification and person only as objects, lesson and until never null).
+    Anything else has a second spelling."""
     if set(r) - FIELDS[None] or r.get("decision", {}).get("review", True) is not True:
         return False
-    if "verification" in r and not isinstance(r["verification"], dict):
+    for part in ("verification", "person"):
+        if part in r and not isinstance(r[part], dict):
+            return False
+    if any(r.get("person", {}).get(k, "") is None for k in ("lesson", "until")):
         return False
     return all(set(r[part]) <= FIELDS[part] for part in FIELDS if part and part in r)
 
