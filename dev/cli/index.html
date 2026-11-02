@@ -1431,7 +1431,7 @@ recent for the capability it classified, oldest first, each as <code>{at, findin
 was verified (seconds since the epoch), what failed (<code>the tests verifier failed Edit on docs/a.md</code>), the
 hash of the outcome receipt that failed, and the hash of the next verified pass by that agent on that
 capability, or <code>null</code> until there is one. After an S3 or S4 failure the agent's lessons up to then are
-withheld until a person releases them. The book is rebuilt from the outcome receipts on every start, so
+withheld until a person releases them, apart from the lesson of that failure itself. The book is rebuilt from the outcome receipts on every start, so
 there is no separate file to edit or lose. In strict privacy mode the finding names the pseudonymous
 target, as the receipt does.</p>
 <p>The Claude Code hook hands these lessons to the agent with the call, as the hook's <code>additionalContext</code>:
