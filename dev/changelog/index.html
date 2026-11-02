@@ -1331,6 +1331,10 @@ receipt format; each such change is called out.</p>
 <h2 id="unreleased"><a href="https://github.com/harshitwandhare/mohar/compare/v0.2.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
+<li><code>spec/vectors/export.py</code> converts receipts into draft-sharif-agent-audit-trail-09 and
+  draft-sahu-agent-action-receipts-00 records and checks them against each draft's rules in CI. Section 12
+  of the receipt spec maps every field, says what each format loses, and lists questions for the drafts'
+  authors (#135).</li>
 <li>Receipt spec 1.2.0: section 5.1, person acts. Promoting a lesson to the team, releasing an agent's
   quarantined lessons and extending a remediation plan are each a signed receipt carrying a <code>person</code>
   object, written by <code>POST /v1/person</code> and replayed on start, so they survive a restart. Four conformance
