@@ -344,3 +344,12 @@ for (const [name, options] of [['reduced motion', { reducedMotion: 'reduce' }], 
     await page.close();
   });
 }
+
+// The closing section said "shipped in 0.1 ... the trust engine is next" for a week after 0.2 shipped
+// the trust engine. The release the home page names must be the newest one in the changelog.
+test('the home page names the newest release', () => {
+  const newest = readFileSync('CHANGELOG.md', 'utf8').match(/^## \[(\d+\.\d+)\.\d+\]/m)[1];
+  const named = [...readFileSync('site/index.html', 'utf8').matchAll(/\bship(?:ped)? in (\d+\.\d+)\b/g)].map(m => m[1]);
+  expect(named.length).toBeGreaterThan(0);
+  expect(named).toEqual(named.map(() => newest));
+});
