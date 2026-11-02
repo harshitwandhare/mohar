@@ -150,6 +150,12 @@ The Claude Code hook hands these lessons to the agent with the call, as the hook
 one line per finding, each cut at 300 characters, with "(since fixed)" once a later pass fixed it.
 Without lessons the hook adds no context.
 
+When the classified capability is under a remediation plan, the answer also carries `remediation`:
+`{verifier, passes_left, deadline, overdue}`, or `null` without one. A plan is overdue once its deadline
+has passed; from then on passes stop counting until a person extends it. The daemon prints one
+`remediation overdue: <agent> on <capability>` line per overdue plan when it starts, and the hook adds
+the same notice to the reason a person sees.
+
 `/v1/verify` verifies a finished task and records one outcome for every decision in the task that ran and
 changes something, from the first verifier that fails:
 
