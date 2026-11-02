@@ -1426,6 +1426,9 @@ capability, or <code>null</code> until there is one. After an S3 or S4 failure t
 withheld until a person releases them. The book is rebuilt from the outcome receipts on every start, so
 there is no separate file to edit or lose. In strict privacy mode the finding names the pseudonymous
 target, as the receipt does.</p>
+<p>The Claude Code hook hands these lessons to the agent with the call, as the hook's <code>additionalContext</code>:
+one line per finding, each cut at 300 characters, with "(since fixed)" once a later pass fixed it.
+Without lessons the hook adds no context.</p>
 <p><code>/v1/verify</code> verifies a finished task and records one outcome for every decision in the task that ran and
 changes something, from the first verifier that fails:</p>
 <ol>
