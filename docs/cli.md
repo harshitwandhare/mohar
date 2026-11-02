@@ -146,6 +146,10 @@ withheld until a person releases them. The book is rebuilt from the outcome rece
 there is no separate file to edit or lose. In strict privacy mode the finding names the pseudonymous
 target, as the receipt does.
 
+The Claude Code hook hands these lessons to the agent with the call, as the hook's `additionalContext`:
+one line per finding, each cut at 300 characters, with "(since fixed)" once a later pass fixed it.
+Without lessons the hook adds no context.
+
 `/v1/verify` verifies a finished task and records one outcome for every decision in the task that ran and
 changes something, from the first verifier that fails:
 
