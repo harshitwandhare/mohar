@@ -1412,11 +1412,19 @@ and cumulative metrics: <code>mohar.decisions</code> by result, <code>mohar.outc
 <code>mohar.decide.duration</code> (a histogram in milliseconds) and <code>mohar.inflight</code>. Spans carry no agent ids,
 targets or arguments. Export runs on its own thread; a collector that is down or slow loses telemetry
 and never delays or changes a decision. Without the flag nothing is collected.</p>
-<p>Two endpoints, JSON in and out:</p>
+<p>Four endpoints, JSON in and out:</p>
 <div class="highlight"><pre><span></span><code>POST /v1/decide   {agent, tool, target, args_sha256, call_id?}  -&gt;  {result, level, receipt_seq, lessons}
 POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256}  -&gt;  {receipt_seq}
 POST /v1/verify   {agent, task}  -&gt;  {verified, result}
+POST /v1/person   {by, act, agent, capability?, lesson?, until?}  -&gt;  {receipt_seq}
 </code></pre></div>
+<p><code>/v1/person</code> records what a person did as a signed receipt (receipt spec section 5.1) and applies it:
+<code>promote</code> with <code>lesson</code> (the <code>failure</code> hash from a lesson) shares that lesson with every agent on its
+capability; <code>release</code> lets an agent's quarantined lessons through again; <code>extend</code> with <code>capability</code> and
+<code>until</code> (seconds since the epoch) moves a remediation plan's deadline later. An act that would change
+nothing, such as releasing an agent with no quarantine or moving a deadline earlier, gets a 409 and writes
+nothing. The daemon replays these receipts on start, so they survive a restart. <code>by</code> is recorded as
+given; the daemon only listens on loopback, and anyone who can reach it can name any person.</p>
 <p>Lessons: every verified failure (any verifier but <code>host</code>, and only <code>fail</code>, never <code>unknown</code>) becomes a
 lesson for that agent on that capability, signed with the log's key. <code>/v1/decide</code> returns the five most
 recent for the capability it classified, oldest first, each as <code>{at, finding, failure, fix}</code>: when it
