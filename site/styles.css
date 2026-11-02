@@ -127,16 +127,17 @@ figcaption { color: var(--soft); font-size: var(--s-small); margin-top: 10px; }
 .close .big { font-family: var(--deva); font-size: var(--s-display); line-height: 1.1; margin: 0 0 16px; color: var(--seal); }
 .close .credits { color: var(--soft); font-size: var(--s-small); max-width: 64ch; }
 
-/* Content is never far from visible: a short rise from 40% opacity, so a fast scroll or a screenshot never lands on an empty section. */
-.js .reveal > * { opacity: 0.4; transform: translateY(12px); transition: opacity .45s ease, transform .45s ease; }
-.js .reveal.in > * { opacity: 1; transform: none; }
-.js .reveal.in > *:nth-child(2) { transition-delay: .08s; }
-.js .reveal.in > *:nth-child(3) { transition-delay: .16s; }
-.js .reveal.in > *:nth-child(4) { transition-delay: .24s; }
+/* Content is never far from visible: a short rise from 40% opacity, so a fast scroll or a screenshot never lands on an empty section. Only for people who haven't asked for less motion; with reduce or without JS everything is simply there. */
+@media (prefers-reduced-motion: no-preference) {
+  .js .reveal > * { opacity: 0.4; transform: translateY(12px); transition: opacity .45s ease, transform .45s ease; }
+  .js .reveal.in > * { opacity: 1; transform: none; }
+  .js .reveal.in > *:nth-child(2) { transition-delay: .08s; }
+  .js .reveal.in > *:nth-child(3) { transition-delay: .16s; }
+  .js .reveal.in > *:nth-child(4) { transition-delay: .24s; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
-  .reveal > * { opacity: 1; transform: none; }
 }
 
 /* Documentation pages generated from docs/*.md */
