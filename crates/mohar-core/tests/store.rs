@@ -253,3 +253,31 @@ fn an_unreadable_checkpoint_line_names_its_file_and_line() {
         Ok(_) => panic!("opened a log with an unreadable checkpoint"),
     }
 }
+
+// #167: a child forked by another thread holds a copy of the lock until it execs, so a writer that
+// just closed its log could find it locked by its own process. Before the bounded wait in `open`,
+// about nine reopens in ten failed here.
+#[cfg(unix)]
+#[test]
+fn reopening_survives_another_thread_spawning_children() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let dir = temp_dir("fork-lock");
+    drop(FileLog::init(&dir).expect("init"));
+    let stop = Arc::new(AtomicBool::new(false));
+    let spawning = Arc::clone(&stop);
+    let spawner = std::thread::spawn(move || {
+        while !spawning.load(Ordering::Relaxed) {
+            let _ = std::process::Command::new("true").status();
+        }
+    });
+    let mut failed = 0;
+    for _ in 0..300 {
+        if FileLog::open(&dir).is_err() {
+            failed += 1;
+        }
+    }
+    stop.store(true, Ordering::Relaxed);
+    spawner.join().expect("spawner");
+    assert_eq!(failed, 0, "reopens refused while children were forking");
+}
