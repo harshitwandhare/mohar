@@ -328,3 +328,19 @@ test('on a phone every control outside running text is at least 44px each way', 
   }
   expect(small).toEqual([]);
 });
+
+// Sections fade up as they scroll in. Under reduced motion the old override lost to the more specific
+// `.js .reveal > *`, so every section below the fold sat at 40% and shifted 12px. With reduced motion,
+// or with JavaScript off, nothing may wait for a scroll.
+for (const [name, options] of [['reduced motion', { reducedMotion: 'reduce' }], ['no JavaScript', { javaScriptEnabled: false }]]) {
+  test(`with ${name} every section is fully visible before it is scrolled to`, async ({ browser }) => {
+    const page = await browser.newPage(options);
+    await page.goto('/');
+    const faded = await page.$$eval('main > section > *', els => els
+      .map(el => ({ el, s: getComputedStyle(el) }))
+      .filter(({ s }) => s.opacity !== '1' || s.transform !== 'none')
+      .map(({ el, s }) => `${el.tagName.toLowerCase()}.${el.className} opacity ${s.opacity} ${s.transform}`));
+    expect(faded).toEqual([]);
+    await page.close();
+  });
+}
