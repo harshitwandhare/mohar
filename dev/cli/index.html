@@ -1429,6 +1429,11 @@ target, as the receipt does.</p>
 <p>The Claude Code hook hands these lessons to the agent with the call, as the hook's <code>additionalContext</code>:
 one line per finding, each cut at 300 characters, with "(since fixed)" once a later pass fixed it.
 Without lessons the hook adds no context.</p>
+<p>When the classified capability is under a remediation plan, the answer also carries <code>remediation</code>:
+<code>{verifier, passes_left, deadline, overdue}</code>, or <code>null</code> without one. A plan is overdue once its deadline
+has passed; from then on passes stop counting until a person extends it. The daemon prints one
+<code>remediation overdue: &lt;agent&gt; on &lt;capability&gt;</code> line per overdue plan when it starts, and the hook adds
+the same notice to the reason a person sees.</p>
 <p><code>/v1/verify</code> verifies a finished task and records one outcome for every decision in the task that ran and
 changes something, from the first verifier that fails:</p>
 <ol>
