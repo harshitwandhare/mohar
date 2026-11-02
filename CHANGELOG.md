@@ -9,6 +9,10 @@ receipt format; each such change is called out.
 
 ### Added
 
+- `spec/vectors/export.py` converts receipts into draft-sharif-agent-audit-trail-09 and
+  draft-sahu-agent-action-receipts-00 records and checks them against each draft's rules in CI. Section 12
+  of the receipt spec maps every field, says what each format loses, and lists questions for the drafts'
+  authors (#135).
 - Receipt spec 1.2.0: section 5.1, person acts. Promoting a lesson to the team, releasing an agent's
   quarantined lessons and extending a remediation plan are each a signed receipt carrying a `person`
   object, written by `POST /v1/person` and replayed on start, so they survive a restart. Four conformance
