@@ -22,7 +22,7 @@ to the [engineering bar](engineering-bar.md). Each phase ships as small pull req
 - Hook adapter that records every tool call and its result.
 - Outcome verifiers: test runs and git diffs.
 
-## Phase 3: trust per capability (Jan to Mar 2027)
+## Phase 3: trust per capability (Jan to Mar 2027), done
 
 - Capability taxonomy, per-capability scores, hard veto gates, and demotion in proportion to what a
   failure could have cost, with remediation plans and lessons the agent is given next time.

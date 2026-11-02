@@ -137,7 +137,10 @@ context the next time it works on the same capability, so the correction reaches
 not only its permissions. A person can promote a lesson to the team, so every agent working on that
 capability gets it. Lessons are data the agent reads, never instructions that change a gate or a level.
 Lessons and any other memory the agent built up before an S3 or S4 event are quarantined until a person
-has looked at them, because a mistake can come from bad memory as easily as from a bad step.
+has looked at them, because a mistake can come from bad memory as easily as from a bad step. The lesson
+from the serious failure itself stays visible: Mohar writes it from the verified failure, so it carries
+none of the agent's own memory, and it is the one most likely to stop the same mistake while a person
+reviews the rest. A later serious failure puts the earlier one's lesson under review with everything else.
 
 This mirrors how people are onboarded: probation, supervised practice, a remediation plan with a named
 reviewer and a deadline, separation of duties for the riskiest work, and a personnel file that records
