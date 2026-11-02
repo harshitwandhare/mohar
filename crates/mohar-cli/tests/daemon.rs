@@ -641,6 +641,7 @@ fn earn_trust(dir: &Path, worker: &str, capability: &str, target: &str) {
                 agent_id: worker.into(),
                 action: action.clone(),
                 decision: decision.clone(),
+                person: None,
                 verification: None,
             })
             .expect("decision");
@@ -649,6 +650,7 @@ fn earn_trust(dir: &Path, worker: &str, capability: &str, target: &str) {
             agent_id: worker.into(),
             action: action.clone(),
             decision: decision.clone(),
+            person: None,
             verification: Some(Verification {
                 evidence_sha256: SHA.into(),
                 kind: "tests".into(),
@@ -1594,6 +1596,7 @@ fn fail_long_ago(dir: &Path, worker: &str, capability: &str, target: &str, days_
             agent_id: worker.into(),
             action: action.clone(),
             decision: decision.clone(),
+            person: None,
             verification: None,
         })
         .expect("decision");
@@ -1602,6 +1605,7 @@ fn fail_long_ago(dir: &Path, worker: &str, capability: &str, target: &str, days_
         agent_id: worker.into(),
         action,
         decision,
+        person: None,
         verification: Some(Verification {
             evidence_sha256: SHA.into(),
             kind: "tests".into(),
@@ -1651,4 +1655,165 @@ fn a_plan_past_its_deadline_is_announced_and_marked_overdue() {
         "no plan, no field value"
     );
     d.stop();
+}
+
+#[test]
+fn what_a_person_does_is_a_receipt_and_survives_a_restart() {
+    let dir = fresh_log("person");
+    let policy = json!({"version": 1,
+        "capabilities": {"fs.edit.config": {"risk": "high", "reversible": true, "ceiling": 1}},
+        "rules": [{"tools": ["Edit"], "paths": ["site/**"], "capability": "fs.edit.config"}]});
+    std::fs::write(dir.join("policy.json"), policy.to_string()).expect("policy");
+    let worker = "agent:claude-code/site-worker";
+    // A serious failure 40 days ago: an overdue plan, one lesson, and that lesson quarantined.
+    fail_long_ago(&dir, worker, "fs.edit.config", "site/vercel.json", 40);
+    let ask = |port: u16, agent: &str| {
+        let b =
+            json!({"agent": agent, "tool": "Edit", "target": "site/a.json", "args_sha256": SHA});
+        post(port, "/v1/decide", &b.to_string()).1
+    };
+    let act = |port: u16, body: Value| post(port, "/v1/person", &body.to_string());
+    let d = Daemon::start(&dir, &[]);
+    assert!(
+        d.next_line()
+            .is_some_and(|l| l.starts_with("remediation overdue"))
+    );
+    let before = ask(d.port, worker);
+    assert_eq!(before["lessons"], json!([]), "quarantined");
+    assert_eq!(before["remediation"]["overdue"], json!(true));
+
+    // Refused, and nothing written: not a quarantined agent, an unknown lesson, an earlier deadline,
+    // a capability with no plan, a malformed act, a pseudonym standing in for a person.
+    let other = "agent:claude-code/other";
+    let base = json!({"by": "user:reviewer-1", "agent": worker});
+    let with = |extra: Value| {
+        let mut b = base.clone();
+        for (k, v) in extra.as_object().expect("object") {
+            b[k] = v.clone();
+        }
+        b
+    };
+    assert_eq!(
+        act(
+            d.port,
+            json!({"by": "user:reviewer-1", "agent": other, "act": "release"})
+        )
+        .0,
+        409
+    );
+    assert_eq!(
+        act(
+            d.port,
+            with(json!({"act": "promote", "lesson": format!("sha256:{SHA}")}))
+        )
+        .0,
+        409
+    );
+    assert_eq!(
+        act(
+            d.port,
+            with(json!({"act": "extend", "capability": "fs.edit.config", "until": 1}))
+        )
+        .0,
+        409
+    );
+    assert_eq!(
+        act(
+            d.port,
+            with(
+                json!({"act": "extend", "capability": "fs.edit.docs", "until": 4_000_000_000_u64})
+            )
+        )
+        .0,
+        409
+    );
+    for wrong in [
+        json!({"act": "release", "capability": "fs.edit.config"}),
+        json!({"act": "extend", "capability": "fs.edit.config"}),
+        json!({"act": "promote"}),
+        json!({"act": "forgive"}),
+        json!({"act": "release", "by": format!("hmac-sha256:{SHA}")}),
+    ] {
+        assert_eq!(act(d.port, with(wrong.clone())).0, 400, "{wrong}");
+    }
+
+    // Release, then extend, then promote the lesson to the team.
+    assert_eq!(act(d.port, with(json!({"act": "release"}))).0, 200);
+    assert_eq!(
+        act(d.port, with(json!({"act": "release"}))).0,
+        409,
+        "nothing left to release"
+    );
+    let lessons = ask(d.port, worker)["lessons"].clone();
+    assert_eq!(
+        lessons.as_array().map(Vec::len),
+        Some(1),
+        "released: {lessons}"
+    );
+    let until = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_secs()
+        + 10 * 86_400;
+    let extend = with(json!({"act": "extend", "capability": "fs.edit.config", "until": until}));
+    assert_eq!(act(d.port, extend).0, 200);
+    assert_eq!(ask(d.port, worker)["remediation"]["overdue"], json!(false));
+    assert_eq!(
+        ask(d.port, other)["lessons"],
+        json!([]),
+        "not the team's yet"
+    );
+    let failure = lessons[0]["failure"].as_str().expect("failure").to_string();
+    assert_eq!(
+        act(d.port, with(json!({"act": "promote", "lesson": failure}))).0,
+        200
+    );
+    assert_eq!(
+        ask(d.port, other)["lessons"],
+        lessons,
+        "promoted to the team"
+    );
+    d.stop();
+
+    // A restart rebuilds the same state from the receipts, and none of them waits for an outcome.
+    let d = Daemon::start(&dir, &[]);
+    let after = ask(d.port, worker);
+    assert_eq!(after["lessons"], lessons);
+    assert_eq!(after["remediation"]["overdue"], json!(false));
+    assert_eq!(ask(d.port, other)["lessons"], lessons);
+    d.stop();
+    let log: Vec<Value> = std::fs::read_to_string(dir.join("receipts.jsonl"))
+        .expect("log")
+        .lines()
+        .map(|l| serde_json::from_str::<Value>(l).expect("json"))
+        .collect();
+    let acts: Vec<&Value> = log.iter().filter(|r| r.get("person").is_some()).collect();
+    assert_eq!(acts.len(), 3);
+    // Every decide above waits for an outcome; the one written 40 days ago has its outcome. A person
+    // receipt is never a decision waiting for one.
+    let decisions = log
+        .iter()
+        .filter(|r| r.get("verification").is_none() && r.get("person").is_none())
+        .count();
+    assert_eq!(pending_on_start(&dir), decisions - 1);
+    for r in &acts {
+        assert_eq!(
+            (r["action"]["tool"].as_str(), r["decision"]["by"].as_str()),
+            (Some("mohar"), Some("human"))
+        );
+        assert_eq!(r["person"]["by"], "user:reviewer-1");
+        assert!(r.get("verification").is_none());
+    }
+    assert!(verify(&dir).contains("receipts"));
+}
+
+/// How many decisions a fresh daemon on `dir` says are waiting for an outcome.
+fn pending_on_start(dir: &Path) -> usize {
+    let d = Daemon::start(dir, &[]);
+    let line = d.next_line().unwrap_or_default();
+    d.stop();
+    line.strip_prefix("waiting for an outcome: ")
+        .and_then(|rest| rest.split(' ').next())
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(0)
 }

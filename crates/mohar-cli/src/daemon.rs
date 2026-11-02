@@ -18,7 +18,7 @@ use mohar_core::policy::{Policy, Risk};
 use mohar_core::privacy::is_pseudonym;
 use mohar_core::store::{FileLog, for_each_log_receipt};
 use mohar_core::trust::{Ledger, Outcome, Severity, sampled_at};
-use mohar_core::{Action, Decision, Entry, Receipt, VERSION, Verification, receipt_hash};
+use mohar_core::{Action, Decision, Entry, Person, Receipt, VERSION, Verification, receipt_hash};
 use serde::Deserialize;
 
 use crate::telemetry::{self, Event, Telemetry};
@@ -259,6 +259,9 @@ fn replay(
                 }
             }
         }
+        None if r.person.is_some() => {
+            apply_person(&mut ledger, &mut lessons, &r);
+        }
         None => {
             // A gate stop is a near miss (S0) unless it only stopped a suspended agent; an action
             // run on the record uses up one raised review draw. The live path does the same.
@@ -398,6 +401,7 @@ fn handle(stream: &mut TcpStream, state: &State) {
         "/v1/decide" => decide(state, &body),
         "/v1/outcome" => outcome(state, &body),
         "/v1/verify" => verify_task(state, &body),
+        "/v1/person" => person(state, &body),
         _ => (404, json!({"error": "no such endpoint"})),
     };
     respond(stream, status, &answer);
@@ -563,6 +567,169 @@ struct OutcomeRequest {
     evidence_sha256: String,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PersonRequest {
+    by: String,
+    act: String,
+    agent: String,
+    #[serde(default)]
+    capability: String,
+    #[serde(default)]
+    lesson: Option<String>,
+    #[serde(default)]
+    until: Option<u64>,
+}
+
+/// Record something a person did to the trust state, as a signed receipt, then apply it. Nothing is
+/// written for an act that would change nothing: a lesson that isn't in the book, an agent with no
+/// quarantine, a plan that doesn't exist or a deadline that isn't later.
+fn person(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
+    let req: PersonRequest = match serde_json::from_slice(body) {
+        Ok(r) => r,
+        Err(_) => return bad("body is not a valid person request"),
+    };
+    if !(field_ok(&req.by, MAX_FIELD) && field_ok(&req.agent, MAX_FIELD))
+        || req.capability.len() > MAX_FIELD
+    {
+        return bad("by and agent must be non-empty, and every field at most 512 bytes");
+    }
+    // As in `decide`: a pseudonym taken from a request would stand in for someone unnamed.
+    if is_pseudonym(&req.agent) || is_pseudonym(&req.by) {
+        return bad("agent and by must not have the form of a pseudonym");
+    }
+    let mut inner = match lock(state) {
+        Ok(g) => g,
+        Err(e) => return e,
+    };
+    let agent = inner.log.pseudonym(&req.agent);
+    let (capability, lesson, until) = match (req.act.as_str(), req.lesson, req.until) {
+        ("promote", Some(lesson), None) => {
+            let found = inner
+                .lessons
+                .by_failure(&lesson)
+                .and_then(|id| inner.lessons.get(id))
+                .filter(|l| l.agent == agent)
+                .map(|l| l.capability.clone());
+            match found {
+                Some(c) if req.capability.is_empty() || req.capability == c => {
+                    (c, Some(lesson), None)
+                }
+                _ => {
+                    return (
+                        409,
+                        json!({"error": "that agent has no lesson from that failure"}),
+                    );
+                }
+            }
+        }
+        ("release", None, None) if req.capability.is_empty() => {
+            if !inner.lessons.is_quarantined(&agent) {
+                return (
+                    409,
+                    json!({"error": "that agent has no quarantined lessons"}),
+                );
+            }
+            (String::new(), None, None)
+        }
+        ("extend", None, Some(until)) if !req.capability.is_empty() => {
+            match inner.ledger.plan(&agent, &req.capability) {
+                Some(p) if until > p.deadline => (req.capability, None, Some(until)),
+                Some(_) => {
+                    return (
+                        409,
+                        json!({"error": "a plan's deadline can only move later"}),
+                    );
+                }
+                None => {
+                    return (
+                        409,
+                        json!({"error": "no remediation plan on that capability"}),
+                    );
+                }
+            }
+        }
+        _ => {
+            return bad(
+                "act must be promote (with lesson), release (no capability) or extend (with capability and until)",
+            );
+        }
+    };
+    let what = Person {
+        act: req.act,
+        by: req.by,
+        lesson,
+        until,
+    };
+    let entry = Entry {
+        ts: crate::now_rfc3339(),
+        agent_id: req.agent,
+        action: Action {
+            capability,
+            tool: "mohar".into(),
+            target: String::new(),
+            args_sha256: person_args(&what),
+        },
+        decision: Decision {
+            result: "allow".into(),
+            level: 0,
+            by: "human".into(),
+            review: false,
+        },
+        verification: None,
+        person: Some(what),
+    };
+    let r = match inner.log.append(entry) {
+        Ok(r) => r,
+        Err(e) => return (500, json!({ "error": e.to_string() })),
+    };
+    let inner = &mut *inner;
+    apply_person(&mut inner.ledger, &mut inner.lessons, &r);
+    (200, json!({ "receipt_seq": r.seq }))
+}
+
+/// A person receipt's `args_sha256`: SHA-256 of the canonical `person` object without `by`, so the
+/// value is the same whether or not strict privacy replaced the person's id.
+fn person_args(p: &Person) -> String {
+    let mut what = json!({ "act": p.act });
+    if let Some(l) = &p.lesson {
+        what["lesson"] = json!(l);
+    }
+    if let Some(u) = p.until {
+        what["until"] = json!(u);
+    }
+    // serde_json's map keeps keys sorted and the values are plain strings and integers, so this is
+    // the canonical form.
+    sha256_hex(what.to_string().as_bytes())
+}
+
+/// Apply a person receipt to trust and lessons, from the receipt as written, so live and replay agree.
+/// A receipt that breaks the rules for its act changes nothing. Returns whether it changed anything.
+fn apply_person(ledger: &mut Ledger, book: &mut Book, r: &Receipt) -> bool {
+    let Some(p) = &r.person else {
+        return false;
+    };
+    if r.verification.is_some() || r.decision.by != "human" || r.action.tool != "mohar" {
+        return false;
+    }
+    let (agent, capability) = (&r.agent.id, &r.action.capability);
+    match (p.act.as_str(), &p.lesson, p.until) {
+        ("promote", Some(lesson), None) => book
+            .by_failure(lesson)
+            .filter(|id| {
+                book.get(*id)
+                    .is_some_and(|l| &l.agent == agent && &l.capability == capability)
+            })
+            .is_some_and(|id| book.promote(id)),
+        ("release", None, None) if capability.is_empty() => {
+            book.release(agent);
+            true
+        }
+        ("extend", None, Some(until)) => ledger.extend_remediation(agent, capability, until),
+        _ => false,
+    }
+}
+
 /// The log, or a 500 if a thread panicked while holding it: its state can't be trusted, so nothing is
 /// decided or recorded until the daemon restarts and rebuilds it from the signed log.
 fn lock(state: &State) -> Result<std::sync::MutexGuard<'_, Inner>, (u16, serde_json::Value)> {
@@ -680,6 +847,7 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         agent_id: req.agent.clone(),
         action: action.clone(),
         decision: decision.clone(),
+        person: None,
         verification: None,
     };
     let receipt = match inner.log.append(entry) {
@@ -846,6 +1014,7 @@ fn append_outcome(
         agent_id: p.agent_id,
         action: p.action,
         decision: p.decision,
+        person: None,
         verification: Some(Verification {
             evidence_sha256,
             kind: kind.to_string(),
@@ -1159,6 +1328,147 @@ mod tests {
     }
 
     const SHA: &str = "c41b77d0c41b77d0c41b77d0c41b77d0c41b77d0c41b77d0c41b77d0c41b77d0";
+
+    /// A ledger with a plan on `a`/`cap` (deadline 1,000 + 30 days) and a book with one lesson from
+    /// failure `f`, quarantined.
+    fn person_fixture(log: &FileLog) -> (Ledger, Book) {
+        let mut ledger = Ledger::new();
+        ledger.record(
+            "a",
+            "cap",
+            &Outcome {
+                at: 1_000,
+                passed: false,
+                severity: Severity::S3,
+                exercises_failure: false,
+                related: Vec::new(),
+                verifier: "tests".into(),
+            },
+        );
+        let mut book = Book::new(log.verifying_key());
+        let lesson = Lesson {
+            v: VERSION,
+            agent: "a".into(),
+            capability: "cap".into(),
+            at: 1_000,
+            failure: "f".into(),
+            finding: "x".into(),
+            fix: String::new(),
+            receipts: vec!["f".into()],
+            sig: String::new(),
+        };
+        book.add(log.sign_lesson(lesson).expect("sign"))
+            .expect("add");
+        book.quarantine("a", 1_000);
+        (ledger, book)
+    }
+
+    fn person_receipt(
+        capability: &str,
+        act: &str,
+        lesson: Option<&str>,
+        until: Option<u64>,
+    ) -> Receipt {
+        Receipt {
+            v: VERSION,
+            seq: 0,
+            prev: String::new(),
+            ts: String::new(),
+            agent: mohar_core::Agent {
+                id: "a".into(),
+                key: String::new(),
+            },
+            action: Action {
+                capability: capability.into(),
+                tool: "mohar".into(),
+                target: String::new(),
+                args_sha256: SHA.into(),
+            },
+            decision: Decision {
+                result: "allow".into(),
+                level: 0,
+                by: "human".into(),
+                review: false,
+            },
+            sig: String::new(),
+            verification: None,
+            person: Some(Person {
+                act: act.into(),
+                by: "p".into(),
+                lesson: lesson.map(String::from),
+                until,
+            }),
+        }
+    }
+
+    #[test]
+    fn a_person_receipt_that_breaks_its_act_s_rules_changes_nothing() {
+        let s = state("person-rules");
+        let log = &s.log.lock().expect("lock").log;
+        let deadline = 1_000 + 30 * 86_400;
+        let later = Some(deadline + 1);
+        let release = person_receipt("", "release", None, None);
+        let extend = person_receipt("cap", "extend", None, later);
+        let promote = person_receipt("cap", "promote", Some("f"), None);
+        let mut wrong = Vec::new();
+        for good in [&release, &extend, &promote] {
+            let mut r = good.clone();
+            r.decision.by = "score".into();
+            wrong.push(r);
+            let mut r = good.clone();
+            r.action.tool = "Edit".into();
+            wrong.push(r);
+            let mut r = good.clone();
+            r.verification = Some(Verification {
+                evidence_sha256: SHA.into(),
+                kind: "human".into(),
+                of: 0,
+                result: "pass".into(),
+            });
+            wrong.push(r);
+        }
+        wrong.extend([
+            person_receipt("cap", "release", None, None),
+            person_receipt("", "release", Some("f"), None),
+            person_receipt("cap", "extend", None, None),
+            person_receipt("cap", "extend", Some("f"), later),
+            person_receipt("cap", "extend", None, Some(deadline)),
+            person_receipt("cap", "promote", None, None),
+            person_receipt("cap", "promote", Some("f"), later),
+            person_receipt("cap", "promote", Some("g"), None),
+            person_receipt("other", "promote", Some("f"), None),
+            person_receipt("cap", "forgive", None, None),
+        ]);
+        for r in &wrong {
+            let (mut ledger, mut book) = person_fixture(log);
+            assert!(!apply_person(&mut ledger, &mut book, r), "{:?}", r.person);
+            assert!(book.is_quarantined("a"), "{:?}", r.person);
+            assert_eq!(ledger.plan("a", "cap").map(|p| p.deadline), Some(deadline));
+            assert!(book.for_context("b", "cap").is_empty(), "{:?}", r.person);
+        }
+        let mut r = promote.clone();
+        r.agent.id = "b".into();
+        let (mut ledger, mut book) = person_fixture(log);
+        assert!(
+            !apply_person(&mut ledger, &mut book, &r),
+            "another agent's lesson"
+        );
+
+        // And each one, as written, does what it says.
+        let (mut ledger, mut book) = person_fixture(log);
+        assert!(apply_person(&mut ledger, &mut book, &release));
+        assert!(!book.is_quarantined("a"));
+        assert!(apply_person(&mut ledger, &mut book, &extend));
+        assert_eq!(ledger.plan("a", "cap").map(|p| p.deadline), later);
+        assert!(apply_person(&mut ledger, &mut book, &promote));
+        assert_eq!(book.for_context("b", "cap").len(), 1);
+        let mut plain = release.clone();
+        plain.person = None;
+        assert!(
+            !apply_person(&mut ledger, &mut book, &plain),
+            "not a person receipt"
+        );
+    }
 
     /// Feed `send` to `read_request` over a real loopback connection. Each part is written after a
     /// short pause; `close` shuts the client's side once everything is sent.

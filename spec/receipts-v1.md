@@ -1,6 +1,6 @@
 # Mohar receipts, format version 1
 
-Spec version 1.1.0
+Spec version 1.2.0
 
 This document describes the receipts and checkpoints Mohar writes, apart from the Rust code, so a
 verifier can be written in any language. It covers receipt format `v: 1`. The reference implementation is
@@ -47,16 +47,18 @@ A receipt is a JSON object with these keys, and no others:
 | `decision.review` | `true` | Present only when the allowed action was sampled for a person to review. |
 | `sig` | signature | Signature over the receipt without `sig` (section 3). |
 | `verification` | object | Present only on a receipt that records an outcome (section 5). |
+| `person` | object | Present only on a receipt that records what a person did (section 5.1, added in 1.2.0). |
 
 Rules for every receipt:
 
 - An object MUST NOT hold a key this section doesn't list, at any depth. A verifier MUST fail a receipt
   that does. The canonical bytes are built from the receipt as written, so an implementation that dropped
   unknown keys while parsing would verify a receipt carrying a field nobody signed.
-- The two optional keys are written only when they say something. `decision.review` MUST be absent or
-  `true`; `false` MUST fail. `verification` MUST be absent or an object; `null` MUST fail.
+- The optional keys are written only when they say something. `decision.review` MUST be absent or
+  `true`; `false` MUST fail. `verification` and `person` MUST each be absent or an object; `null` MUST
+  fail. Inside `person`, `lesson` and `until` MUST be absent or set; `null` MUST fail.
 - A key MUST NOT appear twice in one object. A verifier MUST fail a line that repeats one.
-- `seq`, `decision.level` and `verification.of` are non-negative integers. Writers MUST keep them below
+- `seq`, `decision.level`, `verification.of` and `person.until` are non-negative integers. Writers MUST keep them below
   2^53, so every RFC 8785 implementation writes them as plain digits.
 - `ts` is recorded, not checked. Nothing in this format proves when a receipt was written; the checkpoints
   published outside the machine (section 6) bound it in time.
@@ -98,6 +100,32 @@ An outcome receipt MUST name, in `of`, an earlier receipt that is itself a decis
 `verification`), and MUST repeat that decision's `agent`, `action` and `decision` exactly. These rules are
 part of Level 3 (section 8). The reference verifier writes outcomes this way but doesn't yet refuse a log
 that breaks them; `check.py` checks them on `v1.json`.
+
+### 5.1 Person acts
+
+Added in spec 1.2.0. A person can change the trust state in three ways, and each one is a receipt of its
+own that carries `person`:
+
+| Key | Type | Meaning |
+|---|---|---|
+| `act` | string | `promote` a lesson to the team, `release` an agent's quarantined lessons, or `extend` a remediation plan's deadline. |
+| `by` | string | Stable identifier of the person. In strict privacy mode, a pseudonym like `agent.id`. |
+| `lesson` | hash | For `promote` only: the hash of the failed outcome receipt the lesson was learned from. |
+| `until` | integer | For `extend` only: the new deadline, in seconds since the Unix epoch. |
+
+The rest of the receipt says what the act applies to. `agent.id` is the agent concerned. `action.capability`
+is the capability (empty for `release`, which covers all of the agent's lessons), `action.tool` is
+`mohar`, `action.target` is empty, and `action.args_sha256` is the SHA-256 of the canonical `person`
+object without `by`. `decision` is `{"result": "allow", "level": 0, "by": "human"}`.
+
+A person receipt MUST NOT carry `verification`. `lesson` MUST be present exactly when `act` is `promote`,
+`until` exactly when it is `extend`, and `action.capability` MUST be empty exactly when it is `release`.
+A person receipt is never a decision waiting for an outcome. These rules are part of Level 3, like
+section 5's; the reference daemon writes person receipts this way and, when it replays a log, lets one
+that breaks them change nothing.
+
+Who the person is rests on whoever runs the daemon: `by` is recorded, not authenticated. Binding it to a
+key the person holds is future work.
 
 ## 6. Checkpoint
 
@@ -177,7 +205,8 @@ doesn't show whose key that is, and it doesn't show that nothing was removed fro
 A log rewritten with a new key, or cut short, stays at Level 1. `mohar verify --public-key <file>
 --checkpoints <source>` runs the Level 2 checks.
 
-**Level 3: outcomes bound to the work.** Level 2, and also every outcome receipt meets section 5, and
+**Level 3: outcomes bound to the work.** Level 2, and also every outcome receipt meets section 5, every
+person receipt meets section 5.1, and
 receipts are bound to the commit diff they cover, so a receipt can't be moved onto different code. Format
 version 1 has no field for that binding yet. Level 3 will be completed in a minor version of this spec, and
 until then no log can claim it.
@@ -206,7 +235,8 @@ Every version is listed in [the changelog](../CHANGELOG.md) under the crate rele
   hex, an unknown version, unsigned keys), each with the level a verifier must report. Since 1.1.0 it
   also has rotated logs (section 7.1): across segments, with every segment archived, and ones that must
   fail (no checkpoint closing a segment or at the archive point, a missing segment, a segment named at
-  the wrong start, conflicting checkpoints, a misnamed file).
+  the wrong start, conflicting checkpoints, a misnamed file). Since 1.2.0 it has a log with a person
+  receipt (section 5.1) and three that add a null or unknown key to one after it was signed.
 
 The Rust tests regenerate both files from fixed seeds and check every case with the Rust verifier;
 `check.py` checks the same files in CI and must agree.

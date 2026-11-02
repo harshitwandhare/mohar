@@ -128,13 +128,22 @@ and cumulative metrics: `mohar.decisions` by result, `mohar.outcomes` by verifie
 targets or arguments. Export runs on its own thread; a collector that is down or slow loses telemetry
 and never delays or changes a decision. Without the flag nothing is collected.
 
-Two endpoints, JSON in and out:
+Four endpoints, JSON in and out:
 
 ```
 POST /v1/decide   {agent, tool, target, args_sha256, call_id?}  ->  {result, level, receipt_seq, lessons}
 POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256}  ->  {receipt_seq}
 POST /v1/verify   {agent, task}  ->  {verified, result}
+POST /v1/person   {by, act, agent, capability?, lesson?, until?}  ->  {receipt_seq}
 ```
+
+`/v1/person` records what a person did as a signed receipt (receipt spec section 5.1) and applies it:
+`promote` with `lesson` (the `failure` hash from a lesson) shares that lesson with every agent on its
+capability; `release` lets an agent's quarantined lessons through again; `extend` with `capability` and
+`until` (seconds since the epoch) moves a remediation plan's deadline later. An act that would change
+nothing, such as releasing an agent with no quarantine or moving a deadline earlier, gets a 409 and writes
+nothing. The daemon replays these receipts on start, so they survive a restart. `by` is recorded as
+given; the daemon only listens on loopback, and anyone who can reach it can name any person.
 
 Lessons: every verified failure (any verifier but `host`, and only `fail`, never `unknown`) becomes a
 lesson for that agent on that capability, signed with the log's key. `/v1/decide` returns the five most
