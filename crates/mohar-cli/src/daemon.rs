@@ -14,11 +14,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use mohar_core::lessons::{Book, Lesson};
-use mohar_core::policy::{Policy, Risk};
+use mohar_core::policy::{Policy, Risk, Route};
 use mohar_core::privacy::is_pseudonym;
 use mohar_core::store::{FileLog, for_each_log_receipt};
 use mohar_core::trust::{Ledger, Outcome, Severity, sampled_at};
-use mohar_core::{Action, Decision, Entry, Person, Receipt, VERSION, Verification, receipt_hash};
+use mohar_core::{
+    Action, Decision, Entry, Person, Receipt, VERSION, Verification, action_sha256, receipt_hash,
+};
 use serde::Deserialize;
 
 use crate::telemetry::{self, Event, Telemetry};
@@ -34,6 +36,8 @@ const MAX_FIELD: usize = 512;
 const MAX_TARGET: usize = 4096;
 /// Lessons handed back with a decision: the most recent ones, so the answer stays small.
 const MAX_LESSONS: usize = 5;
+/// How long a person's approval waits to be used, in seconds. It is used once, by the exact action.
+const APPROVAL_SECS: u64 = 3_600;
 
 pub struct Config {
     pub addr: SocketAddr,
@@ -47,6 +51,14 @@ pub struct Config {
     pub otlp_endpoint: Option<String>,
     /// Rotate receipts.jsonl into a segment at this size; never when `None`.
     pub segment_bytes: Option<u64>,
+}
+
+/// A person's approval of one exact action by one agent, not yet used.
+#[derive(Clone)]
+struct Approval {
+    agent_id: String,
+    action: Action,
+    until: u64,
 }
 
 /// A decision that has no outcome yet: enough to write the follow-up receipt.
@@ -88,6 +100,10 @@ struct Inner {
     ledger: Ledger,
     /// Lessons from verified failures, rebuilt from the same receipts.
     lessons: Book,
+    /// Approvals not yet used, rebuilt from approve receipts and the decisions that used them.
+    approvals: Vec<Approval>,
+    /// Who each escalation in this run was routed to. After a restart the agent asks again.
+    routes: HashMap<u64, Route>,
 }
 
 /// Serve until the process is stopped. Prints `listening on ADDR` once bound, so callers that ask
@@ -107,7 +123,7 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
         .transpose()?;
     let mut log = FileLog::open(dir).map_err(|e| e.to_string())?;
     log.set_segment_bytes(cfg.segment_bytes);
-    let (pending, ledger, lessons) = replay(dir, &policy, &log)?;
+    let (pending, ledger, lessons, approvals) = replay(dir, &policy, &log)?;
     let listener = TcpListener::bind(cfg.addr).map_err(|e| format!("{}: {e}", cfg.addr))?;
     let local = listener.local_addr().map_err(|e| e.to_string())?;
     // Nobody may be reading stdout (a closed pipe on Windows); the daemon must not die over that.
@@ -145,6 +161,8 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
             pending,
             ledger,
             lessons,
+            approvals,
+            routes: HashMap::new(),
             tasks: HashMap::new(),
             ran: HashSet::new(),
             baselines: HashMap::new(),
@@ -227,15 +245,15 @@ fn load_policy(dir: &Path) -> Result<Policy, String> {
     }
 }
 
-/// Read the log once: decisions still waiting for an outcome, and the trust ledger and lesson book
-/// rebuilt from every verified outcome. Trust and lessons live nowhere but the signed log, so outcomes
-/// in archived segments no longer count.
-fn replay(
-    dir: &Path,
-    policy: &Policy,
-    log: &FileLog,
-) -> Result<(HashMap<u64, Pending>, Ledger, Book), String> {
+/// What replay rebuilds from the log.
+type Replayed = (HashMap<u64, Pending>, Ledger, Book, Vec<Approval>);
+
+/// Read the log once: decisions still waiting for an outcome, the trust ledger and lesson book rebuilt
+/// from every verified outcome, and the approvals not yet used. Trust and lessons live nowhere but the
+/// signed log, so outcomes in archived segments no longer count.
+fn replay(dir: &Path, policy: &Policy, log: &FileLog) -> Result<Replayed, String> {
     let mut pending = HashMap::new();
+    let mut approvals = Vec::new();
     let mut ledger = Ledger::new();
     let mut lessons = Book::new(log.verifying_key());
     // Signing a lesson has no failing input today; if one appears, the daemon doesn't start on a
@@ -259,6 +277,9 @@ fn replay(
                 }
             }
         }
+        None if r.person.as_ref().is_some_and(|p| p.act == "approve") => {
+            apply_approval(&mut approvals, &mut pending, &r);
+        }
         None if r.person.is_some() => {
             apply_person(&mut ledger, &mut lessons, &r);
         }
@@ -270,6 +291,8 @@ fn replay(
                 ledger.near_miss(&r.agent.id, &r.action.capability);
             } else if by == "score" && result == "allow" {
                 ledger.count_allowed(&r.agent.id, &r.action.capability);
+            } else if by == "human" && result == "allow" {
+                use_approval(&mut approvals, &r.agent.id, &r.action, parse_rfc3339(&r.ts));
             }
             pending.insert(
                 r.seq,
@@ -284,7 +307,7 @@ fn replay(
     .map_err(|e| e.to_string())?;
     match failed {
         Some(e) => Err(e),
-        None => Ok((pending, ledger, lessons)),
+        None => Ok((pending, ledger, lessons, approvals)),
     }
 }
 
@@ -402,6 +425,7 @@ fn handle(stream: &mut TcpStream, state: &State) {
         "/v1/outcome" => outcome(state, &body),
         "/v1/verify" => verify_task(state, &body),
         "/v1/person" => person(state, &body),
+        "/v1/approve" => approve(state, &body),
         _ => (404, json!({"error": "no such endpoint"})),
     };
     respond(stream, status, &answer);
@@ -508,9 +532,11 @@ fn reason_phrase(status: u16) -> &'static str {
     match status {
         200 => "OK",
         400 => "Bad Request",
+        403 => "Forbidden",
         404 => "Not Found",
         405 => "Method Not Allowed",
         408 => "Request Timeout",
+        409 => "Conflict",
         411 => "Length Required",
         413 => "Content Too Large",
         415 => "Unsupported Media Type",
@@ -688,6 +714,131 @@ fn person(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     (200, json!({ "receipt_seq": r.seq }))
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ApproveRequest {
+    receipt_seq: u64,
+    by: String,
+    action_sha256: String,
+}
+
+/// A person approves an escalated action. Only someone the escalation was routed to may, and only by
+/// naming the SHA-256 of the exact action they were shown; the approval is then a signed receipt that
+/// lets that agent run that action once, within an hour. The escalated decision is closed by it.
+fn approve(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
+    let req: ApproveRequest = match serde_json::from_slice(body) {
+        Ok(r) => r,
+        Err(_) => return bad("body is not a valid approve request"),
+    };
+    if !field_ok(&req.by, MAX_FIELD) || is_pseudonym(&req.by) {
+        return bad("by must be non-empty, at most 512 bytes, and not a pseudonym");
+    }
+    if !is_sha256_hex(&req.action_sha256) {
+        return bad("action_sha256 must be 64 lowercase hex characters");
+    }
+    let mut inner = match lock(state) {
+        Ok(g) => g,
+        Err(e) => return e,
+    };
+    let Some(p) = inner
+        .pending
+        .get(&req.receipt_seq)
+        .filter(|p| p.decision.result == "escalate")
+        .cloned()
+    else {
+        return (
+            404,
+            json!({"error": "no escalated decision waiting with that receipt_seq"}),
+        );
+    };
+    let Some(route) = inner.routes.get(&req.receipt_seq) else {
+        return (
+            409,
+            json!({"error": "that escalation has no route in this run; the agent has to ask again"}),
+        );
+    };
+    if !route.to.contains(&req.by) {
+        return (
+            403,
+            json!({"error": "that escalation was routed to someone else", "to": route.to}),
+        );
+    }
+    if req.action_sha256 != action_sha256(&p.action) {
+        return (
+            409,
+            json!({"error": "action_sha256 is not the hash of the action that was escalated"}),
+        );
+    }
+    let ts = crate::now_rfc3339();
+    let what = Person {
+        act: "approve".into(),
+        by: req.by,
+        lesson: None,
+        until: Some(parse_rfc3339(&ts) + APPROVAL_SECS),
+    };
+    // The receipt carries the approved action itself, so what was approved is signed, not a pointer.
+    let entry = Entry {
+        ts,
+        agent_id: p.agent_id,
+        action: p.action,
+        decision: Decision {
+            result: "allow".into(),
+            level: 0,
+            by: "human".into(),
+            review: false,
+        },
+        verification: None,
+        person: Some(what),
+    };
+    let r = match inner.log.append(entry) {
+        Ok(r) => r,
+        Err(e) => return (500, json!({ "error": e.to_string() })),
+    };
+    let inner = &mut *inner;
+    apply_approval(&mut inner.approvals, &mut inner.pending, &r);
+    let pending = &inner.pending;
+    inner.routes.retain(|seq, _| pending.contains_key(seq));
+    (
+        200,
+        json!({ "receipt_seq": r.seq, "until": r.person.as_ref().and_then(|p| p.until) }),
+    )
+}
+
+/// Apply an approve receipt, from the receipt as written, so live and replay agree: the approval waits
+/// to be used, and every escalation of that same action by that agent is closed by it. A receipt that
+/// breaks the act's rules changes nothing.
+fn apply_approval(approvals: &mut Vec<Approval>, pending: &mut HashMap<u64, Pending>, r: &Receipt) {
+    let Some(p) = &r.person else { return };
+    let Some(until) = p.until else { return };
+    if p.act != "approve"
+        || p.lesson.is_some()
+        || r.verification.is_some()
+        || r.decision.by != "human"
+        || r.action.tool == "mohar"
+        || r.action.capability.is_empty()
+    {
+        return;
+    }
+    pending.retain(|_, d| {
+        !(d.decision.result == "escalate" && d.agent_id == r.agent.id && d.action == r.action)
+    });
+    approvals.push(Approval {
+        agent_id: r.agent.id.clone(),
+        action: r.action.clone(),
+        until,
+    });
+}
+
+/// Use up the oldest approval of this exact action by this agent that hadn't expired at `at`.
+fn use_approval(approvals: &mut Vec<Approval>, agent: &str, action: &Action, at: u64) {
+    if let Some(i) = approvals
+        .iter()
+        .position(|a| a.until >= at && a.agent_id == agent && &a.action == action)
+    {
+        approvals.remove(i);
+    }
+}
+
 /// A person receipt's `args_sha256`: SHA-256 of the canonical `person` object without `by`, so the
 /// value is the same whether or not strict privacy replaced the person's id.
 fn person_args(p: &Person) -> String {
@@ -801,6 +952,8 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         Err(e) => return e,
     };
     let now = now_secs();
+    // The receipt's own time, which is what replay judges an approval's expiry by.
+    let ts = crate::now_rfc3339();
     // Trust is keyed by the id as the log holds it, which is what replay rebuilds the ledger from.
     let agent = inner.log.pseudonym(&req.agent);
     // Hard gates come first; no record outweighs them.
@@ -818,11 +971,27 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     let rate = inner
         .ledger
         .review_rate(&agent, &action.capability, verdict.level);
+    // A person's approval stands in for the record only: never for a gate or a suspension, and only
+    // for the exact action they approved.
+    let approved = stop.is_none() && verdict.result == "escalate" && {
+        let at = parse_rfc3339(&ts);
+        inner.approvals.retain(|a| a.until >= at);
+        inner
+            .approvals
+            .iter()
+            .any(|a| a.agent_id == agent && a.action == action)
+    };
     let decision = match &stop {
         Some(_) => Decision {
             result: "deny".to_string(),
             level: verdict.level,
             by: "gate".to_string(),
+            review: false,
+        },
+        None if approved => Decision {
+            result: "allow".to_string(),
+            level: verdict.level,
+            by: "human".to_string(),
             review: false,
         },
         // A fixed rule (a suspension, an action with no effect) is a gate; anything else came from
@@ -843,7 +1012,7 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         },
     };
     let entry = Entry {
-        ts: crate::now_rfc3339(),
+        ts,
         agent_id: req.agent.clone(),
         action: action.clone(),
         decision: decision.clone(),
@@ -886,6 +1055,24 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     if decision.result == "allow" && decision.by == "score" {
         inner.ledger.count_allowed(&agent, &capability);
     }
+    if approved {
+        use_approval(
+            &mut inner.approvals,
+            &agent,
+            &action,
+            parse_rfc3339(&receipt.ts),
+        );
+    }
+    // Who decides an escalation, from the id as the agent sent it, which is what delegations name.
+    let route = (decision.result == "escalate")
+        .then(|| state.policy.route(&req.agent, &capability))
+        .flatten();
+    let approver = route
+        .as_ref()
+        .map(|r| json!({"to": r.to, "via": r.via, "action_sha256": action_sha256(&action)}));
+    if let Some(r) = route {
+        inner.routes.insert(receipt.seq, r);
+    }
     inner.pending.insert(
         receipt.seq,
         Pending {
@@ -927,6 +1114,7 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
             "reason": stop.map(|g| g.reason),
             "lessons": lessons,
             "remediation": remediation,
+            "approver": approver,
         }),
     )
 }
@@ -1318,6 +1506,8 @@ mod tests {
                 ran: HashSet::new(),
                 baselines: HashMap::new(),
                 ledger: Ledger::new(),
+                approvals: Vec::new(),
+                routes: HashMap::new(),
             }),
             policy: Policy::builtin(&dir),
             log_dir: dir,
@@ -1559,9 +1749,11 @@ mod tests {
         for (status, phrase) in [
             (200, "OK"),
             (400, "Bad Request"),
+            (403, "Forbidden"),
             (404, "Not Found"),
             (405, "Method Not Allowed"),
             (408, "Request Timeout"),
+            (409, "Conflict"),
             (411, "Length Required"),
             (413, "Content Too Large"),
             (415, "Unsupported Media Type"),

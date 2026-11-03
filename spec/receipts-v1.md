@@ -1,6 +1,6 @@
 # Mohar receipts, format version 1
 
-Spec version 1.2.0
+Spec version 1.3.0
 
 This document describes the receipts and checkpoints Mohar writes, apart from the Rust code, so a
 verifier can be written in any language. It covers receipt format `v: 1`. The reference implementation is
@@ -103,15 +103,15 @@ that breaks them; `check.py` checks them on `v1.json`.
 
 ### 5.1 Person acts
 
-Added in spec 1.2.0. A person can change the trust state in three ways, and each one is a receipt of its
-own that carries `person`:
+Added in spec 1.2.0; `approve` added in 1.3.0. A person can change the trust state in four ways, and each
+one is a receipt of its own that carries `person`:
 
 | Key | Type | Meaning |
 |---|---|---|
-| `act` | string | `promote` a lesson to the team, `release` an agent's quarantined lessons, or `extend` a remediation plan's deadline. |
+| `act` | string | `promote` a lesson to the team, `release` an agent's quarantined lessons, `extend` a remediation plan's deadline, or `approve` one escalated action. |
 | `by` | string | Stable identifier of the person. In strict privacy mode, a pseudonym like `agent.id`. |
 | `lesson` | hash | For `promote` only: the hash of the failed outcome receipt the lesson was learned from. |
-| `until` | integer | For `extend` only: the new deadline, in seconds since the Unix epoch. |
+| `until` | integer | For `extend`: the new deadline. For `approve`: when the approval lapses unused. Seconds since the Unix epoch. |
 
 The rest of the receipt says what the act applies to. `agent.id` is the agent concerned. `action.capability`
 is the capability (empty for `release`, which covers all of the agent's lessons), `action.tool` is
@@ -123,6 +123,14 @@ A person receipt MUST NOT carry `verification`. `lesson` MUST be present exactly
 A person receipt is never a decision waiting for an outcome. These rules are part of Level 3, like
 section 5's; the reference daemon writes person receipts this way and, when it replays a log, lets one
 that breaks them change nothing.
+
+An `approve` receipt is different in one way: `agent` and `action` are the escalated action itself,
+copied exactly, so what was approved is signed rather than pointed to. `action.tool` is the host's tool,
+never `mohar`, `action.capability` is not empty, `until` is present and `lesson` is absent. The approval is
+bound to the SHA-256 of the action's canonical form (RFC 8785, the four `action` keys only), which is what
+the person was shown. It closes every escalated decision of that action by that agent, and lets the next
+decision for exactly that action, before `until`, be `{"result": "allow", "by": "human"}`. That decision
+uses the approval up; a later one needs another.
 
 Who the person is rests on whoever runs the daemon: `by` is recorded, not authenticated. Binding it to a
 key the person holds is future work.
