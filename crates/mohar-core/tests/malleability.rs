@@ -73,6 +73,6 @@ fn an_outcome_with_a_field_the_format_does_not_define_does_not_parse() {
         "evidence_sha256": "5d41402a", "kind": "tests", "of": 0, "result": "pass"
     });
     assert!(serde_json::from_value::<mohar_core::Receipt>(outcome.clone()).is_ok());
-    outcome["verification"]["reviewer"] = "human:7f3a09c2".into();
+    outcome["verification"]["approver"] = "human:7f3a09c2".into();
     assert!(serde_json::from_value::<mohar_core::Receipt>(outcome).is_err());
 }

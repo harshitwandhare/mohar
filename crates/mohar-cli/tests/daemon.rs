@@ -321,8 +321,7 @@ fn a_crash_between_decide_and_outcome_loses_nothing() {
     );
     let by_call = json!({"call_id": "toolu_1", "verifier": "host", "result": "unknown", "evidence_sha256": SHA});
     assert_eq!(post(d.port, "/v1/outcome", &by_call.to_string()).0, 404);
-    let by_seq =
-        json!({"receipt_seq": seq, "verifier": "human", "result": "pass", "evidence_sha256": SHA});
+    let by_seq = json!({"receipt_seq": seq, "verifier": "human", "result": "pass", "evidence_sha256": SHA, "reviewer": "user:r1", "review_secs": 60});
     assert_eq!(post(d.port, "/v1/outcome", &by_seq.to_string()).0, 200);
     d.stop();
     assert!(verify(&dir).contains("2 receipts"));
@@ -613,6 +612,18 @@ fn earn_docs_trust(dir: &Path, worker: &str) {
 
 /// Write 40 edits of `target` under `capability` by `worker`, each verified by tests, 20 days ago.
 fn earn_trust(dir: &Path, worker: &str, capability: &str, target: &str) {
+    earn_trust_with(dir, worker, capability, target, "tests", None);
+}
+
+/// [`earn_trust`] with another verifier, and for `human` the reviewer and seconds spent.
+fn earn_trust_with(
+    dir: &Path,
+    worker: &str,
+    capability: &str,
+    target: &str,
+    kind: &str,
+    review: Option<(&str, u64)>,
+) {
     use mohar_core::store::FileLog;
     use mohar_core::{Action, Decision, Entry, Verification};
 
@@ -654,9 +665,11 @@ fn earn_trust(dir: &Path, worker: &str, capability: &str, target: &str) {
             person: None,
             verification: Some(Verification {
                 evidence_sha256: SHA.into(),
-                kind: "tests".into(),
+                kind: kind.into(),
                 of: d.seq,
                 result: "pass".into(),
+                review_secs: review.map(|r| r.1),
+                reviewer: review.map(|r| r.0.to_string()),
             }),
         })
         .expect("outcome");
@@ -731,7 +744,7 @@ fn allowed_actions_are_sampled_for_review_and_a_reviewed_failure_counts() {
     // A person reviews three sampled actions and finds them wrong: three minor failures in two weeks
     // count as one meaningful failure, so the capability drops a level.
     for seq in &picked[..3] {
-        let o = json!({"receipt_seq": seq, "verifier": "human", "result": "fail", "evidence_sha256": SHA});
+        let o = json!({"receipt_seq": seq, "verifier": "human", "result": "fail", "evidence_sha256": SHA, "reviewer": "user:r1", "review_secs": 60});
         assert_eq!(post(d.port, "/v1/outcome", &o.to_string()).0, 200);
     }
     let after = ask(worker);
@@ -1336,8 +1349,7 @@ fn the_exporter_receives_a_span_per_decision_and_counts_by_result() {
     let (status, a) = decide(d.port, "Edit", "docs/a.md", Some("toolu_1"));
     assert_eq!(status, 200);
     let seq = a["receipt_seq"].as_u64().expect("seq");
-    let done =
-        json!({"receipt_seq": seq, "verifier": "human", "result": "pass", "evidence_sha256": SHA});
+    let done = json!({"receipt_seq": seq, "verifier": "human", "result": "pass", "evidence_sha256": SHA, "reviewer": "user:r1", "review_secs": 60});
     assert_eq!(post(d.port, "/v1/outcome", &done.to_string()).0, 200);
 
     let traces = wait_for(&rx, "/v1/traces", |_| true);
@@ -1615,6 +1627,8 @@ fn fail_long_ago(dir: &Path, worker: &str, capability: &str, target: &str, days_
             kind: "tests".into(),
             of: d.seq,
             result: "fail".into(),
+            review_secs: None,
+            reviewer: None,
         }),
     })
     .expect("outcome");
@@ -2117,9 +2131,14 @@ fn in_strict_privacy_mode_approvals_work_and_no_approver_is_in_the_clear() {
     let body = json!({"receipt_seq": a["receipt_seq"], "by": "user:lead-1",
         "action_sha256": a["approver"]["action_sha256"]});
     assert_eq!(post(d.port, "/v1/approve", &body.to_string()).0, 200);
+    // A person's verdict names its reviewer, and that goes through the pseudonyms too.
+    let other = ask_as(d.port, agent, "Edit", "src/other.rs", SHA);
+    let verdict = json!({"receipt_seq": other["receipt_seq"], "verifier": "human", "result": "pass",
+        "evidence_sha256": SHA, "reviewer": "user:rev-9", "review_secs": 60});
+    assert_eq!(post(d.port, "/v1/outcome", &verdict.to_string()).0, 200);
     d.stop();
     let text = std::fs::read_to_string(dir.join("receipts.jsonl")).expect("log");
-    for clear in ["user:lead-1", "secret-name", "docs-writer"] {
+    for clear in ["user:lead-1", "user:rev-9", "secret-name", "docs-writer"] {
         assert!(!text.contains(clear), "{clear} is in the log");
     }
     // The approver's clear id is kept outside the chain, where it can be erased.
@@ -2413,4 +2432,112 @@ fn one_person_approving_twice_in_the_log_still_counts_once() {
         ask_as(d.port, agent, "Edit", "src/a.rs", SHA)["result"],
         "allow"
     );
+}
+
+#[test]
+fn a_person_s_accept_counts_only_with_who_reviewed_it_and_enough_time() {
+    let ask = |port: u16| {
+        let b = json!({"agent": "agent:w/1", "tool": "Edit", "target": "docs/a.md", "args_sha256": SHA});
+        post(port, "/v1/decide", &b.to_string()).1["result"].clone()
+    };
+    for (name, kind, review, earned) in [
+        ("human-read", "human", Some(("user:r1", 60)), true),
+        ("human-glance", "human", Some(("user:r1", 5)), false),
+        ("human-anon", "human", None, false),
+    ] {
+        let dir = fresh_log(name);
+        earn_trust_with(&dir, "agent:w/1", "fs.edit.docs", "docs/a.md", kind, review);
+        let d = Daemon::start(&dir, &[]);
+        let want = if earned { "allow" } else { "escalate" };
+        assert_eq!(ask(d.port), want, "{name}");
+    }
+
+    // The daemon takes a person's verdict only with both fields, and only on a human outcome.
+    let dir = fresh_log("human-outcome");
+    let d = Daemon::start(&dir, &[]);
+    let seq = |port: u16| ask_as(port, "agent:w/1", "Edit", "src/a.rs", SHA)["receipt_seq"].clone();
+    for (body, status) in [
+        (
+            json!({"verifier": "human", "result": "pass", "evidence_sha256": SHA}),
+            400,
+        ),
+        (
+            json!({"verifier": "human", "result": "pass", "evidence_sha256": SHA, "reviewer": "user:r1"}),
+            400,
+        ),
+        (
+            json!({"verifier": "human", "result": "pass", "evidence_sha256": SHA, "reviewer": format!("hmac-sha256:{SHA}"), "review_secs": 60}),
+            400,
+        ),
+        (
+            json!({"verifier": "tests", "result": "pass", "evidence_sha256": SHA, "reviewer": "user:r1", "review_secs": 60}),
+            400,
+        ),
+        (
+            json!({"verifier": "human", "result": "pass", "evidence_sha256": SHA, "reviewer": "user:r1", "review_secs": 60}),
+            200,
+        ),
+    ] {
+        let mut b = body.clone();
+        b["receipt_seq"] = seq(d.port);
+        assert_eq!(
+            post(d.port, "/v1/outcome", &b.to_string()).0,
+            status,
+            "{body}"
+        );
+    }
+    d.stop();
+    let last = log_of(&dir).pop().expect("receipt");
+    assert_eq!(last["verification"]["reviewer"], "user:r1");
+    assert_eq!(last["verification"]["review_secs"], 60);
+    verify(&dir);
+}
+
+#[test]
+fn a_human_failure_with_no_reviewer_named_teaches_nothing() {
+    use mohar_core::store::FileLog;
+    use mohar_core::{Action, Decision, Entry, Verification};
+
+    let dir = fresh_log("human-anon-fail");
+    let mut log = FileLog::open(&dir).expect("open");
+    let action = Action {
+        capability: "fs.edit.docs".into(),
+        tool: "Edit".into(),
+        target: "docs/a.md".into(),
+        args_sha256: SHA.into(),
+    };
+    let decision = Decision {
+        result: "escalate".into(),
+        level: 0,
+        by: "score".into(),
+        review: false,
+        to: Vec::new(),
+    };
+    let entry = |verification| Entry {
+        ts: rfc3339(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_secs(),
+        ),
+        agent_id: "agent:w/1".into(),
+        action: action.clone(),
+        decision: decision.clone(),
+        person: None,
+        verification,
+    };
+    let d = log.append(entry(None)).expect("decision");
+    log.append(entry(Some(Verification {
+        evidence_sha256: SHA.into(),
+        kind: "human".into(),
+        of: d.seq,
+        result: "fail".into(),
+        review_secs: None,
+        reviewer: None,
+    })))
+    .expect("outcome");
+    drop(log);
+    let d = Daemon::start(&dir, &[]);
+    let a = ask_as(d.port, "agent:w/1", "Edit", "docs/a.md", SHA);
+    assert_eq!(a["lessons"], json!([]), "{a}");
 }
