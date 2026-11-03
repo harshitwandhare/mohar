@@ -1586,6 +1586,12 @@ with it, for that agent only. Each name must be defined under <code>capabilities
 <span class="w">  </span><span class="nt">"prod-db"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"db.migrate.prod"</span><span class="p">,</span><span class="w"> </span><span class="s2">"db.seed.prod"</span><span class="p">]</span>
 <span class="p">}</span>
 </code></pre></div>
+<p><code>gates.two_person</code> lists capabilities whose escalations need two different people to approve. Such an
+escalation also goes to the owners, so there are two people to ask; it stays open after the first
+approval, the same person approving again gets a 409, a refusal by anyone asked ends it, and the action
+runs only once both have approved. Separately, an agent's sponsor (the person a delegation names as
+having handed it authority) can't <code>release</code> it after a serious failure: <code>/v1/person</code> answers 403 and a
+different person has to.</p>
 <p>A <code>people</code> section routes escalations. The person who delegated to the agent decides if they hold the
 capability; otherwise the first person up their reporting tree who does; otherwise any owner. <code>holds</code> and
 <code>agent</code> are globs (<code>*</code> matches anything). Owners are required, every name in <code>reports_to</code> and <code>from</code> must
