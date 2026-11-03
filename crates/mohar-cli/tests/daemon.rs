@@ -2122,6 +2122,9 @@ fn in_strict_privacy_mode_approvals_work_and_no_approver_is_in_the_clear() {
     for clear in ["user:lead-1", "secret-name", "docs-writer"] {
         assert!(!text.contains(clear), "{clear} is in the log");
     }
+    // The approver's clear id is kept outside the chain, where it can be erased.
+    let ids = std::fs::read_to_string(dir.join("identities.jsonl")).expect("identities");
+    assert!(ids.contains("\"user:lead-1\""), "{ids}");
     // The approval, read back from pseudonyms, still matches the action asked for by name.
     let d = Daemon::start(&dir, &[]);
     assert_eq!(
