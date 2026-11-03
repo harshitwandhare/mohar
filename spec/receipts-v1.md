@@ -1,6 +1,6 @@
 # Mohar receipts, format version 1
 
-Spec version 1.3.0
+Spec version 1.4.0
 
 This document describes the receipts and checkpoints Mohar writes, apart from the Rust code, so a
 verifier can be written in any language. It covers receipt format `v: 1`. The reference implementation is
@@ -45,6 +45,7 @@ A receipt is a JSON object with these keys, and no others:
 | `decision.level` | integer | The agent's trust level on this capability at the time: 0 ask first, 1 supervised, 2 trusted. |
 | `decision.by` | string | What decided: `gate`, `score`, `human` or `predicted`. |
 | `decision.review` | `true` | Present only when the allowed action was sampled for a person to review. |
+| `decision.to` | array of strings | Present only on an escalation that was routed to named people (added in 1.4.0): any one of them may answer. In strict privacy mode, pseudonyms like `agent.id`. |
 | `sig` | signature | Signature over the receipt without `sig` (section 3). |
 | `verification` | object | Present only on a receipt that records an outcome (section 5). |
 | `person` | object | Present only on a receipt that records what a person did (section 5.1, added in 1.2.0). |
@@ -55,7 +56,7 @@ Rules for every receipt:
   that does. The canonical bytes are built from the receipt as written, so an implementation that dropped
   unknown keys while parsing would verify a receipt carrying a field nobody signed.
 - The optional keys are written only when they say something. `decision.review` MUST be absent or
-  `true`; `false` MUST fail. `verification` and `person` MUST each be absent or an object; `null` MUST
+  `true`; `false` MUST fail. `decision.to`, when present, MUST be a non-empty array of strings; `[]` MUST fail. `verification` and `person` MUST each be absent or an object; `null` MUST
   fail. Inside `person`, `lesson` and `until` MUST be absent or set; `null` MUST fail.
 - A key MUST NOT appear twice in one object. A verifier MUST fail a line that repeats one.
 - `seq`, `decision.level`, `verification.of` and `person.until` are non-negative integers. Writers MUST keep them below
@@ -103,12 +104,12 @@ that breaks them; `check.py` checks them on `v1.json`.
 
 ### 5.1 Person acts
 
-Added in spec 1.2.0; `approve` added in 1.3.0. A person can change the trust state in four ways, and each
-one is a receipt of its own that carries `person`:
+Added in spec 1.2.0; `approve` added in 1.3.0 and `refuse` in 1.4.0. A person can change the trust state in
+five ways, and each one is a receipt of its own that carries `person`:
 
 | Key | Type | Meaning |
 |---|---|---|
-| `act` | string | `promote` a lesson to the team, `release` an agent's quarantined lessons, `extend` a remediation plan's deadline, or `approve` one escalated action. |
+| `act` | string | `promote` a lesson to the team, `release` an agent's quarantined lessons, `extend` a remediation plan's deadline, or `approve` or `refuse` one escalated action. |
 | `by` | string | Stable identifier of the person. In strict privacy mode, a pseudonym like `agent.id`. |
 | `lesson` | hash | For `promote` only: the hash of the failed outcome receipt the lesson was learned from. |
 | `until` | integer | For `extend`: the new deadline. For `approve`: when the approval lapses unused. Seconds since the Unix epoch. |
@@ -124,11 +125,13 @@ A person receipt is never a decision waiting for an outcome. These rules are par
 section 5's; the reference daemon writes person receipts this way and, when it replays a log, lets one
 that breaks them change nothing.
 
-An `approve` receipt is different in one way: `agent` and `action` are the escalated action itself,
-copied exactly, so what was approved is signed rather than pointed to. `action.tool` is the host's tool,
-never `mohar`, `action.capability` is not empty, `until` is present and `lesson` is absent. The approval is
+`approve` and `refuse` receipts are different in one way: `agent` and `action` are the escalated action itself,
+copied exactly, so what was answered is signed rather than pointed to. `action.tool` is the host's tool,
+never `mohar`, `action.capability` is not empty and `lesson` is absent; `until` is present on `approve` and
+absent on `refuse`. `by` SHOULD be one of the escalation's `decision.to`. Either answer closes every
+escalated decision of that action by that agent. The approval is
 bound to the SHA-256 of the action's canonical form (RFC 8785, the four `action` keys only), which is what
-the person was shown. It closes every escalated decision of that action by that agent, and lets the next
+the person was shown. An approval lets the next
 decision for exactly that action, before `until`, be `{"result": "allow", "by": "human"}`. That decision
 uses the approval up; a later one needs another.
 

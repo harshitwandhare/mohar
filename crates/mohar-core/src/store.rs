@@ -598,6 +598,9 @@ impl FileLog {
             if let Some(person) = &mut entry.person {
                 person.by = ids.record(std::mem::take(&mut person.by))?;
             }
+            for name in &mut entry.decision.to {
+                *name = ids.record(std::mem::take(name))?;
+            }
         }
         let r = seal(&self.key, self.len, self.last_hash.clone(), entry)?;
         let mut line = serde_json::to_vec(&r).map_err(|e| Error::Canonical(e.to_string()))?;

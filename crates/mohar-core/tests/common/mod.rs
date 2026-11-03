@@ -25,6 +25,7 @@ pub fn entries() -> Vec<Entry> {
         level,
         by: by.into(),
         review: false,
+        to: Vec::new(),
     };
     vec![
         Entry {

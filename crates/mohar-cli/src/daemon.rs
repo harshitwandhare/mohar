@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use mohar_core::lessons::{Book, Lesson};
-use mohar_core::policy::{Policy, Risk, Route};
+use mohar_core::policy::{Policy, Risk};
 use mohar_core::privacy::is_pseudonym;
 use mohar_core::store::{FileLog, for_each_log_receipt};
 use mohar_core::trust::{Ledger, Outcome, Severity, sampled_at};
@@ -102,8 +102,6 @@ struct Inner {
     lessons: Book,
     /// Approvals not yet used, rebuilt from approve receipts and the decisions that used them.
     approvals: Vec<Approval>,
-    /// Who each escalation in this run was routed to. After a restart the agent asks again.
-    routes: HashMap<u64, Route>,
 }
 
 /// Serve until the process is stopped. Prints `listening on ADDR` once bound, so callers that ask
@@ -162,7 +160,6 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
             ledger,
             lessons,
             approvals,
-            routes: HashMap::new(),
             tasks: HashMap::new(),
             ran: HashSet::new(),
             baselines: HashMap::new(),
@@ -277,8 +274,12 @@ fn replay(dir: &Path, policy: &Policy, log: &FileLog) -> Result<Replayed, String
                 }
             }
         }
-        None if r.person.as_ref().is_some_and(|p| p.act == "approve") => {
-            apply_approval(&mut approvals, &mut pending, &r);
+        None if r
+            .person
+            .as_ref()
+            .is_some_and(|p| p.act == "approve" || p.act == "refuse") =>
+        {
+            apply_answer(log, &mut approvals, &mut pending, &r);
         }
         None if r.person.is_some() => {
             apply_person(&mut ledger, &mut lessons, &r);
@@ -425,7 +426,8 @@ fn handle(stream: &mut TcpStream, state: &State) {
         "/v1/outcome" => outcome(state, &body),
         "/v1/verify" => verify_task(state, &body),
         "/v1/person" => person(state, &body),
-        "/v1/approve" => approve(state, &body),
+        "/v1/approve" => answer(state, &body, "approve"),
+        "/v1/refuse" => answer(state, &body, "refuse"),
         _ => (404, json!({"error": "no such endpoint"})),
     };
     respond(stream, status, &answer);
@@ -701,6 +703,7 @@ fn person(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
             level: 0,
             by: "human".into(),
             review: false,
+            to: Vec::new(),
         },
         verification: None,
         person: Some(what),
@@ -716,19 +719,20 @@ fn person(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ApproveRequest {
+struct AnswerRequest {
     receipt_seq: u64,
     by: String,
     action_sha256: String,
 }
 
-/// A person approves an escalated action. Only someone the escalation was routed to may, and only by
-/// naming the SHA-256 of the exact action they were shown; the approval is then a signed receipt that
-/// lets that agent run that action once, within an hour. The escalated decision is closed by it.
-fn approve(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
-    let req: ApproveRequest = match serde_json::from_slice(body) {
+/// A person answers an escalated action, `approve` or `refuse`. Only someone it was routed to may
+/// (the escalate receipt names them), and only by naming the SHA-256 of the exact action they were
+/// shown. Either answer is a signed receipt that closes the escalation; an approval also lets that
+/// agent run that action once, within an hour.
+fn answer(state: &State, body: &[u8], act: &str) -> (u16, serde_json::Value) {
+    let req: AnswerRequest = match serde_json::from_slice(body) {
         Ok(r) => r,
-        Err(_) => return bad("body is not a valid approve request"),
+        Err(_) => return bad("body is not a valid answer: give receipt_seq, by and action_sha256"),
     };
     if !field_ok(&req.by, MAX_FIELD) || is_pseudonym(&req.by) {
         return bad("by must be non-empty, at most 512 bytes, and not a pseudonym");
@@ -751,19 +755,16 @@ fn approve(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
             json!({"error": "no escalated decision waiting with that receipt_seq"}),
         );
     };
-    let Some(route) = inner.routes.get(&req.receipt_seq) else {
-        return (
-            409,
-            json!({"error": "that escalation has no route in this run; the agent has to ask again"}),
-        );
-    };
-    if !route.to.contains(&req.by) {
+    // Compared as the log writes it, so a strict-privacy log matches the person's pseudonym. An
+    // escalation that named nobody went to the host's own prompt, and nobody answers it here.
+    if !p.decision.to.contains(&inner.log.pseudonym(&req.by)) {
         return (
             403,
-            json!({"error": "that escalation was routed to someone else", "to": route.to}),
+            json!({"error": "that escalation was not routed to this person"}),
         );
     }
-    if req.action_sha256 != action_sha256(&p.action) {
+    let action = logged(&inner.log, &p.action);
+    if req.action_sha256 != action_sha256(&action) {
         return (
             409,
             json!({"error": "action_sha256 is not the hash of the action that was escalated"}),
@@ -771,21 +772,22 @@ fn approve(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     }
     let ts = crate::now_rfc3339();
     let what = Person {
-        act: "approve".into(),
+        act: act.into(),
+        until: (act == "approve").then(|| parse_rfc3339(&ts) + APPROVAL_SECS),
         by: req.by,
         lesson: None,
-        until: Some(parse_rfc3339(&ts) + APPROVAL_SECS),
     };
-    // The receipt carries the approved action itself, so what was approved is signed, not a pointer.
+    // The receipt carries the escalated action itself, so what was answered is signed, not a pointer.
     let entry = Entry {
         ts,
         agent_id: p.agent_id,
-        action: p.action,
+        action,
         decision: Decision {
             result: "allow".into(),
             level: 0,
             by: "human".into(),
             review: false,
+            to: Vec::new(),
         },
         verification: None,
         person: Some(what),
@@ -795,23 +797,29 @@ fn approve(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         Err(e) => return (500, json!({ "error": e.to_string() })),
     };
     let inner = &mut *inner;
-    apply_approval(&mut inner.approvals, &mut inner.pending, &r);
-    let pending = &inner.pending;
-    inner.routes.retain(|seq, _| pending.contains_key(seq));
+    apply_answer(&inner.log, &mut inner.approvals, &mut inner.pending, &r);
     (
         200,
         json!({ "receipt_seq": r.seq, "until": r.person.as_ref().and_then(|p| p.until) }),
     )
 }
 
-/// Apply an approve receipt, from the receipt as written, so live and replay agree: the approval waits
-/// to be used, and every escalation of that same action by that agent is closed by it. A receipt that
-/// breaks the act's rules changes nothing.
-fn apply_approval(approvals: &mut Vec<Approval>, pending: &mut HashMap<u64, Pending>, r: &Receipt) {
+/// Apply an approve or refuse receipt, from the receipt as written, so live and replay agree. Either
+/// closes every escalation of that same action by that agent; an approval also waits to be used. A
+/// receipt that breaks its act's rules changes nothing.
+fn apply_answer(
+    log: &FileLog,
+    approvals: &mut Vec<Approval>,
+    pending: &mut HashMap<u64, Pending>,
+    r: &Receipt,
+) {
     let Some(p) = &r.person else { return };
-    let Some(until) = p.until else { return };
-    if p.act != "approve"
-        || p.lesson.is_some()
+    let until = match (p.act.as_str(), p.until) {
+        ("approve", Some(until)) => Some(until),
+        ("refuse", None) => None,
+        _ => return,
+    };
+    if p.lesson.is_some()
         || r.verification.is_some()
         || r.decision.by != "human"
         || r.action.tool == "mohar"
@@ -820,13 +828,26 @@ fn apply_approval(approvals: &mut Vec<Approval>, pending: &mut HashMap<u64, Pend
         return;
     }
     pending.retain(|_, d| {
-        !(d.decision.result == "escalate" && d.agent_id == r.agent.id && d.action == r.action)
+        !(d.decision.result == "escalate"
+            && d.agent_id == r.agent.id
+            && logged(log, &d.action) == r.action)
     });
-    approvals.push(Approval {
-        agent_id: r.agent.id.clone(),
-        action: r.action.clone(),
-        until,
-    });
+    if let Some(until) = until {
+        approvals.push(Approval {
+            agent_id: r.agent.id.clone(),
+            action: r.action.clone(),
+            until,
+        });
+    }
+}
+
+/// An action as the log writes it: in strict privacy mode its target is a pseudonym. A live pending
+/// decision keeps the clear target (the verifiers need it), so comparisons with receipts go through this.
+fn logged(log: &FileLog, a: &Action) -> Action {
+    Action {
+        target: log.pseudonym(&a.target),
+        ..a.clone()
+    }
 }
 
 /// Use up the oldest approval of this exact action by this agent that hadn't expired at `at`.
@@ -973,26 +994,36 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         .review_rate(&agent, &action.capability, verdict.level);
     // A person's approval stands in for the record only: never for a gate or a suspension, and only
     // for the exact action they approved.
+    // The action as the log writes it (a pseudonymous target in strict privacy mode), which is what an
+    // approval read back from the log holds.
+    let logged = logged(&inner.log, &action);
     let approved = stop.is_none() && verdict.result == "escalate" && {
         let at = parse_rfc3339(&ts);
         inner.approvals.retain(|a| a.until >= at);
         inner
             .approvals
             .iter()
-            .any(|a| a.agent_id == agent && a.action == action)
+            .any(|a| a.agent_id == agent && a.action == logged)
     };
+    // Who decides an escalation, from the id as the agent sent it, which is what delegations name. It
+    // goes into the receipt, so the log alone says who was asked.
+    let route = (stop.is_none() && !approved && verdict.result == "escalate")
+        .then(|| state.policy.route(&req.agent, &action.capability))
+        .flatten();
     let decision = match &stop {
         Some(_) => Decision {
             result: "deny".to_string(),
             level: verdict.level,
             by: "gate".to_string(),
             review: false,
+            to: Vec::new(),
         },
         None if approved => Decision {
             result: "allow".to_string(),
             level: verdict.level,
             by: "human".to_string(),
             review: false,
+            to: Vec::new(),
         },
         // A fixed rule (a suspension, an action with no effect) is a gate; anything else came from
         // the record.
@@ -1009,6 +1040,7 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
                 && !suspended
                 && classified.spec.risk != Risk::None
                 && sampled_at(&state.review_seed, next_seq, rate),
+            to: route.as_ref().map(|r| r.to.clone()).unwrap_or_default(),
         },
     };
     let entry = Entry {
@@ -1059,26 +1091,20 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         use_approval(
             &mut inner.approvals,
             &agent,
-            &action,
+            &receipt.action,
             parse_rfc3339(&receipt.ts),
         );
     }
-    // Who decides an escalation, from the id as the agent sent it, which is what delegations name.
-    let route = (decision.result == "escalate")
-        .then(|| state.policy.route(&req.agent, &capability))
-        .flatten();
-    let approver = route
-        .as_ref()
-        .map(|r| json!({"to": r.to, "via": r.via, "action_sha256": action_sha256(&action)}));
-    if let Some(r) = route {
-        inner.routes.insert(receipt.seq, r);
-    }
+    let approver = route.as_ref().map(
+        |r| json!({"to": r.to, "via": r.via, "action_sha256": action_sha256(&receipt.action)}),
+    );
     inner.pending.insert(
         receipt.seq,
+        // The decision as written (strict privacy changes `to`), the way replay rebuilds it.
         Pending {
             agent_id: agent,
             action,
-            decision: decision.clone(),
+            decision: receipt.decision.clone(),
         },
     );
     if let Some(call) = req.call_id {
@@ -1507,7 +1533,6 @@ mod tests {
                 baselines: HashMap::new(),
                 ledger: Ledger::new(),
                 approvals: Vec::new(),
-                routes: HashMap::new(),
             }),
             policy: Policy::builtin(&dir),
             log_dir: dir,
@@ -1579,6 +1604,7 @@ mod tests {
                 level: 0,
                 by: "human".into(),
                 review: false,
+                to: Vec::new(),
             },
             sig: String::new(),
             verification: None,

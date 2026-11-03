@@ -177,6 +177,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
                         level,
                         by,
                         review: false,
+                        to: Vec::new(),
                     },
                     person: None,
                     verification: None,

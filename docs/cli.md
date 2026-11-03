@@ -128,7 +128,7 @@ and cumulative metrics: `mohar.decisions` by result, `mohar.outcomes` by verifie
 targets or arguments. Export runs on its own thread; a collector that is down or slow loses telemetry
 and never delays or changes a decision. Without the flag nothing is collected.
 
-Five endpoints, JSON in and out:
+Six endpoints, JSON in and out:
 
 ```
 POST /v1/decide   {agent, tool, target, args_sha256, call_id?}  ->  {result, level, receipt_seq, lessons}
@@ -136,6 +136,7 @@ POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256}  ->
 POST /v1/verify   {agent, task}  ->  {verified, result}
 POST /v1/person   {by, act, agent, capability?, lesson?, until?}  ->  {receipt_seq}
 POST /v1/approve  {receipt_seq, by, action_sha256}  ->  {receipt_seq, until}
+POST /v1/refuse   {receipt_seq, by, action_sha256}  ->  {receipt_seq}
 ```
 
 When the policy has a `people` section, an `escalate` answer from `/v1/decide` also carries `approver`:
@@ -145,8 +146,11 @@ hash. Someone the escalation wasn't routed to gets a 403, and a hash of any othe
 both cases nothing is written. An approval is a signed receipt (receipt spec section 5.1) that lets that
 agent run that exact action once within the hour: the next `/v1/decide` for it is `allow`, decided by
 `human`, and a different target, different arguments or a different agent still escalate. Gates and
-suspensions are checked first and an approval never overrides them. Unused approvals survive a restart;
-routes don't, so an escalation from before a restart is asked again. The Claude Code hook denies a routed
+suspensions are checked first and an approval never overrides them. `/v1/refuse` takes the same body
+and records a no, which closes the escalation without letting anything run. The escalate receipt names
+the people it went to (`decision.to`), so an answer is checked against the log and still works after a
+restart, as do unused approvals. An escalation that named nobody went to the host's prompt and gets a
+403 here. The Claude Code hook denies a routed
 escalation with the approvers' names instead of asking whoever is at the prompt.
 
 `/v1/person` records what a person did as a signed receipt (receipt spec section 5.1) and applies it:

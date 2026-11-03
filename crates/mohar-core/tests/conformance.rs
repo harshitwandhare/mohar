@@ -86,6 +86,7 @@ fn person_log(seed: &[u8; 32]) -> (Vec<Receipt>, Vec<Checkpoint>) {
             level: 0,
             by: "human".into(),
             review: false,
+            to: Vec::new(),
         },
         verification: None,
         person: Some(Person {
@@ -93,6 +94,66 @@ fn person_log(seed: &[u8; 32]) -> (Vec<Receipt>, Vec<Checkpoint>) {
             by: "human:7f3a09c2".into(),
             lesson: None,
             until: Some(1_796_000_000),
+        }),
+    })
+    .expect("append");
+    (log.receipts().to_vec(), checkpoints)
+}
+
+/// [`person_log`] with a sixth receipt: an escalation that names the two people it was routed to,
+/// then a seventh, one of them refusing it (spec 1.4.0).
+fn routed_log(seed: &[u8; 32]) -> (Vec<Receipt>, Vec<Checkpoint>) {
+    let (receipts, checkpoints) = person_log(seed);
+    let mut log = Log::new(SigningKey::from_seed(seed));
+    for r in &receipts {
+        log.append(Entry {
+            ts: r.ts.clone(),
+            agent_id: r.agent.id.clone(),
+            action: r.action.clone(),
+            decision: r.decision.clone(),
+            verification: r.verification.clone(),
+            person: r.person.clone(),
+        })
+        .expect("append");
+    }
+    let action = Action {
+        capability: "db.migrate".into(),
+        tool: "Bash".into(),
+        target: "migrate up".into(),
+        args_sha256: "9b0e41c2".into(),
+    };
+    log.append(Entry {
+        ts: "2026-11-03T16:05:10.512Z".into(),
+        agent_id: receipts[0].agent.id.clone(),
+        action: action.clone(),
+        decision: Decision {
+            result: "escalate".into(),
+            level: 0,
+            by: "score".into(),
+            review: false,
+            to: vec!["human:1c9e44d0".into(), "human:7f3a09c2".into()],
+        },
+        verification: None,
+        person: None,
+    })
+    .expect("append");
+    log.append(Entry {
+        ts: "2026-11-03T16:07:31.004Z".into(),
+        agent_id: receipts[0].agent.id.clone(),
+        action,
+        decision: Decision {
+            result: "allow".into(),
+            level: 0,
+            by: "human".into(),
+            review: false,
+            to: Vec::new(),
+        },
+        verification: None,
+        person: Some(Person {
+            act: "refuse".into(),
+            by: "human:7f3a09c2".into(),
+            lesson: None,
+            until: None,
         }),
     })
     .expect("append");
@@ -304,7 +365,52 @@ fn cases() -> Vec<Value> {
     ];
     out.extend(segment_cases(&good, &checkpoints));
     out.extend(person_cases());
+    out.extend(routed_cases());
     out
+}
+
+/// Spec 1.4.0: an escalation that names who was asked, a refusal, and the ways to alter the list.
+fn routed_cases() -> Vec<Value> {
+    let (good, checkpoints) = routed_log(&SEED);
+    let changed = |name: &str, about: &str, value: Value| {
+        let mut c = case(name, about, 0, &SEED, Some(&SEED), &good, &checkpoints);
+        c["receipts"][5]["decision"]["to"] = value;
+        c
+    };
+    vec![
+        case(
+            "escalation-names-approvers",
+            "Receipt 5 is an escalation whose decision names the two people it was routed to; receipt 6 records one of them refusing it.",
+            2,
+            &SEED,
+            Some(&SEED),
+            &good,
+            &checkpoints,
+        ),
+        {
+            let mut c = case(
+                "empty-to-added",
+                "Receipt 6 was signed without \"to\"; an empty list is added after. An empty list is written by leaving the key out, so this is a second spelling a parser that reads it as absent would let through unsigned.",
+                0,
+                &SEED,
+                Some(&SEED),
+                &good,
+                &checkpoints,
+            );
+            c["receipts"][6]["decision"]["to"] = json!([]);
+            c
+        },
+        changed(
+            "approver-swapped",
+            "Receipt 5's \"to\" names someone else after it was signed.",
+            json!(["human:1c9e44d0", "human:00000000"]),
+        ),
+        changed(
+            "to-not-a-list",
+            "Receipt 5's \"to\" is a string, not a list of strings.",
+            json!("human:7f3a09c2"),
+        ),
+    ]
 }
 
 /// Spec 1.2.0: a receipt recording what a person did, and the ways to sneak a field into one.
@@ -584,7 +690,7 @@ fn level_on_disk(case: &Value) -> u8 {
 fn build() -> Value {
     json!({
         "format": "mohar receipts v1 conformance",
-        "spec": "spec/receipts-v1.md, spec version 1.3.0",
+        "spec": "spec/receipts-v1.md, spec version 1.4.0",
         "notes": "Seeds are bytes 0x00..0x1f (the log's key) and 0x20..0x3f (another key), for testing only. Each case is a log: log_key is public.key in the log directory, pinned_key is the key the verifier was given some other way (null if none), published_checkpoints were kept outside the machine. A rotated log also has segments (file name under segments/ and its receipts, oldest first) and local_checkpoints (checkpoints.jsonl in the log directory); receipts is then receipts.jsonl. A verifier must report expect_level. Level 3 has no cases yet.",
         "cases": cases(),
     })

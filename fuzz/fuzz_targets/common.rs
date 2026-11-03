@@ -29,6 +29,7 @@ pub fn entry(i: u64) -> Entry {
             by: "score".into(),
             // Half the receipts carry the review mark, so mutations of it are fuzzed too.
             review: i % 2 == 1,
+            to: Vec::new(),
         },
         person: None,
         verification: None,

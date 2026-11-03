@@ -9,6 +9,10 @@ receipt format; each such change is called out.
 
 ### Added
 
+- An escalate receipt names the people it was routed to (`decision.to`, receipt spec 1.4.0, pseudonymous
+  in strict privacy mode), and `POST /v1/refuse` records a person's no as a signed `refuse` receipt that
+  closes the escalation. Answers are checked against the receipt, so they work across a restart. Four
+  conformance vectors (#179).
 - Escalations go to the right person. A `people` section in the policy names owners, who holds which
   capabilities, reporting lines and who delegated to which agents; an escalated action goes to the
   delegator if they hold the capability, then up the reporting tree, then to the owners, and `/v1/decide`
@@ -60,6 +64,8 @@ receipt format; each such change is called out.
 
 ### Fixed
 
+- In strict privacy mode an approval never matched the action it approved, because the daemon compared
+  a clear target with the pseudonym in the log; the action stayed escalated.
 - The daemon sent its 409 answers with the reason phrase "Internal Server Error".
 - Reopening a log right after closing it no longer fails with `Locked` while another thread of the
   same process is starting a child process. The child held a copy of the lock until it ran exec; `open`
