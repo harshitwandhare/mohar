@@ -1,0 +1,96 @@
+name: Review
+
+# A model reads every pull request's diff and leaves a review: likely bugs, security holes, missing
+# tests, unclear docs. It runs on GitHub Models with the workflow's own token, so it needs no secret
+# and costs nothing on a public repository. The check is required, so no pull request merges without a
+# review, but it never fails on what the model says: a model can suggest, never decide (design
+# section 5). Tests, clippy, fuzzing and the coverage floor decide.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Model review
+    # Dependency bumps are checked by cargo-deny and the tests; a skipped job counts as passed.
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      models: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Collect the diff
+        id: diff
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # The free tier takes about 8k tokens in, so a long diff is cut and the review says so.
+          git diff --stat "$BASE" "$HEAD" > stat.txt
+          git diff --unified=3 "$BASE" "$HEAD" -- . ':(exclude)*.lock' ':(exclude)spec/vectors/*.json' ':(exclude)site/vendor/**' > full.diff
+          head -c 22000 full.diff > diff.txt
+          if [ "$(wc -c < full.diff)" -gt 22000 ]; then echo "cut=yes" >> "$GITHUB_OUTPUT"; fi
+          {
+            echo "Review this pull request to Mohar, a Rust trust layer for AI agents (signed hash-chained"
+            echo "receipts, a loopback daemon, policy gates). Rules the project holds itself to: fail closed,"
+            echo "no unwrap or panics on input, every security rule tested, every new receipt field in the"
+            echo "spec, fast_canonical and check.py, plain human prose in docs."
+            echo
+            echo "List concrete problems only, most serious first: bugs, security holes, missed callers,"
+            echo "untested branches, docs that now say something false. For each, name the file and line"
+            echo "and say what goes wrong. If you find nothing worth raising, say so in one line. No praise,"
+            echo "no summary of the change."
+            echo
+            echo "Files changed:"
+            cat stat.txt
+            echo
+            echo "Diff:"
+            cat diff.txt
+          } > prompt.txt
+
+      - name: Ask the model
+        id: model
+        uses: actions/ai-inference@a7805884c80886efc241e94a5351df715968a0ad # v2.1.1
+        with:
+          model: openai/gpt-4.1
+          prompt-file: prompt.txt
+          system-prompt: You are a careful senior reviewer of Rust and security-sensitive code. You are terse and specific.
+          max-tokens: 1500
+
+      - name: Post the review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          RESPONSE_FILE: ${{ steps.model.outputs.response-file }}
+          CUT: ${{ steps.diff.outputs.cut }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          {
+            echo "### Model review"
+            echo
+            if [ "$CUT" = "yes" ]; then echo "_The diff was longer than the model reads; only the first 22 kB was reviewed._"; echo; fi
+            cat "$RESPONSE_FILE"
+            echo
+            echo "<sub>Suggestions only. Merging is decided by the tests and the other required checks.</sub>"
+          } > review.md
+          cat review.md >> "$GITHUB_STEP_SUMMARY"
+          # A fork's token can't comment; the review is in the job summary either way.
+          if [ "$SAME_REPO" = "true" ]; then
+            gh pr comment "$PR" --repo "$REPO" --edit-last --body-file review.md 2>/dev/null \
+              || gh pr comment "$PR" --repo "$REPO" --body-file review.md
+          fi
