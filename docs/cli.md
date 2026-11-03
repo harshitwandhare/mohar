@@ -128,7 +128,7 @@ and cumulative metrics: `mohar.decisions` by result, `mohar.outcomes` by verifie
 targets or arguments. Export runs on its own thread; a collector that is down or slow loses telemetry
 and never delays or changes a decision. Without the flag nothing is collected.
 
-Six endpoints, JSON in and out:
+Seven endpoints, JSON in and out:
 
 ```
 POST /v1/decide   {agent, tool, target, args_sha256, call_id?}  ->  {result, level, receipt_seq, lessons}
@@ -137,6 +137,7 @@ POST /v1/verify   {agent, task}  ->  {verified, result}
 POST /v1/person   {by, act, agent, capability?, lesson?, until?}  ->  {receipt_seq}
 POST /v1/approve  {receipt_seq, by, action_sha256}  ->  {receipt_seq, until}
 POST /v1/refuse   {receipt_seq, by, action_sha256}  ->  {receipt_seq}
+POST /v1/escalation  {receipt_seq}  ->  {agent, action, action_sha256, to, level, passes, failures, suspended}
 ```
 
 When the policy has a `people` section, an `escalate` answer from `/v1/decide` also carries `approver`:
@@ -327,6 +328,27 @@ config edits, read-only shell commands, pushes to a branch and to the default br
 
 After a crash, decisions without an outcome are rebuilt from the log on the next start and can still be
 given one by `receipt_seq`; `call_id`s live only for the life of the process.
+
+## `mohar approve <seq> --by <id> [--yes] [--daemon <url>]` and `mohar refuse ...`
+
+Answer an escalation as one of the people it was routed to. The command reads it from the daemon
+(`/v1/escalation`, which changes nothing) and prints the agent, the exact action, its SHA-256, who was
+asked and the agent's record on that capability: its level and its verified passes and failures. It then
+asks for confirmation, or answers straight away with `--yes`, and sends the hash of what it printed, so a
+different action can't be answered by mistake. Exits 0 when the answer is recorded, 1 when the person
+says no or the daemon refuses it (wrong person, already answered), and 2 when the daemon can't be reached.
+
+```
+$ mohar approve 41 --by user:lead-1
+escalation 41
+  agent    agent:claude-code/docs-writer
+  action   Edit src/a.rs (fs.edit.code)
+  args     sha256:c41b...
+  hash     sha256:7e02...
+  asked    user:lead-1
+  record   level 0, 3 verified passes, 1 failure
+approve this exact action as user:lead-1? [y/N]
+```
 
 ## `mohar hook claude-code [--daemon <url>]`
 

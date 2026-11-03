@@ -1,6 +1,7 @@
 //! `mohar`: create, append to, read and verify a receipt log, serve decisions to agent hosts, and run
 //! as a host's hook.
 
+mod answer;
 mod daemon;
 mod hook;
 mod publish;
@@ -102,6 +103,34 @@ enum Command {
         /// The host calling this hook.
         host: Host,
         /// The daemon to ask.
+        #[arg(long, default_value = "http://127.0.0.1:7878")]
+        daemon: String,
+    },
+    /// Show an escalated action and the agent's record, then approve it as a person it was routed to.
+    Approve {
+        /// The escalation's receipt number.
+        seq: u64,
+        /// Who is answering: one of the people the escalation names.
+        #[arg(long)]
+        by: String,
+        /// Answer without asking for confirmation.
+        #[arg(long)]
+        yes: bool,
+        /// The daemon to answer through.
+        #[arg(long, default_value = "http://127.0.0.1:7878")]
+        daemon: String,
+    },
+    /// Show an escalated action and the agent's record, then refuse it as a person it was routed to.
+    Refuse {
+        /// The escalation's receipt number.
+        seq: u64,
+        /// Who is answering: one of the people the escalation names.
+        #[arg(long)]
+        by: String,
+        /// Answer without asking for confirmation.
+        #[arg(long)]
+        yes: bool,
+        /// The daemon to answer through.
         #[arg(long, default_value = "http://127.0.0.1:7878")]
         daemon: String,
     },
@@ -208,6 +237,24 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             daemon,
         } => {
             print!("{}", hook::claude_code(&daemon, &mut std::io::stdin()));
+        }
+        Command::Approve {
+            seq,
+            by,
+            yes,
+            daemon,
+        } => {
+            let stdin = std::io::stdin();
+            return answer::run(&daemon, "approve", seq, &by, yes, &mut stdin.lock());
+        }
+        Command::Refuse {
+            seq,
+            by,
+            yes,
+            daemon,
+        } => {
+            let stdin = std::io::stdin();
+            return answer::run(&daemon, "refuse", seq, &by, yes, &mut stdin.lock());
         }
         Command::Checkpoint { publish } => {
             let target = publish.as_deref().map(publish::Target::parse).transpose()?;
