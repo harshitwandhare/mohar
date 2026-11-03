@@ -1436,7 +1436,7 @@ targets or arguments. Export runs on its own thread; a collector that is down or
 and never delays or changes a decision. Without the flag nothing is collected.</p>
 <p>Seven endpoints, JSON in and out:</p>
 <div class="highlight"><pre><span></span><code>POST /v1/decide   {agent, tool, target, args_sha256, call_id?}  -&gt;  {result, level, receipt_seq, lessons}
-POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256}  -&gt;  {receipt_seq}
+POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256, reviewer?, review_secs?}  -&gt;  {receipt_seq}
 POST /v1/verify   {agent, task}  -&gt;  {verified, result}
 POST /v1/person   {by, act, agent, capability?, lesson?, until?}  -&gt;  {receipt_seq}
 POST /v1/approve  {receipt_seq, by, action_sha256}  -&gt;  {receipt_seq, until}
@@ -1456,6 +1456,11 @@ the people it went to (<code>decision.to</code>), so an answer is checked agains
 restart, as do unused approvals. An escalation that named nobody went to the host's prompt and gets a
 403 here. The Claude Code hook denies a routed
 escalation with the approvers' names instead of asking whoever is at the prompt.</p>
+<p>A <code>human</code> outcome must name the <code>reviewer</code> and the <code>review_secs</code> they spent (any other verifier gets a 400
+if it sends them). Both are signed into the receipt, and the reviewer goes through the pseudonyms in
+strict privacy mode. A person's accept counts toward trust only if they spent at least 30 seconds and
+haven't approved more than 95% of their last 50 reviews; a reject always counts. The daemon rebuilds
+each reviewer's window and flag from the log on start.</p>
 <p><code>/v1/person</code> records what a person did as a signed receipt (receipt spec section 5.1) and applies it:
 <code>promote</code> with <code>lesson</code> (the <code>failure</code> hash from a lesson) shares that lesson with every agent on its
 capability; <code>release</code> lets an agent's quarantined lessons through again; <code>extend</code> with <code>capability</code> and

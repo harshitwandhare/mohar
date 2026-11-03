@@ -1331,6 +1331,9 @@ receipt format; each such change is called out.</p>
 <h2 id="unreleased"><a href="https://github.com/harshitwandhare/mohar/compare/v0.2.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
+<li>A person's verdict on an outcome names the reviewer and the seconds they spent (receipt spec 1.5.0,
+  four conformance vectors), and goes through the rubber-stamping guard live and on replay, so a restart
+  keeps each reviewer's flag. A human outcome without them is refused by the daemon and never counts (#129).</li>
 <li>Separation of duties. <code>gates.two_person</code> makes an escalation need two different people's approval
   (the same person never counts twice, also when a log is replayed), and an agent's sponsor can't release
   it after a serious failure (#88).</li>
