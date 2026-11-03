@@ -1,8 +1,8 @@
 name: Review
 
 # A model reads every pull request's diff and leaves a review: likely bugs, security holes, missing
-# tests, unclear docs. It runs on GitHub Models with the workflow's own token, so it needs no secret
-# and costs nothing on a public repository. The check is required, so no pull request merges without a
+# tests, unclear docs. It uses Gemini's free tier through the GEMINI_API_KEY repository secret, so it
+# costs nothing; the diff of this public repository is all it is sent. The check is required, so no pull request merges without a
 # review, but it never fails on what the model says: a model can suggest, never decide (design
 # section 5). Tests, clippy, fuzzing and the coverage floor decide.
 on:
@@ -25,7 +25,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      models: read
       pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -39,11 +38,11 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
-          # The free tier takes about 8k tokens in, so a long diff is cut and the review says so.
+          # A long diff is cut so the request stays small, and the review says so.
           git diff --stat "$BASE" "$HEAD" > stat.txt
           git diff --unified=3 "$BASE" "$HEAD" -- . ':(exclude)*.lock' ':(exclude)spec/vectors/*.json' ':(exclude)site/vendor/**' > full.diff
-          head -c 22000 full.diff > diff.txt
-          if [ "$(wc -c < full.diff)" -gt 22000 ]; then echo "cut=yes" >> "$GITHUB_OUTPUT"; fi
+          head -c 200000 full.diff > diff.txt
+          if [ "$(wc -c < full.diff)" -gt 200000 ]; then echo "cut=yes" >> "$GITHUB_OUTPUT"; fi
           {
             echo "Review this pull request to Mohar, a Rust trust layer for AI agents (signed hash-chained"
             echo "receipts, a loopback daemon, policy gates). Rules the project holds itself to: fail closed,"
@@ -64,12 +63,22 @@ jobs:
 
       - name: Ask the model
         id: model
-        uses: actions/ai-inference@a7805884c80886efc241e94a5351df715968a0ad # v2.1.1
-        with:
-          model: openai/gpt-4.1
-          prompt-file: prompt.txt
-          system-prompt: You are a careful senior reviewer of Rust and security-sensitive code. You are terse and specific.
-          max-tokens: 1500
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "::error::GEMINI_API_KEY is not set. Add a free key from Google AI Studio as a repository secret."
+            exit 1
+          fi
+          jq -n --rawfile p prompt.txt '{
+            systemInstruction: {parts: [{text: "You are a careful senior reviewer of Rust and security-sensitive code. You are terse and specific."}]},
+            contents: [{role: "user", parts: [{text: $p}]}],
+            generationConfig: {maxOutputTokens: 2048, temperature: 0.2}
+          }' > request.json
+          # Retried, since the free tier can answer 429 or 503 for a moment.
+          curl -sS --fail-with-body --retry 3 --retry-all-errors --retry-delay 10 -m 120             -H "x-goog-api-key: $GEMINI_API_KEY" -H "Content-Type: application/json"             -d @request.json             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" > answer.json
+          jq -er '[.candidates[0].content.parts[]?.text] | join("")' answer.json > response.md
+          echo "response-file=$PWD/response.md" >> "$GITHUB_OUTPUT"
 
       - name: Post the review
         env:
@@ -83,7 +92,7 @@ jobs:
           {
             echo "### Model review"
             echo
-            if [ "$CUT" = "yes" ]; then echo "_The diff was longer than the model reads; only the first 22 kB was reviewed._"; echo; fi
+            if [ "$CUT" = "yes" ]; then echo "_The diff was longer than the model reads; only the first 200 kB was reviewed._"; echo; fi
             cat "$RESPONSE_FILE"
             echo
             echo "<sub>Suggestions only. Merging is decided by the tests and the other required checks.</sub>"
