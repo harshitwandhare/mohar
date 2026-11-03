@@ -9,6 +9,12 @@ receipt format; each such change is called out.
 
 ### Added
 
+- Escalations go to the right person. A `people` section in the policy names owners, who holds which
+  capabilities, reporting lines and who delegated to which agents; an escalated action goes to the
+  delegator if they hold the capability, then up the reporting tree, then to the owners, and `/v1/decide`
+  names them. `POST /v1/approve` takes an approval only from them and only with the SHA-256 of the exact
+  action shown, records it as a signed receipt (receipt spec 1.3.0, the `approve` person act) and lets that
+  action run once within the hour; any other action still escalates (#51).
 - `spec/vectors/export.py` converts receipts into draft-sharif-agent-audit-trail-09 and
   draft-sahu-agent-action-receipts-00 records and checks them against each draft's rules in CI. Section 12
   of the receipt spec maps every field, says what each format loses, and lists questions for the drafts'
@@ -54,6 +60,7 @@ receipt format; each such change is called out.
 
 ### Fixed
 
+- The daemon sent its 409 answers with the reason phrase "Internal Server Error".
 - Reopening a log right after closing it no longer fails with `Locked` while another thread of the
   same process is starting a child process. The child held a copy of the lock until it ran exec; `open`
   now waits up to 250 ms for the lock (#167).

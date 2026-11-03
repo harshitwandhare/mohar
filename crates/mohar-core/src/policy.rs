@@ -86,6 +86,50 @@ struct File {
     /// one member drops the others with it.
     #[serde(default)]
     scopes: BTreeMap<String, Vec<String>>,
+    /// Who decides an action that is outside what an agent has earned.
+    #[serde(default)]
+    people: Option<People>,
+}
+
+/// The people an escalation can go to: who holds which capabilities, who reports to whom, who handed
+/// authority to which agents, and the owners who answer when nobody else does.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct People {
+    owners: Vec<String>,
+    #[serde(default)]
+    members: BTreeMap<String, Member>,
+    /// Matched against the agent id in order; the first match wins.
+    #[serde(default)]
+    delegations: Vec<Delegation>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Member {
+    /// Capability names or globs (`fs.edit.*`, `*`) this person may approve.
+    #[serde(default)]
+    holds: Vec<String>,
+    #[serde(default)]
+    reports_to: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Delegation {
+    /// Glob over the agent id; `*` matches anything.
+    agent: String,
+    /// The person who handed this agent its authority.
+    from: String,
+}
+
+/// Who an escalated action goes to, and which step of the routing picked them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Route {
+    /// The people any one of whom may answer: the one person picked, or every owner.
+    pub to: Vec<String>,
+    /// `delegator`, `reporting_tree` or `owners`.
+    pub via: &'static str,
 }
 
 /// How work is verified.
@@ -165,6 +209,7 @@ pub struct Policy {
     gates: Gates,
     verify: Verify,
     scopes: BTreeMap<String, Vec<String>>,
+    people: Option<People>,
 }
 
 /// Why a policy file was refused.
@@ -230,6 +275,25 @@ pub enum PolicyError {
     /// The reserved name used for actions that match nothing.
     #[error("capability name \"unclassified\" is reserved")]
     Reserved,
+    /// A `people` section with nobody to fall back on.
+    #[error("people.owners is empty; an escalation nobody else holds goes to the owners")]
+    NoOwners,
+    /// A person id that is empty, or has the form of a strict-privacy pseudonym.
+    #[error(
+        "people names {0:?}, which is empty or has the form of a pseudonym; use the person's own id"
+    )]
+    BadPersonId(String),
+    /// A reporting line or delegation names someone not listed under `people.members`.
+    #[error("{field} names {name:?}, who is not listed under people.members")]
+    UnknownPerson {
+        /// Where the name appears.
+        field: String,
+        /// The name.
+        name: String,
+    },
+    /// Following `reports_to` from this person comes back to them.
+    #[error("people.members: the reporting line from {0:?} goes round in a circle")]
+    ReportingCycle(String),
 }
 
 impl Policy {
@@ -293,6 +357,9 @@ impl Policy {
                 });
             }
         }
+        if let Some(p) = &file.people {
+            check_people(p)?;
+        }
         Ok(Self {
             root: resolve(&root),
             capabilities: file.capabilities,
@@ -300,6 +367,7 @@ impl Policy {
             gates: file.gates,
             verify: file.verify,
             scopes: file.scopes,
+            people: file.people,
         })
     }
 
@@ -329,6 +397,41 @@ impl Policy {
         out.sort();
         out.dedup();
         out
+    }
+
+    /// Who decides an escalated action, or `None` when the policy names no people, in which case the
+    /// host's own prompt does. The person who delegated to the agent if they hold the capability, else
+    /// the first one up their reporting tree who does, else every owner.
+    pub fn route(&self, agent: &str, capability: &str) -> Option<Route> {
+        let people = self.people.as_ref()?;
+        let mut next = people
+            .delegations
+            .iter()
+            .find(|d| glob(d.agent.as_bytes(), agent.as_bytes(), false))
+            .map(|d| d.from.as_str());
+        let mut via = "delegator";
+        // Loading refused cycles and unlisted names, so this walk ends; the bound only makes that
+        // visible here.
+        for _ in 0..=people.members.len() {
+            let Some((id, m)) = next.and_then(|id| people.members.get_key_value(id)) else {
+                break;
+            };
+            if m.holds
+                .iter()
+                .any(|h| glob(h.as_bytes(), capability.as_bytes(), false))
+            {
+                return Some(Route {
+                    to: vec![id.clone()],
+                    via,
+                });
+            }
+            via = "reporting_tree";
+            next = m.reports_to.as_deref();
+        }
+        Some(Route {
+            to: people.owners.clone(),
+            via: "owners",
+        })
     }
 
     /// The tests verifier, if the project configured one.
@@ -663,6 +766,56 @@ fn host_allowed(host: &str, allowed: &[String]) -> bool {
             None => host == a,
         }
     })
+}
+
+/// Every person named exists, nobody's id is empty or a pseudonym, and no reporting line loops.
+fn check_people(p: &People) -> Result<(), PolicyError> {
+    if p.owners.is_empty() {
+        return Err(PolicyError::NoOwners);
+    }
+    let named = p
+        .owners
+        .iter()
+        .chain(p.members.keys())
+        .chain(p.members.values().filter_map(|m| m.reports_to.as_ref()))
+        .chain(p.delegations.iter().map(|d| &d.from));
+    for id in named {
+        if id.is_empty() || crate::privacy::is_pseudonym(id) {
+            return Err(PolicyError::BadPersonId(id.clone()));
+        }
+    }
+    let unknown = |field: String, name: &str| {
+        (!p.members.contains_key(name)).then(|| PolicyError::UnknownPerson {
+            field,
+            name: name.to_string(),
+        })
+    };
+    for (id, m) in &p.members {
+        if let Some(e) = m
+            .reports_to
+            .as_deref()
+            .and_then(|b| unknown(format!("people.members.{id}.reports_to"), b))
+        {
+            return Err(e);
+        }
+    }
+    for (i, d) in p.delegations.iter().enumerate() {
+        if let Some(e) = unknown(format!("people.delegations[{i}].from"), &d.from) {
+            return Err(e);
+        }
+    }
+    for start in p.members.keys() {
+        let mut at = start;
+        // A line longer than the list of members has visited someone twice.
+        for _ in 0..=p.members.len() {
+            match p.members.get(at).and_then(|m| m.reports_to.as_ref()) {
+                Some(b) if b == start => return Err(PolicyError::ReportingCycle(start.clone())),
+                Some(b) => at = b,
+                None => break,
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Glob match. In path mode `*` and `?` stop at `/` and `**` crosses it; in command mode `*` matches

@@ -1823,3 +1823,206 @@ fn pending_on_start(dir: &Path) -> usize {
         .and_then(|n| n.parse().ok())
         .unwrap_or(0)
 }
+
+/// A project where code edits always need a person: the dev who delegated to the docs agents holds docs
+/// edits only, the lead above holds every edit, and one owner answers for the rest.
+fn routed_project(name: &str) -> PathBuf {
+    let dir = fresh_log(name);
+    let policy = json!({"version": 1,
+        "capabilities": {
+            "fs.edit.docs": {"risk": "medium", "reversible": true, "ceiling": 2},
+            "fs.edit.code": {"risk": "medium", "reversible": true, "ceiling": 2},
+            "db.migrate": {"risk": "high", "reversible": false, "ceiling": 1}},
+        "rules": [
+            {"tools": ["Edit"], "paths": ["docs/**"], "capability": "fs.edit.docs"},
+            {"tools": ["Edit"], "paths": ["**"], "capability": "fs.edit.code"},
+            {"tools": ["Bash"], "commands": ["migrate*"], "capability": "db.migrate"}],
+        "people": {
+            "owners": ["user:owner-1"],
+            "members": {
+                "user:dev-1": {"holds": ["fs.edit.docs"], "reports_to": "user:lead-1"},
+                "user:lead-1": {"holds": ["fs.edit.*"]}},
+            "delegations": [{"agent": "agent:claude-code/docs-*", "from": "user:dev-1"}]}});
+    std::fs::write(dir.join("policy.json"), policy.to_string()).expect("policy");
+    dir
+}
+
+fn ask_as(port: u16, agent: &str, tool: &str, target: &str, args: &str) -> Value {
+    let b = json!({"agent": agent, "tool": tool, "target": target, "args_sha256": args});
+    let (status, answer) = post(port, "/v1/decide", &b.to_string());
+    assert_eq!(status, 200, "{answer}");
+    answer
+}
+
+#[test]
+fn an_escalation_goes_to_the_delegator_then_up_the_tree_then_to_the_owners() {
+    let dir = routed_project("routing");
+    let d = Daemon::start(&dir, &[]);
+    let docs = "agent:claude-code/docs-writer";
+    let cases = [
+        (docs, "Edit", "docs/a.md", "user:dev-1", "delegator"),
+        (docs, "Edit", "src/a.rs", "user:lead-1", "reporting_tree"),
+        (docs, "Bash", "migrate up", "user:owner-1", "owners"),
+        (
+            "agent:other/1",
+            "Edit",
+            "docs/a.md",
+            "user:owner-1",
+            "owners",
+        ),
+    ];
+    for (agent, tool, target, to, via) in cases {
+        let a = ask_as(d.port, agent, tool, target, SHA);
+        assert_eq!(a["result"], "escalate", "{target}");
+        assert_eq!(a["approver"]["to"], json!([to]), "{agent} {target}");
+        assert_eq!(a["approver"]["via"], via, "{agent} {target}");
+    }
+    // A built-in policy names no people, so nobody is routed and the host's own prompt decides.
+    let plain = fresh_log("routing-none");
+    let p = Daemon::start(&plain, &[]);
+    let (_, a) = decide(p.port, "Edit", "src/a.rs", None);
+    assert_eq!(a["result"], "escalate");
+    assert_eq!(a["approver"], Value::Null);
+}
+
+#[test]
+fn an_approval_is_bound_to_the_exact_action_and_used_once() {
+    let dir = routed_project("approve");
+    let d = Daemon::start(&dir, &[]);
+    let agent = "agent:claude-code/docs-writer";
+    let other_args = "d00d".repeat(16);
+    let first = ask_as(d.port, agent, "Edit", "src/a.rs", SHA);
+    let seq = first["receipt_seq"].as_u64().expect("seq");
+    let hash = first["approver"]["action_sha256"]
+        .as_str()
+        .expect("hash")
+        .to_string();
+    let approve = |port: u16, body: Value| post(port, "/v1/approve", &body.to_string());
+    let body = |by: &str, h: &str| json!({"receipt_seq": seq, "by": by, "action_sha256": h});
+
+    // Refused, and nothing written: the delegator and the owner weren't routed this one; a hash that
+    // isn't the escalated action's (the person was shown something else); no such escalation; bad input.
+    let before = std::fs::read_to_string(dir.join("receipts.jsonl")).expect("log");
+    assert_eq!(approve(d.port, body("user:dev-1", &hash)).0, 403);
+    assert_eq!(approve(d.port, body("user:owner-1", &hash)).0, 403);
+    assert_eq!(approve(d.port, body("user:lead-1", &other_args)).0, 409);
+    assert_eq!(
+        approve(
+            d.port,
+            json!({"receipt_seq": 999, "by": "user:lead-1", "action_sha256": hash})
+        )
+        .0,
+        404
+    );
+    for wrong in [
+        json!({"receipt_seq": seq, "by": "", "action_sha256": hash}),
+        json!({"receipt_seq": seq, "by": format!("hmac-sha256:{SHA}"), "action_sha256": hash}),
+        json!({"receipt_seq": seq, "by": "user:lead-1", "action_sha256": "ABC"}),
+        json!({"receipt_seq": seq, "by": "user:lead-1"}),
+        json!({"receipt_seq": seq, "by": "user:lead-1", "action_sha256": hash, "note": "x"}),
+    ] {
+        assert_eq!(approve(d.port, wrong.clone()).0, 400, "{wrong}");
+    }
+    assert_eq!(
+        std::fs::read_to_string(dir.join("receipts.jsonl")).expect("log"),
+        before
+    );
+
+    let (status, ok) = approve(d.port, body("user:lead-1", &hash));
+    assert_eq!(status, 200, "{ok}");
+    assert_eq!(
+        approve(d.port, body("user:lead-1", &hash)).0,
+        404,
+        "the approval closed the escalation"
+    );
+
+    // A different action can't run under it: other arguments, another target, another agent.
+    for (who, target, args) in [
+        (agent, "src/a.rs", other_args.as_str()),
+        (agent, "src/b.rs", SHA),
+        ("agent:claude-code/docs-other", "src/a.rs", SHA),
+    ] {
+        let a = ask_as(d.port, who, "Edit", target, args);
+        assert_eq!(a["result"], "escalate", "{who} {target} {args}");
+    }
+    // The exact action runs once, decided by a person, and the next ask needs a new approval.
+    let ran = ask_as(d.port, agent, "Edit", "src/a.rs", SHA);
+    assert_eq!(ran["result"], "allow");
+    assert_eq!(
+        ask_as(d.port, agent, "Edit", "src/a.rs", SHA)["result"],
+        "escalate"
+    );
+    d.stop();
+
+    let log: Vec<Value> = std::fs::read_to_string(dir.join("receipts.jsonl"))
+        .expect("log")
+        .lines()
+        .map(|l| serde_json::from_str::<Value>(l).expect("json"))
+        .collect();
+    let approval = log
+        .iter()
+        .find(|r| r["person"]["act"] == "approve")
+        .expect("approve receipt");
+    assert_eq!(approval["person"]["by"], "user:lead-1");
+    assert_eq!(approval["action"], log[seq as usize]["action"]);
+    assert!(approval["person"]["until"].as_u64().is_some());
+    let by_person: Vec<&Value> = log
+        .iter()
+        .filter(|r| r.get("person").is_none() && r["decision"]["by"] == "human")
+        .collect();
+    assert_eq!(by_person.len(), 1);
+    assert_eq!(by_person[0]["decision"]["result"], "allow");
+    verify(&dir);
+}
+
+#[test]
+fn an_unused_approval_survives_a_restart_and_a_used_one_does_not() {
+    let dir = routed_project("approve-restart");
+    let agent = "agent:claude-code/docs-writer";
+    let d = Daemon::start(&dir, &[]);
+    let approve_one = |target: &str| {
+        let a = ask_as(d.port, agent, "Edit", target, SHA);
+        let body = json!({"receipt_seq": a["receipt_seq"], "by": "user:lead-1",
+            "action_sha256": a["approver"]["action_sha256"]});
+        assert_eq!(post(d.port, "/v1/approve", &body.to_string()).0, 200);
+    };
+    approve_one("src/used.rs");
+    approve_one("src/kept.rs");
+    let escalated = ask_as(d.port, agent, "Edit", "src/later.rs", SHA);
+    assert_eq!(
+        ask_as(d.port, agent, "Edit", "src/used.rs", SHA)["result"],
+        "allow"
+    );
+    d.stop();
+
+    let d = Daemon::start(&dir, &[]);
+    assert_eq!(
+        ask_as(d.port, agent, "Edit", "src/used.rs", SHA)["result"],
+        "escalate"
+    );
+    assert_eq!(
+        ask_as(d.port, agent, "Edit", "src/kept.rs", SHA)["result"],
+        "allow"
+    );
+    // A route lives for one run: an escalation from before the restart is asked again, not approved.
+    let body = json!({"receipt_seq": escalated["receipt_seq"], "by": "user:lead-1",
+        "action_sha256": escalated["approver"]["action_sha256"]});
+    assert_eq!(post(d.port, "/v1/approve", &body.to_string()).0, 409);
+}
+
+#[test]
+fn an_approval_never_outweighs_a_gate() {
+    let dir = routed_project("approve-gate");
+    let mut policy: Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("policy.json")).expect("read"))
+            .expect("json");
+    policy["gates"] = json!({"protected_paths": ["src/locked.rs"]});
+    std::fs::write(dir.join("policy.json"), policy.to_string()).expect("write");
+    let agent = "agent:claude-code/docs-writer";
+    let d = Daemon::start(&dir, &[]);
+    let a = ask_as(d.port, agent, "Edit", "src/locked.rs", SHA);
+    assert_eq!(a["result"], "deny");
+    assert_eq!(a["approver"], Value::Null, "a gate stop is not routed");
+    let body = json!({"receipt_seq": a["receipt_seq"], "by": "user:lead-1", "action_sha256": SHA});
+    assert_eq!(post(d.port, "/v1/approve", &body.to_string()).0, 404);
+}
