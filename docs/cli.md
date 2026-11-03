@@ -306,6 +306,13 @@ with it, for that agent only. Each name must be defined under `capabilities`.
 }
 ```
 
+`gates.two_person` lists capabilities whose escalations need two different people to approve. Such an
+escalation also goes to the owners, so there are two people to ask; it stays open after the first
+approval, the same person approving again gets a 409, a refusal by anyone asked ends it, and the action
+runs only once both have approved. Separately, an agent's sponsor (the person a delegation names as
+having handed it authority) can't `release` it after a serious failure: `/v1/person` answers 403 and a
+different person has to.
+
 A `people` section routes escalations. The person who delegated to the agent decides if they hold the
 capability; otherwise the first person up their reporting tree who does; otherwise any owner. `holds` and
 `agent` are globs (`*` matches anything). Owners are required, every name in `reports_to` and `from` must
