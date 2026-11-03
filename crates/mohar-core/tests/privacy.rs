@@ -32,6 +32,7 @@ fn entry(agent: &str, target: &str) -> Entry {
             level: 1,
             by: "score".into(),
             review: false,
+            to: Vec::new(),
         },
         person: None,
         verification: None,

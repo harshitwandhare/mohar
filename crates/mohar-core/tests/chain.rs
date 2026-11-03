@@ -19,6 +19,7 @@ fn entry(i: u64) -> Entry {
             level: 1,
             by: "score".into(),
             review: false,
+            to: Vec::new(),
         },
         person: None,
         verification: None,

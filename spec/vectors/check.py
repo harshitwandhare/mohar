@@ -19,7 +19,7 @@ FIELDS = {
     None: {"v", "seq", "prev", "ts", "agent", "action", "decision", "sig", "verification", "person"},
     "agent": {"id", "key"},
     "action": {"capability", "tool", "target", "args_sha256"},
-    "decision": {"result", "level", "by", "review"},
+    "decision": {"result", "level", "by", "review", "to"},
     "verification": {"evidence_sha256", "kind", "of", "result"},
     "person": {"act", "by", "lesson", "until"},
 }
@@ -56,6 +56,9 @@ def known_fields(r):
         if part in r and not isinstance(r[part], dict):
             return False
     if any(r.get("person", {}).get(k, "") is None for k in ("lesson", "until")):
+        return False
+    to = r.get("decision", {}).get("to", ["x"])
+    if not isinstance(to, list) or not to or not all(isinstance(n, str) for n in to):
         return False
     return all(set(r[part]) <= FIELDS[part] for part in FIELDS if part and part in r)
 

@@ -57,6 +57,14 @@ pub struct Decision {
         deserialize_with = "only_true"
     )]
     pub review: bool,
+    /// On an escalation: the people it was routed to, any one of whom may answer. Left out when no one
+    /// was named, and never written as an empty list.
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "non_empty"
+    )]
+    pub to: Vec<String>,
 }
 
 /// The checked outcome of an earlier decision, carried by a follow-up receipt.
@@ -164,6 +172,17 @@ fn only_true<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
     } else {
         Err(serde::de::Error::custom("review is written only when true"))
     }
+}
+
+// An empty list would be a second spelling of an absent one, so it is refused like `"review": false`.
+fn non_empty<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+    let v = Vec::<String>::deserialize(d)?;
+    if v.is_empty() {
+        return Err(serde::de::Error::custom(
+            "an empty list is written by leaving the key out",
+        ));
+    }
+    Ok(v)
 }
 
 fn present<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(
@@ -340,6 +359,17 @@ fn fast_canonical(r: &Receipt, with_sig: bool) -> Vec<u8> {
     // Written only when set, as serde leaves it out; "review" sorts after "result".
     if r.decision.review {
         o.extend_from_slice(br#","review":true"#);
+    }
+    // "to" sorts after "review", and is left out when empty.
+    if !r.decision.to.is_empty() {
+        o.extend_from_slice(br#","to":["#);
+        for (i, name) in r.decision.to.iter().enumerate() {
+            if i > 0 {
+                o.push(b',');
+            }
+            json_string(&mut o, name);
+        }
+        o.push(b']');
     }
     o.extend_from_slice(b"},");
     // "person" sorts between "decision" and "prev"; its own keys are act, by, lesson, until.
@@ -691,6 +721,7 @@ mod tests {
                 level,
                 by,
                 review: false,
+                to: Vec::new(),
             },
             sig,
             person: None,
@@ -709,11 +740,13 @@ mod tests {
             verification in proptest::option::of((text(), text(), any::<u64>(), text())
                 .prop_map(|(evidence_sha256, kind, of, result)| Verification { evidence_sha256, kind, of, result })),
             review in any::<bool>(),
+            to in proptest::collection::vec(text(), 0..3),
             person in proptest::option::of((text(), text(), proptest::option::of(text()), proptest::option::of(any::<u64>()))
                 .prop_map(|(act, by, lesson, until)| Person { act, by, lesson, until })),
         ) {
             let mut r = receipt(s, n, sig, verification);
             r.decision.review = review;
+            r.decision.to = to;
             r.person = person;
             let general = serde_jcs::to_vec(&r).expect("jcs");
             prop_assert_eq!(canonical(&r).expect("fast"), general);
@@ -795,6 +828,7 @@ mod tests {
                     level: 1,
                     by: "score".into(),
                     review: false,
+                    to: Vec::new(),
                 },
                 person: None,
                 verification: None,
