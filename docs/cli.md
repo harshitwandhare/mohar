@@ -128,14 +128,26 @@ and cumulative metrics: `mohar.decisions` by result, `mohar.outcomes` by verifie
 targets or arguments. Export runs on its own thread; a collector that is down or slow loses telemetry
 and never delays or changes a decision. Without the flag nothing is collected.
 
-Four endpoints, JSON in and out:
+Five endpoints, JSON in and out:
 
 ```
 POST /v1/decide   {agent, tool, target, args_sha256, call_id?}  ->  {result, level, receipt_seq, lessons}
 POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256}  ->  {receipt_seq}
 POST /v1/verify   {agent, task}  ->  {verified, result}
 POST /v1/person   {by, act, agent, capability?, lesson?, until?}  ->  {receipt_seq}
+POST /v1/approve  {receipt_seq, by, action_sha256}  ->  {receipt_seq, until}
 ```
+
+When the policy has a `people` section, an `escalate` answer from `/v1/decide` also carries `approver`:
+`to` (the people who may answer), `via` (`delegator`, `reporting_tree` or `owners`) and `action_sha256`,
+the SHA-256 of the exact action as canonical JSON. One of them approves with `/v1/approve`, naming that
+hash. Someone the escalation wasn't routed to gets a 403, and a hash of any other action gets a 409; in
+both cases nothing is written. An approval is a signed receipt (receipt spec section 5.1) that lets that
+agent run that exact action once within the hour: the next `/v1/decide` for it is `allow`, decided by
+`human`, and a different target, different arguments or a different agent still escalate. Gates and
+suspensions are checked first and an approval never overrides them. Unused approvals survive a restart;
+routes don't, so an escalation from before a restart is asked again. The Claude Code hook denies a routed
+escalation with the approvers' names instead of asking whoever is at the prompt.
 
 `/v1/person` records what a person did as a signed receipt (receipt spec section 5.1) and applies it:
 `promote` with `lesson` (the `failure` hash from a lesson) shares that lesson with every agent on its
@@ -286,6 +298,23 @@ with it, for that agent only. Each name must be defined under `capabilities`.
 ```json
 "scopes": {
   "prod-db": ["db.migrate.prod", "db.seed.prod"]
+}
+```
+
+A `people` section routes escalations. The person who delegated to the agent decides if they hold the
+capability; otherwise the first person up their reporting tree who does; otherwise any owner. `holds` and
+`agent` are globs (`*` matches anything). Owners are required, every name in `reports_to` and `from` must
+be listed under `members`, and a reporting line that loops is refused. Without the section, the host's own
+prompt decides.
+
+```json
+"people": {
+  "owners": ["user:owner-1"],
+  "members": {
+    "user:dev-1": {"holds": ["fs.edit.docs"], "reports_to": "user:lead-1"},
+    "user:lead-1": {"holds": ["fs.edit.*"]}
+  },
+  "delegations": [{"agent": "agent:claude-code/*", "from": "user:dev-1"}]
 }
 ```
 

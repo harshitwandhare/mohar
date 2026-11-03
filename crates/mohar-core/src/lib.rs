@@ -408,6 +408,22 @@ fn json_string(o: &mut Vec<u8>, s: &str) {
     o.push(b'"');
 }
 
+/// SHA-256 of an action's canonical JSON (RFC 8785), as 64 lowercase hex digits. A person's approval is
+/// bound to this value, so approving one action never lets a different one run.
+pub fn action_sha256(a: &Action) -> String {
+    let mut o = Vec::with_capacity(64 + a.capability.len() + a.tool.len() + a.target.len() + 64);
+    o.extend_from_slice(br#"{"args_sha256":"#);
+    json_string(&mut o, &a.args_sha256);
+    o.extend_from_slice(br#","capability":"#);
+    json_string(&mut o, &a.capability);
+    o.extend_from_slice(br#","target":"#);
+    json_string(&mut o, &a.target);
+    o.extend_from_slice(br#","tool":"#);
+    json_string(&mut o, &a.tool);
+    o.push(b'}');
+    hex(&Sha256::digest(&o))
+}
+
 /// The hash the next receipt's `prev` must equal: over the full receipt, signature included.
 pub fn receipt_hash(r: &Receipt) -> Result<String, Error> {
     Ok(format!(
@@ -632,7 +648,7 @@ pub fn verify(receipts: &[Receipt], key: &VerifyingKey) -> Result<(), ChainBreak
 mod tests {
     use super::{
         Action, Agent, BreakKind, ChainVerifier, Decision, Person, Prechecked, Receipt, SigningKey,
-        Verification, canonical, hex, signing_bytes, unhex,
+        Verification, action_sha256, canonical, hex, signing_bytes, unhex,
     };
     use proptest::prelude::*;
 
@@ -707,6 +723,30 @@ mod tests {
                 signing_bytes(&r).expect("fast"),
                 serde_jcs::to_vec(&unsigned).expect("jcs")
             );
+        }
+    }
+
+    proptest! {
+        /// The action hash an approval is bound to is SHA-256 of the general RFC 8785 form, and any
+        /// change to any field changes it.
+        #[test]
+        fn action_sha256_is_the_hash_of_the_jcs_action(
+            f in proptest::array::uniform4(text()),
+            which in 0usize..4,
+        ) {
+            use sha2::{Digest, Sha256};
+            let [capability, tool, target, args_sha256] = f;
+            let a = Action { capability, tool, target, args_sha256 };
+            let jcs = serde_jcs::to_vec(&a).expect("jcs");
+            prop_assert_eq!(action_sha256(&a), hex(&Sha256::digest(&jcs)));
+            let mut b = a.clone();
+            match which {
+                0 => b.capability.push('x'),
+                1 => b.tool.push('x'),
+                2 => b.target.push('x'),
+                _ => b.args_sha256.push('x'),
+            }
+            prop_assert_ne!(action_sha256(&a), action_sha256(&b));
         }
     }
 

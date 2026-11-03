@@ -83,10 +83,20 @@ fn pre_tool_use(daemon: &str, p: &Value) -> String {
     };
     let (decision, why) = match answer["result"].as_str() {
         Some("allow") => ("allow", reason("allowed")),
-        Some("escalate") => (
-            "ask",
-            reason("not earned yet on this capability, so a person decides"),
-        ),
+        // A named approver decides through Mohar; the prompt here may be someone else's to answer,
+        // so it is not offered.
+        Some("escalate") => match approvers(&answer["approver"]["to"]) {
+            Some(who) => (
+                "deny",
+                reason(&format!(
+                    "not earned yet on this capability; waiting for {who} to approve this exact action, then ask again"
+                )),
+            ),
+            None => (
+                "ask",
+                reason("not earned yet on this capability, so a person decides"),
+            ),
+        },
         Some("deny") => match answer["reason"].as_str() {
             Some(why) => ("deny", reason(&format!("refused by a gate: {why}"))),
             None => ("deny", reason("denied")),
@@ -104,6 +114,17 @@ fn pre_tool_use(daemon: &str, p: &Value) -> String {
         out["hookSpecificOutput"]["additionalContext"] = json!(context);
     }
     out.to_string()
+}
+
+/// The people an escalation was routed to, as text, or `None` when the daemon named nobody.
+fn approvers(to: &Value) -> Option<String> {
+    let names: Vec<&str> = to
+        .as_array()?
+        .iter()
+        .filter_map(Value::as_str)
+        .filter(|n| !n.is_empty())
+        .collect();
+    (!names.is_empty()).then(|| names.join(" or "))
 }
 
 /// The longest finding handed to the agent; a target can be arbitrarily long.
@@ -482,6 +503,33 @@ mod tests {
                 out["hookSpecificOutput"].get("additionalContext").is_none(),
                 "{body}"
             );
+        }
+    }
+
+    #[test]
+    fn an_escalation_routed_to_a_person_waits_for_them_instead_of_asking_here() {
+        let (url, _) = fake(
+            200,
+            r#"{"result": "escalate", "receipt_seq": 4, "approver": {"to": ["user:lead-1", "user:o"], "via": "owners"}}"#,
+        );
+        let (decision, why) = answer_of(&run(&url, &pre("Edit", json!({"file_path": "a"}))));
+        assert_eq!(decision, "deny");
+        assert!(
+            why.contains("waiting for user:lead-1 or user:o to approve this exact action"),
+            "{why}"
+        );
+        for approver in [
+            r#"null"#,
+            r#"{"to": []}"#,
+            r#"{"to": [""]}"#,
+            r#"{"to": "x"}"#,
+        ] {
+            let (url, _) = fake(
+                200,
+                &format!(r#"{{"result": "escalate", "approver": {approver}}}"#),
+            );
+            let (decision, _) = answer_of(&run(&url, &pre("Edit", json!({"file_path": "a"}))));
+            assert_eq!(decision, "ask", "{approver}");
         }
     }
 
