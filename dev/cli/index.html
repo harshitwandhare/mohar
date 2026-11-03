@@ -1412,12 +1412,13 @@ and cumulative metrics: <code>mohar.decisions</code> by result, <code>mohar.outc
 <code>mohar.decide.duration</code> (a histogram in milliseconds) and <code>mohar.inflight</code>. Spans carry no agent ids,
 targets or arguments. Export runs on its own thread; a collector that is down or slow loses telemetry
 and never delays or changes a decision. Without the flag nothing is collected.</p>
-<p>Five endpoints, JSON in and out:</p>
+<p>Six endpoints, JSON in and out:</p>
 <div class="highlight"><pre><span></span><code>POST /v1/decide   {agent, tool, target, args_sha256, call_id?}  -&gt;  {result, level, receipt_seq, lessons}
 POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256}  -&gt;  {receipt_seq}
 POST /v1/verify   {agent, task}  -&gt;  {verified, result}
 POST /v1/person   {by, act, agent, capability?, lesson?, until?}  -&gt;  {receipt_seq}
 POST /v1/approve  {receipt_seq, by, action_sha256}  -&gt;  {receipt_seq, until}
+POST /v1/refuse   {receipt_seq, by, action_sha256}  -&gt;  {receipt_seq}
 </code></pre></div>
 <p>When the policy has a <code>people</code> section, an <code>escalate</code> answer from <code>/v1/decide</code> also carries <code>approver</code>:
 <code>to</code> (the people who may answer), <code>via</code> (<code>delegator</code>, <code>reporting_tree</code> or <code>owners</code>) and <code>action_sha256</code>,
@@ -1426,8 +1427,11 @@ hash. Someone the escalation wasn't routed to gets a 403, and a hash of any othe
 both cases nothing is written. An approval is a signed receipt (receipt spec section 5.1) that lets that
 agent run that exact action once within the hour: the next <code>/v1/decide</code> for it is <code>allow</code>, decided by
 <code>human</code>, and a different target, different arguments or a different agent still escalate. Gates and
-suspensions are checked first and an approval never overrides them. Unused approvals survive a restart;
-routes don't, so an escalation from before a restart is asked again. The Claude Code hook denies a routed
+suspensions are checked first and an approval never overrides them. <code>/v1/refuse</code> takes the same body
+and records a no, which closes the escalation without letting anything run. The escalate receipt names
+the people it went to (<code>decision.to</code>), so an answer is checked against the log and still works after a
+restart, as do unused approvals. An escalation that named nobody went to the host's prompt and gets a
+403 here. The Claude Code hook denies a routed
 escalation with the approvers' names instead of asking whoever is at the prompt.</p>
 <p><code>/v1/person</code> records what a person did as a signed receipt (receipt spec section 5.1) and applies it:
 <code>promote</code> with <code>lesson</code> (the <code>failure</code> hash from a lesson) shares that lesson with every agent on its
