@@ -11,8 +11,8 @@ use ed25519_dalek::Signer;
 use mohar_core::checkpoint::{Checkpoint, verify_checkpoints};
 use mohar_core::store::{SignatureChecks, verify_dir};
 use mohar_core::{
-    Action, Decision, Entry, Log, Person, Receipt, SigningKey, canonical_bytes, parse_public_key,
-    public_key_string, receipt_hash, verify,
+    Action, Decision, Entry, Log, Person, Receipt, SigningKey, Verification, canonical_bytes,
+    parse_public_key, public_key_string, receipt_hash, verify,
 };
 use serde_json::{Value, json};
 
@@ -155,6 +155,65 @@ fn routed_log(seed: &[u8; 32]) -> (Vec<Receipt>, Vec<Checkpoint>) {
             lesson: None,
             until: None,
         }),
+    })
+    .expect("append");
+    (log.receipts().to_vec(), checkpoints)
+}
+
+/// [`routed_log`] with a decision and a person's verdict on it, naming the reviewer and the seconds
+/// they spent (spec 1.5.0).
+fn reviewed_log(seed: &[u8; 32]) -> (Vec<Receipt>, Vec<Checkpoint>) {
+    let (receipts, checkpoints) = routed_log(seed);
+    let mut log = Log::new(SigningKey::from_seed(seed));
+    for r in &receipts {
+        log.append(Entry {
+            ts: r.ts.clone(),
+            agent_id: r.agent.id.clone(),
+            action: r.action.clone(),
+            decision: r.decision.clone(),
+            verification: r.verification.clone(),
+            person: r.person.clone(),
+        })
+        .expect("append");
+    }
+    let action = Action {
+        capability: "fs.edit.docs".into(),
+        tool: "Edit".into(),
+        target: "docs/design.md".into(),
+        args_sha256: "e4a1c09b".into(),
+    };
+    let decision = Decision {
+        result: "escalate".into(),
+        level: 0,
+        by: "score".into(),
+        review: false,
+        to: Vec::new(),
+    };
+    let of = log
+        .append(Entry {
+            ts: "2026-11-03T16:10:02.771Z".into(),
+            agent_id: receipts[0].agent.id.clone(),
+            action: action.clone(),
+            decision: decision.clone(),
+            verification: None,
+            person: None,
+        })
+        .expect("append")
+        .seq;
+    log.append(Entry {
+        ts: "2026-11-03T16:14:40.090Z".into(),
+        agent_id: receipts[0].agent.id.clone(),
+        action,
+        decision,
+        verification: Some(Verification {
+            evidence_sha256: "3f9d22e1".into(),
+            kind: "human".into(),
+            of,
+            result: "pass".into(),
+            review_secs: Some(214),
+            reviewer: Some("human:1c9e44d0".into()),
+        }),
+        person: None,
     })
     .expect("append");
     (log.receipts().to_vec(), checkpoints)
@@ -366,7 +425,47 @@ fn cases() -> Vec<Value> {
     out.extend(segment_cases(&good, &checkpoints));
     out.extend(person_cases());
     out.extend(routed_cases());
+    out.extend(reviewed_cases());
     out
+}
+
+/// Spec 1.5.0: a person's verdict that names the reviewer and their time, and the ways to alter them.
+fn reviewed_cases() -> Vec<Value> {
+    let (good, checkpoints) = reviewed_log(&SEED);
+    let changed = |name: &str, about: &str, key: &str, value: Value| {
+        let mut c = case(name, about, 0, &SEED, Some(&SEED), &good, &checkpoints);
+        c["receipts"][8]["verification"][key] = value;
+        c
+    };
+    vec![
+        case(
+            "human-outcome-names-reviewer",
+            "Receipt 8 is a person's verdict on decision 7, naming who reviewed it and the seconds they spent.",
+            2,
+            &SEED,
+            Some(&SEED),
+            &good,
+            &checkpoints,
+        ),
+        changed(
+            "null-reviewer-added",
+            "Receipt 8's \"reviewer\" is replaced by null after it was signed.",
+            "reviewer",
+            Value::Null,
+        ),
+        changed(
+            "reviewer-swapped",
+            "Receipt 8 names a different reviewer after it was signed.",
+            "reviewer",
+            json!("human:00000000"),
+        ),
+        changed(
+            "review-time-shortened",
+            "Receipt 8's review_secs is lowered after it was signed.",
+            "review_secs",
+            json!(3),
+        ),
+    ]
 }
 
 /// Spec 1.4.0: an escalation that names who was asked, a refusal, and the ways to alter the list.
@@ -690,7 +789,7 @@ fn level_on_disk(case: &Value) -> u8 {
 fn build() -> Value {
     json!({
         "format": "mohar receipts v1 conformance",
-        "spec": "spec/receipts-v1.md, spec version 1.4.0",
+        "spec": "spec/receipts-v1.md, spec version 1.5.0",
         "notes": "Seeds are bytes 0x00..0x1f (the log's key) and 0x20..0x3f (another key), for testing only. Each case is a log: log_key is public.key in the log directory, pinned_key is the key the verifier was given some other way (null if none), published_checkpoints were kept outside the machine. A rotated log also has segments (file name under segments/ and its receipts, oldest first) and local_checkpoints (checkpoints.jsonl in the log directory); receipts is then receipts.jsonl. A verifier must report expect_level. Level 3 has no cases yet.",
         "cases": cases(),
     })

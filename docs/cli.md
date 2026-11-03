@@ -132,7 +132,7 @@ Seven endpoints, JSON in and out:
 
 ```
 POST /v1/decide   {agent, tool, target, args_sha256, call_id?}  ->  {result, level, receipt_seq, lessons}
-POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256}  ->  {receipt_seq}
+POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256, reviewer?, review_secs?}  ->  {receipt_seq}
 POST /v1/verify   {agent, task}  ->  {verified, result}
 POST /v1/person   {by, act, agent, capability?, lesson?, until?}  ->  {receipt_seq}
 POST /v1/approve  {receipt_seq, by, action_sha256}  ->  {receipt_seq, until}
@@ -153,6 +153,12 @@ the people it went to (`decision.to`), so an answer is checked against the log a
 restart, as do unused approvals. An escalation that named nobody went to the host's prompt and gets a
 403 here. The Claude Code hook denies a routed
 escalation with the approvers' names instead of asking whoever is at the prompt.
+
+A `human` outcome must name the `reviewer` and the `review_secs` they spent (any other verifier gets a 400
+if it sends them). Both are signed into the receipt, and the reviewer goes through the pseudonyms in
+strict privacy mode. A person's accept counts toward trust only if they spent at least 30 seconds and
+haven't approved more than 95% of their last 50 reviews; a reject always counts. The daemon rebuilds
+each reviewer's window and flag from the log on start.
 
 `/v1/person` records what a person did as a signed receipt (receipt spec section 5.1) and applies it:
 `promote` with `lesson` (the `failure` hash from a lesson) shares that lesson with every agent on its

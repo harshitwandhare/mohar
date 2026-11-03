@@ -1,6 +1,6 @@
 # Mohar receipts, format version 1
 
-Spec version 1.4.0
+Spec version 1.5.0
 
 This document describes the receipts and checkpoints Mohar writes, apart from the Rust code, so a
 verifier can be written in any language. It covers receipt format `v: 1`. The reference implementation is
@@ -48,6 +48,8 @@ A receipt is a JSON object with these keys, and no others:
 | `decision.to` | array of strings | Present only on an escalation that was routed to named people (added in 1.4.0): any one of them may answer. In strict privacy mode, pseudonyms like `agent.id`. |
 | `sig` | signature | Signature over the receipt without `sig` (section 3). |
 | `verification` | object | Present only on a receipt that records an outcome (section 5). |
+| `verification.reviewer` | string | On a `human` outcome (added in 1.5.0): who reviewed it. In strict privacy mode, a pseudonym like `agent.id`. |
+| `verification.review_secs` | integer | On a `human` outcome (added in 1.5.0): how many seconds the reviewer spent on it. |
 | `person` | object | Present only on a receipt that records what a person did (section 5.1, added in 1.2.0). |
 
 Rules for every receipt:
@@ -56,7 +58,9 @@ Rules for every receipt:
   that does. The canonical bytes are built from the receipt as written, so an implementation that dropped
   unknown keys while parsing would verify a receipt carrying a field nobody signed.
 - The optional keys are written only when they say something. `decision.review` MUST be absent or
-  `true`; `false` MUST fail. `decision.to`, when present, MUST be a non-empty array of strings; `[]` MUST fail. `verification` and `person` MUST each be absent or an object; `null` MUST
+  `true`; `false` MUST fail. `decision.to`, when present, MUST be a non-empty array of strings; `[]` MUST fail. `verification.reviewer` and
+  `verification.review_secs` MUST be absent or set; `null` MUST fail. A `human` outcome without both
+  still verifies, but the reference daemon doesn't let it change trust. `verification` and `person` MUST each be absent or an object; `null` MUST
   fail. Inside `person`, `lesson` and `until` MUST be absent or set; `null` MUST fail.
 - A key MUST NOT appear twice in one object. A verifier MUST fail a line that repeats one.
 - `seq`, `decision.level`, `verification.of` and `person.until` are non-negative integers. Writers MUST keep them below

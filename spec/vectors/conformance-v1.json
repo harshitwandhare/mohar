@@ -4212,9 +4212,1009 @@
           "v": 1
         }
       ]
+    },
+    {
+      "about": "Receipt 8 is a person's verdict on decision 7, naming who reviewed it and the seconds they spent.",
+      "expect_level": 2,
+      "log_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "name": "human-outcome-names-reviewer",
+      "pinned_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "published_checkpoints": [
+        {
+          "count": 2,
+          "head": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "sig": "ed25519:2028c3812bf8df5df35cbeb942dacf02ac9fe55c26100b465a069783e5ecf7ae45783216bbe1d1bc2f1c83fa212407641c8e8ec98b42016ea8946a4ff5224f04",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        },
+        {
+          "count": 4,
+          "head": "sha256:8129d9230681afca0ffb2d321d6a09c049eb97e23b57c572ebf5eb67ec3e7f12",
+          "sig": "ed25519:6035923c69c0a4dfc1b41adf3da9d510805762ac49e128f264e005cefe880e9f1f43e05c57d3a4e9479e5999274488bb2d8e59908548a6a7ebaa7e1152379008",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        }
+      ],
+      "receipts": [
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "seq": 0,
+          "sig": "ed25519:1e897de075c1fba3d6cf3840caff9b302e52e333706db6c3ba383f223d7cc10622ef6f8b6228c5f61d27edd7eae469f7025f10aace9f06dbb0f7034885409605",
+          "ts": "2026-11-03T14:22:07.311Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "gate",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:3f9487cde3fce1cfcd2cc773dc7f871cb4632b0d651bcbc25f008e446546362a",
+          "seq": 1,
+          "sig": "ed25519:80978e926e0107671eeb8627ea0dd879b7197d5e45f40b93a155aebf61e85441fe8e68e1a4ce3484633e94811eb2ddb19b18d6cc85ac40b692a1bef7f9f9cd0a",
+          "ts": "2026-11-03T14:22:09.020Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "prev": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "seq": 2,
+          "sig": "ed25519:b29e812c1a0080e4f9c07172c85b5a7529078ad249c22fb6dac08369de195a8002d1c8df3711ea16d739d1c8998c2fd23252e68b56ceee0ba63525a047e6a40c",
+          "ts": "2026-11-03T14:23:41.555Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:3795fd493c040bcf94f1df2da0fa887a795916efb502af948f7da6c5e8c29392",
+          "seq": 3,
+          "sig": "ed25519:de7b51b5c890855399ed5e5057084e5c3fcd82baa9c51e00b85d98355e5d1e7fc0e34faf44a17e3caf4cc11be2c6bde35e912116cfd609a4905438033c2b860d",
+          "ts": "2026-11-03T14:25:02.870Z",
+          "v": 1,
+          "verification": {
+            "evidence_sha256": "5d41402abc4b2a76b9719d911017c592ae8a2f3c1d2e6b0a4f7c9e1d3b5a7c90",
+            "kind": "tests",
+            "of": 0,
+            "result": "pass"
+          }
+        },
+        {
+          "action": {
+            "args_sha256": "5d1c0e7a",
+            "capability": "fs.edit.tests",
+            "target": "",
+            "tool": "mohar"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "person": {
+            "act": "extend",
+            "by": "human:7f3a09c2",
+            "until": 1796000000
+          },
+          "prev": "sha256:8129d9230681afca0ffb2d321d6a09c049eb97e23b57c572ebf5eb67ec3e7f12",
+          "seq": 4,
+          "sig": "ed25519:939d369dc8c9f8feb488604a0c0eb57212de90eaad613e15430ade617461799f48017f29c2deebac00c1c1edb44e033bc46b5f8a7cf0afb8c7ef60a61a5acc05",
+          "ts": "2026-11-03T16:02:44.108Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9b0e41c2",
+            "capability": "db.migrate",
+            "target": "migrate up",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 0,
+            "result": "escalate",
+            "to": [
+              "human:1c9e44d0",
+              "human:7f3a09c2"
+            ]
+          },
+          "prev": "sha256:2812a482dd6e137aa6f6ad4c4b5ecc92ddbea1afa24be68e900d58b71423efaf",
+          "seq": 5,
+          "sig": "ed25519:ff7898b484809b16f017ddc712919e0b057e309cc61fb1822fa818e18eee4a1f3b5367bf5cb484b2ee241e7b51d8d867768bbf4e801acf410cc1e60d276e5c0f",
+          "ts": "2026-11-03T16:05:10.512Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9b0e41c2",
+            "capability": "db.migrate",
+            "target": "migrate up",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "person": {
+            "act": "refuse",
+            "by": "human:7f3a09c2"
+          },
+          "prev": "sha256:90b9bf75fc0bd9ef4d23f38c1f278bff92e3ff9399f3cdd466a19df42f68dc36",
+          "seq": 6,
+          "sig": "ed25519:7711b6a94f3ec682f88baabf8fd9770c0ec7daf1283a1442514597db8f7625adb1f2b1e29f4df78c474f5deaad81738f8ad57572434c5617344834a0ee56cc01",
+          "ts": "2026-11-03T16:07:31.004Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "e4a1c09b",
+            "capability": "fs.edit.docs",
+            "target": "docs/design.md",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:3c260b9301b10e090aa75cb8da289804b05e6cc43f520b397db05836d0fb6241",
+          "seq": 7,
+          "sig": "ed25519:30853337cd1cc4f5f535e356345325fe4c36a68872450149c0bf4d49479a42a337b9438f5488e764ce73934a2e54c05fc22e58a0f066c50935a5540ee00d2508",
+          "ts": "2026-11-03T16:10:02.771Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "e4a1c09b",
+            "capability": "fs.edit.docs",
+            "target": "docs/design.md",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:f2ebae1f6184555e216b2f968a5636696e75645c0bc8c9e381129950d3eee6b3",
+          "seq": 8,
+          "sig": "ed25519:670ec608b7d1b3a7d8d880cd6163d618db881f9cfe9b49a11ebefd57f2aea862b8bf4d8161c5d069812aa2b1d3227dd3e83599bac92a041dfe3aac9907050000",
+          "ts": "2026-11-03T16:14:40.090Z",
+          "v": 1,
+          "verification": {
+            "evidence_sha256": "3f9d22e1",
+            "kind": "human",
+            "of": 7,
+            "result": "pass",
+            "review_secs": 214,
+            "reviewer": "human:1c9e44d0"
+          }
+        }
+      ]
+    },
+    {
+      "about": "Receipt 8's \"reviewer\" is replaced by null after it was signed.",
+      "expect_level": 0,
+      "log_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "name": "null-reviewer-added",
+      "pinned_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "published_checkpoints": [
+        {
+          "count": 2,
+          "head": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "sig": "ed25519:2028c3812bf8df5df35cbeb942dacf02ac9fe55c26100b465a069783e5ecf7ae45783216bbe1d1bc2f1c83fa212407641c8e8ec98b42016ea8946a4ff5224f04",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        },
+        {
+          "count": 4,
+          "head": "sha256:8129d9230681afca0ffb2d321d6a09c049eb97e23b57c572ebf5eb67ec3e7f12",
+          "sig": "ed25519:6035923c69c0a4dfc1b41adf3da9d510805762ac49e128f264e005cefe880e9f1f43e05c57d3a4e9479e5999274488bb2d8e59908548a6a7ebaa7e1152379008",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        }
+      ],
+      "receipts": [
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "seq": 0,
+          "sig": "ed25519:1e897de075c1fba3d6cf3840caff9b302e52e333706db6c3ba383f223d7cc10622ef6f8b6228c5f61d27edd7eae469f7025f10aace9f06dbb0f7034885409605",
+          "ts": "2026-11-03T14:22:07.311Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "gate",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:3f9487cde3fce1cfcd2cc773dc7f871cb4632b0d651bcbc25f008e446546362a",
+          "seq": 1,
+          "sig": "ed25519:80978e926e0107671eeb8627ea0dd879b7197d5e45f40b93a155aebf61e85441fe8e68e1a4ce3484633e94811eb2ddb19b18d6cc85ac40b692a1bef7f9f9cd0a",
+          "ts": "2026-11-03T14:22:09.020Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "prev": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "seq": 2,
+          "sig": "ed25519:b29e812c1a0080e4f9c07172c85b5a7529078ad249c22fb6dac08369de195a8002d1c8df3711ea16d739d1c8998c2fd23252e68b56ceee0ba63525a047e6a40c",
+          "ts": "2026-11-03T14:23:41.555Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:3795fd493c040bcf94f1df2da0fa887a795916efb502af948f7da6c5e8c29392",
+          "seq": 3,
+          "sig": "ed25519:de7b51b5c890855399ed5e5057084e5c3fcd82baa9c51e00b85d98355e5d1e7fc0e34faf44a17e3caf4cc11be2c6bde35e912116cfd609a4905438033c2b860d",
+          "ts": "2026-11-03T14:25:02.870Z",
+          "v": 1,
+          "verification": {
+            "evidence_sha256": "5d41402abc4b2a76b9719d911017c592ae8a2f3c1d2e6b0a4f7c9e1d3b5a7c90",
+            "kind": "tests",
+            "of": 0,
+            "result": "pass"
+          }
+        },
+        {
+          "action": {
+            "args_sha256": "5d1c0e7a",
+            "capability": "fs.edit.tests",
+            "target": "",
+            "tool": "mohar"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "person": {
+            "act": "extend",
+            "by": "human:7f3a09c2",
+            "until": 1796000000
+          },
+          "prev": "sha256:8129d9230681afca0ffb2d321d6a09c049eb97e23b57c572ebf5eb67ec3e7f12",
+          "seq": 4,
+          "sig": "ed25519:939d369dc8c9f8feb488604a0c0eb57212de90eaad613e15430ade617461799f48017f29c2deebac00c1c1edb44e033bc46b5f8a7cf0afb8c7ef60a61a5acc05",
+          "ts": "2026-11-03T16:02:44.108Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9b0e41c2",
+            "capability": "db.migrate",
+            "target": "migrate up",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 0,
+            "result": "escalate",
+            "to": [
+              "human:1c9e44d0",
+              "human:7f3a09c2"
+            ]
+          },
+          "prev": "sha256:2812a482dd6e137aa6f6ad4c4b5ecc92ddbea1afa24be68e900d58b71423efaf",
+          "seq": 5,
+          "sig": "ed25519:ff7898b484809b16f017ddc712919e0b057e309cc61fb1822fa818e18eee4a1f3b5367bf5cb484b2ee241e7b51d8d867768bbf4e801acf410cc1e60d276e5c0f",
+          "ts": "2026-11-03T16:05:10.512Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9b0e41c2",
+            "capability": "db.migrate",
+            "target": "migrate up",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "person": {
+            "act": "refuse",
+            "by": "human:7f3a09c2"
+          },
+          "prev": "sha256:90b9bf75fc0bd9ef4d23f38c1f278bff92e3ff9399f3cdd466a19df42f68dc36",
+          "seq": 6,
+          "sig": "ed25519:7711b6a94f3ec682f88baabf8fd9770c0ec7daf1283a1442514597db8f7625adb1f2b1e29f4df78c474f5deaad81738f8ad57572434c5617344834a0ee56cc01",
+          "ts": "2026-11-03T16:07:31.004Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "e4a1c09b",
+            "capability": "fs.edit.docs",
+            "target": "docs/design.md",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:3c260b9301b10e090aa75cb8da289804b05e6cc43f520b397db05836d0fb6241",
+          "seq": 7,
+          "sig": "ed25519:30853337cd1cc4f5f535e356345325fe4c36a68872450149c0bf4d49479a42a337b9438f5488e764ce73934a2e54c05fc22e58a0f066c50935a5540ee00d2508",
+          "ts": "2026-11-03T16:10:02.771Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "e4a1c09b",
+            "capability": "fs.edit.docs",
+            "target": "docs/design.md",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:f2ebae1f6184555e216b2f968a5636696e75645c0bc8c9e381129950d3eee6b3",
+          "seq": 8,
+          "sig": "ed25519:670ec608b7d1b3a7d8d880cd6163d618db881f9cfe9b49a11ebefd57f2aea862b8bf4d8161c5d069812aa2b1d3227dd3e83599bac92a041dfe3aac9907050000",
+          "ts": "2026-11-03T16:14:40.090Z",
+          "v": 1,
+          "verification": {
+            "evidence_sha256": "3f9d22e1",
+            "kind": "human",
+            "of": 7,
+            "result": "pass",
+            "review_secs": 214,
+            "reviewer": null
+          }
+        }
+      ]
+    },
+    {
+      "about": "Receipt 8 names a different reviewer after it was signed.",
+      "expect_level": 0,
+      "log_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "name": "reviewer-swapped",
+      "pinned_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "published_checkpoints": [
+        {
+          "count": 2,
+          "head": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "sig": "ed25519:2028c3812bf8df5df35cbeb942dacf02ac9fe55c26100b465a069783e5ecf7ae45783216bbe1d1bc2f1c83fa212407641c8e8ec98b42016ea8946a4ff5224f04",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        },
+        {
+          "count": 4,
+          "head": "sha256:8129d9230681afca0ffb2d321d6a09c049eb97e23b57c572ebf5eb67ec3e7f12",
+          "sig": "ed25519:6035923c69c0a4dfc1b41adf3da9d510805762ac49e128f264e005cefe880e9f1f43e05c57d3a4e9479e5999274488bb2d8e59908548a6a7ebaa7e1152379008",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        }
+      ],
+      "receipts": [
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "seq": 0,
+          "sig": "ed25519:1e897de075c1fba3d6cf3840caff9b302e52e333706db6c3ba383f223d7cc10622ef6f8b6228c5f61d27edd7eae469f7025f10aace9f06dbb0f7034885409605",
+          "ts": "2026-11-03T14:22:07.311Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "gate",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:3f9487cde3fce1cfcd2cc773dc7f871cb4632b0d651bcbc25f008e446546362a",
+          "seq": 1,
+          "sig": "ed25519:80978e926e0107671eeb8627ea0dd879b7197d5e45f40b93a155aebf61e85441fe8e68e1a4ce3484633e94811eb2ddb19b18d6cc85ac40b692a1bef7f9f9cd0a",
+          "ts": "2026-11-03T14:22:09.020Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "prev": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "seq": 2,
+          "sig": "ed25519:b29e812c1a0080e4f9c07172c85b5a7529078ad249c22fb6dac08369de195a8002d1c8df3711ea16d739d1c8998c2fd23252e68b56ceee0ba63525a047e6a40c",
+          "ts": "2026-11-03T14:23:41.555Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:3795fd493c040bcf94f1df2da0fa887a795916efb502af948f7da6c5e8c29392",
+          "seq": 3,
+          "sig": "ed25519:de7b51b5c890855399ed5e5057084e5c3fcd82baa9c51e00b85d98355e5d1e7fc0e34faf44a17e3caf4cc11be2c6bde35e912116cfd609a4905438033c2b860d",
+          "ts": "2026-11-03T14:25:02.870Z",
+          "v": 1,
+          "verification": {
+            "evidence_sha256": "5d41402abc4b2a76b9719d911017c592ae8a2f3c1d2e6b0a4f7c9e1d3b5a7c90",
+            "kind": "tests",
+            "of": 0,
+            "result": "pass"
+          }
+        },
+        {
+          "action": {
+            "args_sha256": "5d1c0e7a",
+            "capability": "fs.edit.tests",
+            "target": "",
+            "tool": "mohar"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "person": {
+            "act": "extend",
+            "by": "human:7f3a09c2",
+            "until": 1796000000
+          },
+          "prev": "sha256:8129d9230681afca0ffb2d321d6a09c049eb97e23b57c572ebf5eb67ec3e7f12",
+          "seq": 4,
+          "sig": "ed25519:939d369dc8c9f8feb488604a0c0eb57212de90eaad613e15430ade617461799f48017f29c2deebac00c1c1edb44e033bc46b5f8a7cf0afb8c7ef60a61a5acc05",
+          "ts": "2026-11-03T16:02:44.108Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9b0e41c2",
+            "capability": "db.migrate",
+            "target": "migrate up",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 0,
+            "result": "escalate",
+            "to": [
+              "human:1c9e44d0",
+              "human:7f3a09c2"
+            ]
+          },
+          "prev": "sha256:2812a482dd6e137aa6f6ad4c4b5ecc92ddbea1afa24be68e900d58b71423efaf",
+          "seq": 5,
+          "sig": "ed25519:ff7898b484809b16f017ddc712919e0b057e309cc61fb1822fa818e18eee4a1f3b5367bf5cb484b2ee241e7b51d8d867768bbf4e801acf410cc1e60d276e5c0f",
+          "ts": "2026-11-03T16:05:10.512Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9b0e41c2",
+            "capability": "db.migrate",
+            "target": "migrate up",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "person": {
+            "act": "refuse",
+            "by": "human:7f3a09c2"
+          },
+          "prev": "sha256:90b9bf75fc0bd9ef4d23f38c1f278bff92e3ff9399f3cdd466a19df42f68dc36",
+          "seq": 6,
+          "sig": "ed25519:7711b6a94f3ec682f88baabf8fd9770c0ec7daf1283a1442514597db8f7625adb1f2b1e29f4df78c474f5deaad81738f8ad57572434c5617344834a0ee56cc01",
+          "ts": "2026-11-03T16:07:31.004Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "e4a1c09b",
+            "capability": "fs.edit.docs",
+            "target": "docs/design.md",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:3c260b9301b10e090aa75cb8da289804b05e6cc43f520b397db05836d0fb6241",
+          "seq": 7,
+          "sig": "ed25519:30853337cd1cc4f5f535e356345325fe4c36a68872450149c0bf4d49479a42a337b9438f5488e764ce73934a2e54c05fc22e58a0f066c50935a5540ee00d2508",
+          "ts": "2026-11-03T16:10:02.771Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "e4a1c09b",
+            "capability": "fs.edit.docs",
+            "target": "docs/design.md",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:f2ebae1f6184555e216b2f968a5636696e75645c0bc8c9e381129950d3eee6b3",
+          "seq": 8,
+          "sig": "ed25519:670ec608b7d1b3a7d8d880cd6163d618db881f9cfe9b49a11ebefd57f2aea862b8bf4d8161c5d069812aa2b1d3227dd3e83599bac92a041dfe3aac9907050000",
+          "ts": "2026-11-03T16:14:40.090Z",
+          "v": 1,
+          "verification": {
+            "evidence_sha256": "3f9d22e1",
+            "kind": "human",
+            "of": 7,
+            "result": "pass",
+            "review_secs": 214,
+            "reviewer": "human:00000000"
+          }
+        }
+      ]
+    },
+    {
+      "about": "Receipt 8's review_secs is lowered after it was signed.",
+      "expect_level": 0,
+      "log_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "name": "review-time-shortened",
+      "pinned_key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "published_checkpoints": [
+        {
+          "count": 2,
+          "head": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "sig": "ed25519:2028c3812bf8df5df35cbeb942dacf02ac9fe55c26100b465a069783e5ecf7ae45783216bbe1d1bc2f1c83fa212407641c8e8ec98b42016ea8946a4ff5224f04",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        },
+        {
+          "count": 4,
+          "head": "sha256:8129d9230681afca0ffb2d321d6a09c049eb97e23b57c572ebf5eb67ec3e7f12",
+          "sig": "ed25519:6035923c69c0a4dfc1b41adf3da9d510805762ac49e128f264e005cefe880e9f1f43e05c57d3a4e9479e5999274488bb2d8e59908548a6a7ebaa7e1152379008",
+          "ts": "2026-11-03T15:00:00.000Z",
+          "v": 1
+        }
+      ],
+      "receipts": [
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "seq": 0,
+          "sig": "ed25519:1e897de075c1fba3d6cf3840caff9b302e52e333706db6c3ba383f223d7cc10622ef6f8b6228c5f61d27edd7eae469f7025f10aace9f06dbb0f7034885409605",
+          "ts": "2026-11-03T14:22:07.311Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "gate",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:3f9487cde3fce1cfcd2cc773dc7f871cb4632b0d651bcbc25f008e446546362a",
+          "seq": 1,
+          "sig": "ed25519:80978e926e0107671eeb8627ea0dd879b7197d5e45f40b93a155aebf61e85441fe8e68e1a4ce3484633e94811eb2ddb19b18d6cc85ac40b692a1bef7f9f9cd0a",
+          "ts": "2026-11-03T14:22:09.020Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9a01e5f3",
+            "capability": "git.push.main",
+            "target": "main",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "prev": "sha256:e44040e977ca8f829556595bf5412f36d016af1240b39990c2fc625183847601",
+          "seq": 2,
+          "sig": "ed25519:b29e812c1a0080e4f9c07172c85b5a7529078ad249c22fb6dac08369de195a8002d1c8df3711ea16d739d1c8998c2fd23252e68b56ceee0ba63525a047e6a40c",
+          "ts": "2026-11-03T14:23:41.555Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "c41b77d0",
+            "capability": "fs.edit.tests",
+            "target": "tests/test_receipts.rs",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 1,
+            "result": "allow"
+          },
+          "prev": "sha256:3795fd493c040bcf94f1df2da0fa887a795916efb502af948f7da6c5e8c29392",
+          "seq": 3,
+          "sig": "ed25519:de7b51b5c890855399ed5e5057084e5c3fcd82baa9c51e00b85d98355e5d1e7fc0e34faf44a17e3caf4cc11be2c6bde35e912116cfd609a4905438033c2b860d",
+          "ts": "2026-11-03T14:25:02.870Z",
+          "v": 1,
+          "verification": {
+            "evidence_sha256": "5d41402abc4b2a76b9719d911017c592ae8a2f3c1d2e6b0a4f7c9e1d3b5a7c90",
+            "kind": "tests",
+            "of": 0,
+            "result": "pass"
+          }
+        },
+        {
+          "action": {
+            "args_sha256": "5d1c0e7a",
+            "capability": "fs.edit.tests",
+            "target": "",
+            "tool": "mohar"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "person": {
+            "act": "extend",
+            "by": "human:7f3a09c2",
+            "until": 1796000000
+          },
+          "prev": "sha256:8129d9230681afca0ffb2d321d6a09c049eb97e23b57c572ebf5eb67ec3e7f12",
+          "seq": 4,
+          "sig": "ed25519:939d369dc8c9f8feb488604a0c0eb57212de90eaad613e15430ade617461799f48017f29c2deebac00c1c1edb44e033bc46b5f8a7cf0afb8c7ef60a61a5acc05",
+          "ts": "2026-11-03T16:02:44.108Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9b0e41c2",
+            "capability": "db.migrate",
+            "target": "migrate up",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 0,
+            "result": "escalate",
+            "to": [
+              "human:1c9e44d0",
+              "human:7f3a09c2"
+            ]
+          },
+          "prev": "sha256:2812a482dd6e137aa6f6ad4c4b5ecc92ddbea1afa24be68e900d58b71423efaf",
+          "seq": 5,
+          "sig": "ed25519:ff7898b484809b16f017ddc712919e0b057e309cc61fb1822fa818e18eee4a1f3b5367bf5cb484b2ee241e7b51d8d867768bbf4e801acf410cc1e60d276e5c0f",
+          "ts": "2026-11-03T16:05:10.512Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "9b0e41c2",
+            "capability": "db.migrate",
+            "target": "migrate up",
+            "tool": "Bash"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "human",
+            "level": 0,
+            "result": "allow"
+          },
+          "person": {
+            "act": "refuse",
+            "by": "human:7f3a09c2"
+          },
+          "prev": "sha256:90b9bf75fc0bd9ef4d23f38c1f278bff92e3ff9399f3cdd466a19df42f68dc36",
+          "seq": 6,
+          "sig": "ed25519:7711b6a94f3ec682f88baabf8fd9770c0ec7daf1283a1442514597db8f7625adb1f2b1e29f4df78c474f5deaad81738f8ad57572434c5617344834a0ee56cc01",
+          "ts": "2026-11-03T16:07:31.004Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "e4a1c09b",
+            "capability": "fs.edit.docs",
+            "target": "docs/design.md",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:3c260b9301b10e090aa75cb8da289804b05e6cc43f520b397db05836d0fb6241",
+          "seq": 7,
+          "sig": "ed25519:30853337cd1cc4f5f535e356345325fe4c36a68872450149c0bf4d49479a42a337b9438f5488e764ce73934a2e54c05fc22e58a0f066c50935a5540ee00d2508",
+          "ts": "2026-11-03T16:10:02.771Z",
+          "v": 1
+        },
+        {
+          "action": {
+            "args_sha256": "e4a1c09b",
+            "capability": "fs.edit.docs",
+            "target": "docs/design.md",
+            "tool": "Edit"
+          },
+          "agent": {
+            "id": "agent:claude-code/host-4b1d/7c1e",
+            "key": "ed25519:03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+          },
+          "decision": {
+            "by": "score",
+            "level": 0,
+            "result": "escalate"
+          },
+          "prev": "sha256:f2ebae1f6184555e216b2f968a5636696e75645c0bc8c9e381129950d3eee6b3",
+          "seq": 8,
+          "sig": "ed25519:670ec608b7d1b3a7d8d880cd6163d618db881f9cfe9b49a11ebefd57f2aea862b8bf4d8161c5d069812aa2b1d3227dd3e83599bac92a041dfe3aac9907050000",
+          "ts": "2026-11-03T16:14:40.090Z",
+          "v": 1,
+          "verification": {
+            "evidence_sha256": "3f9d22e1",
+            "kind": "human",
+            "of": 7,
+            "result": "pass",
+            "review_secs": 3,
+            "reviewer": "human:1c9e44d0"
+          }
+        }
+      ]
     }
   ],
   "format": "mohar receipts v1 conformance",
   "notes": "Seeds are bytes 0x00..0x1f (the log's key) and 0x20..0x3f (another key), for testing only. Each case is a log: log_key is public.key in the log directory, pinned_key is the key the verifier was given some other way (null if none), published_checkpoints were kept outside the machine. A rotated log also has segments (file name under segments/ and its receipts, oldest first) and local_checkpoints (checkpoints.jsonl in the log directory); receipts is then receipts.jsonl. A verifier must report expect_level. Level 3 has no cases yet.",
-  "spec": "spec/receipts-v1.md, spec version 1.4.0"
+  "spec": "spec/receipts-v1.md, spec version 1.5.0"
 }

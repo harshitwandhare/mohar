@@ -75,6 +75,8 @@ pub fn entries() -> Vec<Entry> {
                 kind: "tests".into(),
                 of: 0,
                 result: "pass".into(),
+                review_secs: None,
+                reviewer: None,
             }),
         },
     ]

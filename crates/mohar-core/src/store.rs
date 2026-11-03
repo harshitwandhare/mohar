@@ -601,6 +601,13 @@ impl FileLog {
             for name in &mut entry.decision.to {
                 *name = ids.record(std::mem::take(name))?;
             }
+            if let Some(who) = entry
+                .verification
+                .as_mut()
+                .and_then(|v| v.reviewer.as_mut())
+            {
+                *who = ids.record(std::mem::take(who))?;
+            }
         }
         let r = seal(&self.key, self.len, self.last_hash.clone(), entry)?;
         let mut line = serde_json::to_vec(&r).map_err(|e| Error::Canonical(e.to_string()))?;

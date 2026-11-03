@@ -79,6 +79,20 @@ pub struct Verification {
     pub of: u64,
     /// `pass`, `fail` or `unknown`.
     pub result: String,
+    /// For a `human` outcome: how long the person spent on the review, in seconds.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    pub review_secs: Option<u64>,
+    /// For a `human` outcome: who reviewed it, by stable (and in strict privacy mode, pseudonymous) id.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    pub reviewer: Option<String>,
 }
 
 /// The agent that acted.
@@ -401,6 +415,13 @@ fn fast_canonical(r: &Receipt, with_sig: bool) -> Vec<u8> {
         s(&mut o, r#","kind":"#, &v.kind);
         let _ = write!(o, r#","of":{}"#, v.of);
         s(&mut o, r#","result":"#, &v.result);
+        // "review_secs" sorts before "reviewer" ('_' is below 'e'); both are left out when unset.
+        if let Some(secs) = v.review_secs {
+            let _ = write!(o, r#","review_secs":{secs}"#);
+        }
+        if let Some(who) = &v.reviewer {
+            s(&mut o, r#","reviewer":"#, who);
+        }
         o.push(b'}');
     }
     o.push(b'}');
@@ -737,8 +758,8 @@ mod tests {
             s in proptest::array::uniform8(text()),
             n in (any::<u32>(), any::<u64>(), any::<u8>()),
             sig in prop_oneof![Just(String::new()), text()],
-            verification in proptest::option::of((text(), text(), any::<u64>(), text())
-                .prop_map(|(evidence_sha256, kind, of, result)| Verification { evidence_sha256, kind, of, result })),
+            verification in proptest::option::of((text(), text(), any::<u64>(), text(), proptest::option::of(any::<u64>()), proptest::option::of(text()))
+                .prop_map(|(evidence_sha256, kind, of, result, review_secs, reviewer)| Verification { evidence_sha256, kind, of, result, review_secs, reviewer })),
             review in any::<bool>(),
             to in proptest::collection::vec(text(), 0..3),
             person in proptest::option::of((text(), text(), proptest::option::of(text()), proptest::option::of(any::<u64>()))
@@ -799,6 +820,8 @@ mod tests {
                     kind: all.clone(),
                     of: 0,
                     result: all.clone(),
+                    review_secs: None,
+                    reviewer: None,
                 }),
             );
             assert_eq!(

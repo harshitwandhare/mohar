@@ -20,7 +20,7 @@ FIELDS = {
     "agent": {"id", "key"},
     "action": {"capability", "tool", "target", "args_sha256"},
     "decision": {"result", "level", "by", "review", "to"},
-    "verification": {"evidence_sha256", "kind", "of", "result"},
+    "verification": {"evidence_sha256", "kind", "of", "result", "review_secs", "reviewer"},
     "person": {"act", "by", "lesson", "until"},
 }
 CHECKPOINT_FIELDS = {"v", "count", "head", "ts", "sig"}
@@ -55,7 +55,9 @@ def known_fields(r):
     for part in ("verification", "person"):
         if part in r and not isinstance(r[part], dict):
             return False
-    if any(r.get("person", {}).get(k, "") is None for k in ("lesson", "until")):
+    if any(r.get("person", {}).get(k, "") is None for k in ("lesson", "until")) or any(
+        r.get("verification", {}).get(k, "") is None for k in ("review_secs", "reviewer")
+    ):
         return False
     to = r.get("decision", {}).get("to", ["x"])
     if not isinstance(to, list) or not to or not all(isinstance(n, str) for n in to):

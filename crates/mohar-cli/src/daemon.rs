@@ -17,7 +17,7 @@ use mohar_core::lessons::{Book, Lesson};
 use mohar_core::policy::{Policy, Risk};
 use mohar_core::privacy::is_pseudonym;
 use mohar_core::store::{FileLog, for_each_log_receipt};
-use mohar_core::trust::{Ledger, Outcome, Severity, sampled_at};
+use mohar_core::trust::{HumanReview, Ledger, Outcome, Severity, sampled_at};
 use mohar_core::{
     Action, Decision, Entry, Person, Receipt, VERSION, Verification, action_sha256, receipt_hash,
 };
@@ -276,11 +276,10 @@ fn replay(dir: &Path, policy: &Policy, log: &FileLog) -> Result<Replayed, String
                 &r.action.capability,
                 policy,
                 parse_rfc3339(&r.ts),
-            ) {
-                ledger.record(&r.agent.id, &r.action.capability, &o);
-                if let Err(e) = learn(&mut lessons, log, &r, &o) {
-                    failed.get_or_insert(e);
-                }
+            ) && count(&mut ledger, &r, &o)
+                && let Err(e) = learn(&mut lessons, log, &r, &o)
+            {
+                failed.get_or_insert(e);
             }
         }
         None if r
@@ -603,6 +602,11 @@ struct OutcomeRequest {
     verifier: String,
     result: String,
     evidence_sha256: String,
+    /// For `human` only: who reviewed it, and how many seconds they spent.
+    #[serde(default)]
+    reviewer: Option<String>,
+    #[serde(default)]
+    review_secs: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -1271,6 +1275,19 @@ fn outcome(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     if !is_sha256_hex(&req.evidence_sha256) {
         return bad("evidence_sha256 must be 64 lowercase hex characters");
     }
+    // A person's verdict counts only through the rubber-stamping guard, which needs both.
+    let review = match (req.verifier.as_str(), req.reviewer, req.review_secs) {
+        ("human", Some(reviewer), Some(seconds))
+            if field_ok(&reviewer, MAX_FIELD) && !is_pseudonym(&reviewer) =>
+        {
+            Some(HumanReview { reviewer, seconds })
+        }
+        ("human", ..) => {
+            return bad("a human outcome needs reviewer (not a pseudonym) and review_secs");
+        }
+        (_, None, None) => None,
+        _ => return bad("reviewer and review_secs belong to human outcomes only"),
+    };
     let mut inner = match lock(state) {
         Ok(g) => g,
         Err(e) => return e,
@@ -1301,6 +1318,7 @@ fn outcome(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         &req.verifier,
         &req.result,
         req.evidence_sha256,
+        review,
     ) {
         Ok(r) => {
             report(state, || Event::Outcome {
@@ -1324,13 +1342,14 @@ fn append_outcome(
     kind: &str,
     result: &str,
     evidence_sha256: String,
+    review: Option<HumanReview>,
 ) -> Result<u64, String> {
     let p = inner
         .pending
         .get(&seq)
         .cloned()
         .ok_or("no pending decision")?;
-    let (agent, capability) = (p.agent_id.clone(), p.action.capability.clone());
+    let capability = p.action.capability.clone();
     let entry = Entry {
         ts: crate::now_rfc3339(),
         agent_id: p.agent_id,
@@ -1342,6 +1361,8 @@ fn append_outcome(
             kind: kind.to_string(),
             of: seq,
             result: result.to_string(),
+            review_secs: review.as_ref().map(|h| h.seconds),
+            reviewer: review.map(|h| h.reviewer),
         }),
     };
     let r = inner.log.append(entry).map_err(|e| e.to_string())?;
@@ -1353,11 +1374,37 @@ fn append_outcome(
         inner.pending.remove(&seq);
         inner.ran.remove(&seq);
     }
-    if let Some(o) = counted {
-        inner.ledger.record(&agent, &capability, &o);
+    if let Some(o) = counted
+        && count(&mut inner.ledger, &r, &o)
+    {
         learn(&mut inner.lessons, &inner.log, &r, &o)?;
     }
     Ok(r.seq)
+}
+
+/// Let a verified outcome change trust, from the receipt as written, so live and replay agree. A
+/// person's verdict goes through the rubber-stamping guard, which needs who reviewed it and for how
+/// long; a `human` outcome without both changes nothing. Returns whether the outcome counted.
+fn count(ledger: &mut Ledger, r: &Receipt, o: &Outcome) -> bool {
+    let (agent, capability) = (&r.agent.id, &r.action.capability);
+    match &r.verification {
+        Some(v) if v.kind == "human" => match (&v.reviewer, v.review_secs) {
+            (Some(reviewer), Some(seconds)) => ledger.record_human(
+                agent,
+                capability,
+                o,
+                &HumanReview {
+                    reviewer: reviewer.clone(),
+                    seconds,
+                },
+            ),
+            _ => false,
+        },
+        _ => {
+            ledger.record(agent, capability, o);
+            true
+        }
+    }
 }
 
 /// Verify a finished task: run the project's tests once and record the result for every decision in
@@ -1456,6 +1503,7 @@ fn verify_task(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
                 kind,
                 result,
                 evidence.clone(),
+                None,
             ) {
                 // As in `decide`: a write the disk refused is never acknowledged.
                 return (500, json!({ "error": e }));
@@ -1748,6 +1796,8 @@ mod tests {
                 kind: "human".into(),
                 of: 0,
                 result: "pass".into(),
+                review_secs: None,
+                reviewer: None,
             });
             wrong.push(r);
         }
@@ -1876,6 +1926,68 @@ mod tests {
             err(&[&head(10), b"ab"], false),
             (408, "timed out reading the body")
         );
+    }
+
+    /// A human pass by `reviewer`, appended after its decision.
+    fn human_pass(log: &mut FileLog, reviewer: &str) {
+        let action = Action {
+            capability: "fs.edit.docs".into(),
+            tool: "Edit".into(),
+            target: "docs/a.md".into(),
+            args_sha256: SHA.into(),
+        };
+        let decision = Decision {
+            result: "escalate".into(),
+            level: 0,
+            by: "score".into(),
+            review: false,
+            to: Vec::new(),
+        };
+        let d = log
+            .append(Entry {
+                ts: crate::now_rfc3339(),
+                agent_id: "agent:w/1".into(),
+                action: action.clone(),
+                decision: decision.clone(),
+                person: None,
+                verification: None,
+            })
+            .expect("decision");
+        log.append(Entry {
+            ts: crate::now_rfc3339(),
+            agent_id: "agent:w/1".into(),
+            action,
+            decision,
+            person: None,
+            verification: Some(Verification {
+                evidence_sha256: SHA.into(),
+                kind: "human".into(),
+                of: d.seq,
+                result: "pass".into(),
+                review_secs: Some(60),
+                reviewer: Some(reviewer.into()),
+            }),
+        })
+        .expect("outcome");
+    }
+
+    #[test]
+    fn a_restart_rebuilds_each_reviewer_s_window_and_flag_from_the_log() {
+        let s = state("reviewers");
+        let mut inner = s.log.lock().expect("lock");
+        // 49 accepts fill the window but one; replay agrees nobody is flagged yet.
+        for _ in 0..49 {
+            human_pass(&mut inner.log, "user:r1");
+        }
+        let (_, ledger, _, _) = replay(&s.log_dir, &s.policy, &inner.log).expect("replay");
+        assert!(!ledger.is_rubber_stamping("user:r1"));
+        // The 50th accept, all of them accepts: flagged, and a rebuilt ledger says so too. Another
+        // reviewer's record is their own.
+        human_pass(&mut inner.log, "user:r1");
+        human_pass(&mut inner.log, "user:r2");
+        let (_, ledger, _, _) = replay(&s.log_dir, &s.policy, &inner.log).expect("replay");
+        assert!(ledger.is_rubber_stamping("user:r1"));
+        assert!(!ledger.is_rubber_stamping("user:r2"));
     }
 
     #[test]

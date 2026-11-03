@@ -9,6 +9,9 @@ receipt format; each such change is called out.
 
 ### Added
 
+- A person's verdict on an outcome names the reviewer and the seconds they spent (receipt spec 1.5.0,
+  four conformance vectors), and goes through the rubber-stamping guard live and on replay, so a restart
+  keeps each reviewer's flag. A human outcome without them is refused by the daemon and never counts (#129).
 - Separation of duties. `gates.two_person` makes an escalation need two different people's approval
   (the same person never counts twice, also when a log is replayed), and an agent's sponsor can't release
   it after a serious failure (#88).
