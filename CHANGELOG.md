@@ -9,6 +9,9 @@ receipt format; each such change is called out.
 
 ### Added
 
+- Separation of duties. `gates.two_person` makes an escalation need two different people's approval
+  (the same person never counts twice, also when a log is replayed), and an agent's sponsor can't release
+  it after a serious failure (#88).
 - `mohar approve` and `mohar refuse` show an escalated action, its hash, who was asked and the agent's
   verified record on that capability, ask for confirmation, and send the answer bound to that hash. The
   daemon's new `/v1/escalation` endpoint serves what they show (#184).

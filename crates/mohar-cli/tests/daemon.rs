@@ -2267,3 +2267,150 @@ fn the_approve_and_refuse_commands_show_the_action_and_record_before_answering()
     let (code, _, err) = answer_cli(&url, "approve", seq, "user:lead-1", &["--yes"], "");
     assert_eq!(code, 2, "{err}");
 }
+
+fn two_person_project(name: &str) -> PathBuf {
+    let dir = fresh_log(name);
+    let mut policy = people_policy();
+    policy["gates"] = json!({"two_person": ["fs.edit.code"]});
+    std::fs::write(dir.join("policy.json"), policy.to_string()).expect("policy");
+    dir
+}
+
+#[test]
+fn a_two_person_capability_runs_only_after_two_different_people_approve() {
+    let dir = two_person_project("two-person");
+    let agent = "agent:claude-code/docs-writer";
+    let d = Daemon::start(&dir, &[]);
+    let a = ask_as(d.port, agent, "Edit", "src/a.rs", SHA);
+    assert_eq!(a["approver"]["to"], json!(["user:lead-1", "user:owner-1"]));
+    let answer = |path: &str, by: &str| {
+        let b = json!({"receipt_seq": a["receipt_seq"], "by": by,
+            "action_sha256": a["approver"]["action_sha256"]});
+        post(d.port, path, &b.to_string()).0
+    };
+    assert_eq!(answer("/v1/approve", "user:lead-1"), 200);
+    assert_eq!(
+        ask_as(d.port, agent, "Edit", "src/a.rs", SHA)["result"],
+        "escalate",
+        "one approval of two runs nothing"
+    );
+    assert_eq!(
+        answer("/v1/approve", "user:lead-1"),
+        409,
+        "the same person twice"
+    );
+    d.stop();
+    // The half-approval survives a restart; the second person completes it.
+    let d = Daemon::start(&dir, &[]);
+    let b = json!({"receipt_seq": a["receipt_seq"], "by": "user:lead-1",
+        "action_sha256": a["approver"]["action_sha256"]});
+    assert_eq!(post(d.port, "/v1/approve", &b.to_string()).0, 409);
+    let b = json!({"receipt_seq": a["receipt_seq"], "by": "user:owner-1",
+        "action_sha256": a["approver"]["action_sha256"]});
+    assert_eq!(post(d.port, "/v1/approve", &b.to_string()).0, 200);
+    assert_eq!(
+        ask_as(d.port, agent, "Edit", "src/a.rs", SHA)["result"],
+        "allow"
+    );
+    assert_eq!(
+        ask_as(d.port, agent, "Edit", "src/a.rs", SHA)["result"],
+        "escalate",
+        "used once"
+    );
+
+    // A refusal after one approval ends it: a later approval starts from nothing.
+    let c = ask_as(d.port, agent, "Edit", "src/c.rs", SHA);
+    let answer = |path: &str, by: &str| {
+        let b = json!({"receipt_seq": c["receipt_seq"], "by": by,
+            "action_sha256": c["approver"]["action_sha256"]});
+        post(d.port, path, &b.to_string()).0
+    };
+    assert_eq!(answer("/v1/approve", "user:lead-1"), 200);
+    assert_eq!(answer("/v1/refuse", "user:owner-1"), 200);
+    assert_eq!(
+        answer("/v1/approve", "user:owner-1"),
+        404,
+        "closed by the refusal"
+    );
+    let again = ask_as(d.port, agent, "Edit", "src/c.rs", SHA);
+    let b = json!({"receipt_seq": again["receipt_seq"], "by": "user:owner-1",
+        "action_sha256": again["approver"]["action_sha256"]});
+    assert_eq!(post(d.port, "/v1/approve", &b.to_string()).0, 200);
+    assert_eq!(
+        ask_as(d.port, agent, "Edit", "src/c.rs", SHA)["result"],
+        "escalate",
+        "the refused half-approval doesn't count toward this one"
+    );
+}
+
+#[test]
+fn after_a_serious_failure_the_sponsor_cannot_release_the_agent() {
+    let dir = routed_project("sponsor");
+    let worker = "agent:claude-code/docs-writer";
+    fail_long_ago(&dir, worker, "db.migrate", "migrate up", 2);
+    let d = Daemon::start(&dir, &[]);
+    let release = |by: &str| {
+        let b = json!({"by": by, "agent": worker, "act": "release"});
+        post(d.port, "/v1/person", &b.to_string()).0
+    };
+    assert_eq!(release("user:dev-1"), 403, "the person who delegated to it");
+    assert_eq!(release("user:lead-1"), 200, "anyone else asked");
+}
+
+#[test]
+fn one_person_approving_twice_in_the_log_still_counts_once() {
+    use mohar_core::store::FileLog;
+    use mohar_core::{Action, Decision, Entry, Person};
+
+    let dir = two_person_project("two-person-replay");
+    let agent = "agent:claude-code/docs-writer";
+    let d = Daemon::start(&dir, &[]);
+    let a = ask_as(d.port, agent, "Edit", "src/a.rs", SHA);
+    d.stop();
+    // Two approve receipts from the same person, as another writer (or an edited policy) could leave.
+    let mut log = FileLog::open(&dir).expect("open");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_secs();
+    for _ in 0..2 {
+        log.append(Entry {
+            ts: rfc3339(now),
+            agent_id: agent.into(),
+            action: Action {
+                capability: "fs.edit.code".into(),
+                tool: "Edit".into(),
+                target: "src/a.rs".into(),
+                args_sha256: SHA.into(),
+            },
+            decision: Decision {
+                result: "allow".into(),
+                level: 0,
+                by: "human".into(),
+                review: false,
+                to: Vec::new(),
+            },
+            verification: None,
+            person: Some(Person {
+                act: "approve".into(),
+                by: "user:lead-1".into(),
+                lesson: None,
+                until: Some(now + 3_600),
+            }),
+        })
+        .expect("append");
+    }
+    drop(log);
+    let d = Daemon::start(&dir, &[]);
+    assert_eq!(
+        ask_as(d.port, agent, "Edit", "src/a.rs", SHA)["result"],
+        "escalate"
+    );
+    let b = json!({"receipt_seq": a["receipt_seq"], "by": "user:owner-1",
+        "action_sha256": a["approver"]["action_sha256"]});
+    assert_eq!(post(d.port, "/v1/approve", &b.to_string()).0, 200);
+    assert_eq!(
+        ask_as(d.port, agent, "Edit", "src/a.rs", SHA)["result"],
+        "allow"
+    );
+}

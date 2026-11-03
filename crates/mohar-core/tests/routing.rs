@@ -144,3 +144,49 @@ fn invalid_people_sections_are_refused_with_a_reason() {
         .expect_err("cycle");
     assert!(e.to_string().contains("user:a"), "{e}");
 }
+
+fn two_person(gates: &str) -> Result<Policy, PolicyError> {
+    Policy::from_json(
+        &format!(
+            r#"{{"version": 1,
+                "capabilities": {{
+                  "fs.edit.code": {{"risk": "medium", "reversible": true, "ceiling": 2}},
+                  "db.migrate":   {{"risk": "high", "reversible": false, "ceiling": 1}}
+                }},
+                "rules": [{{"tools": ["Edit"], "paths": ["**"], "capability": "fs.edit.code"}}],
+                "gates": {gates},
+                "people": {TEAM}}}"#
+        ),
+        Path::new("/repo"),
+    )
+}
+
+#[test]
+fn a_two_person_capability_needs_two_approvals_and_reaches_the_owners_too() {
+    let p = two_person(r#"{"two_person": ["db.migrate"]}"#).expect("valid");
+    assert_eq!(p.approvals_needed("db.migrate"), 2);
+    assert_eq!(p.approvals_needed("fs.edit.code"), 1);
+    // A two-person code edit goes to the lead, who holds it, and to the owner as the second person.
+    let p = two_person(r#"{"two_person": ["fs.edit.code"]}"#).expect("valid");
+    let r = p
+        .route("agent:claude-code/docs-writer", "fs.edit.code")
+        .expect("route");
+    assert_eq!(r.to, ["user:lead-1", "user:owner-1"]);
+    assert_eq!(r.via, "reporting_tree");
+    assert!(
+        two_person(r#"{"two_person": ["no.such"]}"#).is_err(),
+        "an undefined capability is refused"
+    );
+}
+
+#[test]
+fn the_sponsor_is_the_person_who_delegated_to_the_agent() {
+    let p = with_people(TEAM).expect("valid");
+    assert_eq!(
+        p.sponsor("agent:claude-code/docs-writer"),
+        Some("user:dev-1")
+    );
+    assert_eq!(p.sponsor("agent:ops/deploy"), Some("user:lead-1"));
+    assert_eq!(p.sponsor("agent:other/1"), None);
+    assert_eq!(Policy::builtin(Path::new("/repo")).sponsor("agent:x"), None);
+}

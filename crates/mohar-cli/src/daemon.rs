@@ -53,12 +53,21 @@ pub struct Config {
     pub segment_bytes: Option<u64>,
 }
 
-/// A person's approval of one exact action by one agent, not yet used.
+/// People's approval of one exact action by one agent, not yet used. It can be used once `by` holds as
+/// many different people as the capability needs.
 #[derive(Clone)]
 struct Approval {
     agent_id: String,
     action: Action,
     until: u64,
+    by: Vec<String>,
+    needed: usize,
+}
+
+impl Approval {
+    fn complete(&self) -> bool {
+        self.by.len() >= self.needed
+    }
 }
 
 /// A decision that has no outcome yet: enough to write the follow-up receipt.
@@ -279,7 +288,7 @@ fn replay(dir: &Path, policy: &Policy, log: &FileLog) -> Result<Replayed, String
             .as_ref()
             .is_some_and(|p| p.act == "approve" || p.act == "refuse") =>
         {
-            apply_answer(log, &mut approvals, &mut pending, &r);
+            apply_answer(log, policy, &mut approvals, &mut pending, &r);
         }
         None if r.person.is_some() => {
             apply_person(&mut ledger, &mut lessons, &r);
@@ -652,6 +661,13 @@ fn person(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
                 }
             }
         }
+        // After a serious failure, the person who sponsored the agent doesn't get to clear it.
+        ("release", None, None) if state.policy.sponsor(&req.agent) == Some(req.by.as_str()) => {
+            return (
+                403,
+                json!({"error": "the agent's sponsor can't release it; a different person has to"}),
+            );
+        }
         ("release", None, None) if req.capability.is_empty() => {
             if !inner.lessons.is_quarantined(&agent) {
                 return (
@@ -817,6 +833,19 @@ fn answer(state: &State, body: &[u8], act: &str) -> (u16, serde_json::Value) {
             json!({"error": "action_sha256 is not the hash of the action that was escalated"}),
         );
     }
+    // On a two-person capability the escalation stays open after the first approval; the same person
+    // approving again would count once, so it is refused.
+    let me = inner.log.pseudonym(&req.by);
+    if act == "approve"
+        && inner.approvals.iter().any(|a| {
+            !a.complete() && a.agent_id == p.agent_id && a.action == action && a.by.contains(&me)
+        })
+    {
+        return (
+            409,
+            json!({"error": "already approved by this person; a different person has to approve too"}),
+        );
+    }
     let ts = crate::now_rfc3339();
     let what = Person {
         act: act.into(),
@@ -844,7 +873,13 @@ fn answer(state: &State, body: &[u8], act: &str) -> (u16, serde_json::Value) {
         Err(e) => return (500, json!({ "error": e.to_string() })),
     };
     let inner = &mut *inner;
-    apply_answer(&inner.log, &mut inner.approvals, &mut inner.pending, &r);
+    apply_answer(
+        &inner.log,
+        &state.policy,
+        &mut inner.approvals,
+        &mut inner.pending,
+        &r,
+    );
     (
         200,
         json!({ "receipt_seq": r.seq, "until": r.person.as_ref().and_then(|p| p.until) }),
@@ -856,6 +891,7 @@ fn answer(state: &State, body: &[u8], act: &str) -> (u16, serde_json::Value) {
 /// receipt that breaks its act's rules changes nothing.
 fn apply_answer(
     log: &FileLog,
+    policy: &Policy,
     approvals: &mut Vec<Approval>,
     pending: &mut HashMap<u64, Pending>,
     r: &Receipt,
@@ -874,16 +910,41 @@ fn apply_answer(
     {
         return;
     }
-    pending.retain(|_, d| {
-        !(d.decision.result == "escalate"
-            && d.agent_id == r.agent.id
-            && logged(log, &d.action) == r.action)
-    });
-    if let Some(until) = until {
-        approvals.push(Approval {
-            agent_id: r.agent.id.clone(),
-            action: r.action.clone(),
-            until,
+    let open = |a: &Approval| !a.complete() && a.agent_id == r.agent.id && a.action == r.action;
+    let closes = match until {
+        // A refusal by anyone asked ends it, including an approval still waiting for a second person.
+        None => {
+            approvals.retain(|a| !open(a));
+            true
+        }
+        Some(until) => {
+            let at = parse_rfc3339(&r.ts);
+            let i = match approvals.iter().position(|a| open(a) && a.until >= at) {
+                Some(i) => i,
+                None => {
+                    approvals.push(Approval {
+                        agent_id: r.agent.id.clone(),
+                        action: r.action.clone(),
+                        until,
+                        by: Vec::new(),
+                        needed: policy.approvals_needed(&r.action.capability),
+                    });
+                    approvals.len() - 1
+                }
+            };
+            let a = &mut approvals[i];
+            if !a.by.contains(&p.by) {
+                a.by.push(p.by.clone());
+            }
+            a.until = until;
+            a.complete()
+        }
+    };
+    if closes {
+        pending.retain(|_, d| {
+            !(d.decision.result == "escalate"
+                && d.agent_id == r.agent.id
+                && logged(log, &d.action) == r.action)
         });
     }
 }
@@ -901,7 +962,7 @@ fn logged(log: &FileLog, a: &Action) -> Action {
 fn use_approval(approvals: &mut Vec<Approval>, agent: &str, action: &Action, at: u64) {
     if let Some(i) = approvals
         .iter()
-        .position(|a| a.until >= at && a.agent_id == agent && &a.action == action)
+        .position(|a| a.complete() && a.until >= at && a.agent_id == agent && &a.action == action)
     {
         approvals.remove(i);
     }
@@ -1050,7 +1111,7 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         inner
             .approvals
             .iter()
-            .any(|a| a.agent_id == agent && a.action == logged)
+            .any(|a| a.complete() && a.agent_id == agent && a.action == logged)
     };
     // Who decides an escalation, from the id as the agent sent it, which is what delegations name. It
     // goes into the receipt, so the log alone says who was asked.

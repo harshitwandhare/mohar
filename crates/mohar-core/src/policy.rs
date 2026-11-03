@@ -174,6 +174,9 @@ pub struct Gates {
     /// Paths (globs relative to the root) no agent may change, such as the files that verify its work.
     #[serde(default)]
     pub protected_paths: Vec<String>,
+    /// Capabilities whose escalations need two different people to approve.
+    #[serde(default)]
+    pub two_person: Vec<String>,
 }
 
 /// A gate that stopped an action.
@@ -259,7 +262,7 @@ pub enum PolicyError {
     #[error("verify.tests.command is empty; give the program and its arguments")]
     EmptyTestCommand,
     /// A gate names a capability that isn't defined.
-    #[error("gates.deny_capabilities names {name:?}, which is not defined under capabilities")]
+    #[error("gates names {name:?}, which is not defined under capabilities")]
     UnknownGateCapability {
         /// The name.
         name: String,
@@ -344,7 +347,12 @@ impl Policy {
         {
             return Err(PolicyError::EmptyTestCommand);
         }
-        for name in &file.gates.deny_capabilities {
+        for name in file
+            .gates
+            .deny_capabilities
+            .iter()
+            .chain(&file.gates.two_person)
+        {
             if !file.capabilities.contains_key(name) {
                 return Err(PolicyError::UnknownGateCapability { name: name.clone() });
             }
@@ -399,16 +407,47 @@ impl Policy {
         out
     }
 
+    /// How many different people must approve an escalation on this capability: 2 for the ones listed
+    /// under `gates.two_person`, otherwise 1.
+    pub fn approvals_needed(&self, capability: &str) -> usize {
+        if self.gates.two_person.iter().any(|c| c == capability) {
+            2
+        } else {
+            1
+        }
+    }
+
+    /// The person who handed this agent its authority, by the first matching delegation.
+    pub fn sponsor(&self, agent: &str) -> Option<&str> {
+        self.people
+            .as_ref()?
+            .delegations
+            .iter()
+            .find(|d| glob(d.agent.as_bytes(), agent.as_bytes(), false))
+            .map(|d| d.from.as_str())
+    }
+
     /// Who decides an escalated action, or `None` when the policy names no people, in which case the
     /// host's own prompt does. The person who delegated to the agent if they hold the capability, else
     /// the first one up their reporting tree who does, else every owner.
     pub fn route(&self, agent: &str, capability: &str) -> Option<Route> {
+        let mut r = self.route_one(agent, capability)?;
+        // A capability that needs two people also goes to the owners, so there are two to ask.
+        if self.approvals_needed(capability) > 1
+            && let Some(p) = &self.people
+        {
+            for o in &p.owners {
+                if !r.to.contains(o) {
+                    r.to.push(o.clone());
+                }
+            }
+        }
+        Some(r)
+    }
+
+    fn route_one(&self, agent: &str, capability: &str) -> Option<Route> {
         let people = self.people.as_ref()?;
-        let mut next = people
-            .delegations
-            .iter()
-            .find(|d| glob(d.agent.as_bytes(), agent.as_bytes(), false))
-            .map(|d| d.from.as_str());
+        let mut next = self.sponsor(agent);
         let mut via = "delegator";
         // Loading refused cycles and unlisted names, so this walk ends; the bound only makes that
         // visible here.
