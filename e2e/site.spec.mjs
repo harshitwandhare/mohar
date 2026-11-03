@@ -353,3 +353,15 @@ test('the home page names the newest release', () => {
   expect(named.length).toBeGreaterThan(0);
   expect(named).toEqual(named.map(() => newest));
 });
+
+// Checklist item 16. The rendered text of every page, docs included, so copy pulled in from docs/*.md
+// or written by a script is checked too.
+const STOCK = ['seamless', 'supercharge', 'delve', 'leverage', 'robust', 'game-changer', 'game changer', 'cutting-edge', 'unlock', 'revolutioni', 'effortless'];
+test('no page uses an em-dash or stock marketing words', async ({ page }) => {
+  for (const name of readdirSync('site').filter(f => f.endsWith('.html'))) {
+    await page.goto('/' + name);
+    const text = (await page.locator('body').innerText()).toLowerCase();
+    expect(text, `${name} has an em-dash`).not.toContain('\u2014');
+    for (const word of STOCK) expect(text, `${name} says "${word}"`).not.toContain(word);
+  }
+});
