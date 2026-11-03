@@ -2146,3 +2146,121 @@ fn an_approval_never_outweighs_a_gate() {
     let body = json!({"receipt_seq": a["receipt_seq"], "by": "user:lead-1", "action_sha256": SHA});
     assert_eq!(post(d.port, "/v1/approve", &body.to_string()).0, 404);
 }
+
+/// Run `mohar <act> <seq> --by <by>` against a daemon, typing `typed` at the prompt.
+fn answer_cli(
+    url: &str,
+    act: &str,
+    seq: &Value,
+    by: &str,
+    extra: &[&str],
+    typed: &str,
+) -> (i32, String, String) {
+    let mut child = Command::new(BIN)
+        .args([act, &seq.to_string(), "--by", by, "--daemon", url])
+        .args(extra)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn");
+    child
+        .stdin
+        .take()
+        .expect("stdin")
+        .write_all(typed.as_bytes())
+        .expect("type");
+    let out = child.wait_with_output().expect("wait");
+    (
+        out.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
+}
+
+#[test]
+fn the_approve_and_refuse_commands_show_the_action_and_record_before_answering() {
+    let dir = routed_project("answer-cli");
+    let agent = "agent:claude-code/docs-writer";
+    let d = Daemon::start(&dir, &[]);
+    let url = d.url();
+    let first = ask_as(d.port, agent, "Edit", "src/a.rs", SHA);
+    let seq = &first["receipt_seq"];
+
+    // Shown, then declined at the prompt: nothing is sent.
+    let (code, out, _) = answer_cli(&url, "approve", seq, "user:lead-1", &[], "n\n");
+    assert_eq!(code, 1);
+    assert!(
+        out.contains("action   Edit src/a.rs (fs.edit.code)"),
+        "{out}"
+    );
+    assert!(out.contains("asked    user:lead-1"), "{out}");
+    assert!(
+        out.contains("record   level 0, 0 verified passes, 0 failures"),
+        "{out}"
+    );
+    let hash = first["approver"]["action_sha256"].as_str().expect("hash");
+    assert!(out.contains(&format!("hash     sha256:{hash}")), "{out}");
+    assert!(out.contains("nothing sent"), "{out}");
+
+    // Someone it wasn't routed to is turned away by the daemon, with its reason.
+    let (code, _, err) = answer_cli(&url, "approve", seq, "user:dev-1", &["--yes"], "");
+    assert_eq!(code, 1);
+    assert!(err.contains("not routed to this person"), "{err}");
+
+    // Confirmed at the prompt: approved, and the exact action runs once.
+    let (code, out, _) = answer_cli(&url, "approve", seq, "user:lead-1", &[], "y\n");
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("approved, receipt"), "{out}");
+    assert_eq!(
+        ask_as(d.port, agent, "Edit", "src/a.rs", SHA)["result"],
+        "allow"
+    );
+
+    // Answered already: the escalation is gone.
+    let (code, _, err) = answer_cli(&url, "refuse", seq, "user:lead-1", &["--yes"], "");
+    assert_eq!(code, 1);
+    assert!(err.contains("no escalated decision"), "{err}");
+
+    // A refusal with --yes needs no prompt and closes a new escalation.
+    let second = ask_as(d.port, agent, "Edit", "src/b.rs", SHA);
+    let (code, out, _) = answer_cli(
+        &url,
+        "refuse",
+        &second["receipt_seq"],
+        "user:lead-1",
+        &["--yes"],
+        "",
+    );
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("refused, receipt"), "{out}");
+    assert_eq!(
+        post(
+            d.port,
+            "/v1/escalation",
+            &json!({"receipt_seq": second["receipt_seq"]}).to_string()
+        )
+        .0,
+        404
+    );
+    // Reading an escalation changes nothing in the log.
+    let third = ask_as(d.port, agent, "Edit", "src/c.rs", SHA);
+    let before = std::fs::read_to_string(dir.join("receipts.jsonl")).expect("log");
+    let (status, shown) = post(
+        d.port,
+        "/v1/escalation",
+        &json!({"receipt_seq": third["receipt_seq"]}).to_string(),
+    );
+    assert_eq!(status, 200);
+    assert_eq!(shown["action_sha256"], third["approver"]["action_sha256"]);
+    assert_eq!(post(d.port, "/v1/escalation", r#"{"seq": 1}"#).0, 400);
+    assert_eq!(
+        std::fs::read_to_string(dir.join("receipts.jsonl")).expect("log"),
+        before
+    );
+    d.stop();
+
+    // A daemon that is down is an error, not an answer.
+    let (code, _, err) = answer_cli(&url, "approve", seq, "user:lead-1", &["--yes"], "");
+    assert_eq!(code, 2, "{err}");
+}

@@ -189,6 +189,17 @@ impl Ledger {
         (agent.to_string(), capability.to_string())
     }
 
+    /// Verified passes and failures on record for an agent on a capability, for showing a person who
+    /// has to decide on its next action. Outcomes in archived segments are not on record.
+    pub fn tally(&self, agent: &str, capability: &str) -> (usize, usize) {
+        self.records
+            .get(&Self::key(agent, capability))
+            .map_or((0, 0), |r| {
+                let passed = r.outcomes.iter().filter(|(_, p)| *p).count();
+                (passed, r.outcomes.len() - passed)
+            })
+    }
+
     /// The agent's level on a capability right now, after any promotion it has earned.
     pub fn level(&mut self, agent: &str, capability: &str, spec: &Capability, now: u64) -> u8 {
         if self.suspended.contains(agent) {

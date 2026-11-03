@@ -249,7 +249,7 @@ fn sha256_jcs(v: &Value) -> String {
 
 /// POST JSON to the daemon. Only loopback addresses are accepted, so the hook never sends tool
 /// arguments off the machine.
-fn post(daemon: &str, path: &str, body: &Value) -> Result<(u16, Value), String> {
+pub(crate) fn post(daemon: &str, path: &str, body: &Value) -> Result<(u16, Value), String> {
     post_waiting(daemon, path, body, DAEMON_TIMEOUT)
 }
 

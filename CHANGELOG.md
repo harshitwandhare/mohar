@@ -9,6 +9,9 @@ receipt format; each such change is called out.
 
 ### Added
 
+- `mohar approve` and `mohar refuse` show an escalated action, its hash, who was asked and the agent's
+  verified record on that capability, ask for confirmation, and send the answer bound to that hash. The
+  daemon's new `/v1/escalation` endpoint serves what they show (#184).
 - An escalate receipt names the people it was routed to (`decision.to`, receipt spec 1.4.0, pseudonymous
   in strict privacy mode), and `POST /v1/refuse` records a person's no as a signed `refuse` receipt that
   closes the escalation. Answers are checked against the receipt, so they work across a restart. Four

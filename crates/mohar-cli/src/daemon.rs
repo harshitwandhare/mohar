@@ -428,6 +428,7 @@ fn handle(stream: &mut TcpStream, state: &State) {
         "/v1/person" => person(state, &body),
         "/v1/approve" => answer(state, &body, "approve"),
         "/v1/refuse" => answer(state, &body, "refuse"),
+        "/v1/escalation" => escalation(state, &body),
         _ => (404, json!({"error": "no such endpoint"})),
     };
     respond(stream, status, &answer);
@@ -715,6 +716,52 @@ fn person(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     let inner = &mut *inner;
     apply_person(&mut inner.ledger, &mut inner.lessons, &r);
     (200, json!({ "receipt_seq": r.seq }))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EscalationRequest {
+    receipt_seq: u64,
+}
+
+/// What a person needs to answer an escalation: the action as the log holds it and its SHA-256 (which
+/// the answer must name), who it was routed to, and the agent's record on that capability. Changes
+/// nothing.
+fn escalation(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
+    let req: EscalationRequest = match serde_json::from_slice(body) {
+        Ok(r) => r,
+        Err(_) => return bad("body is not a valid escalation request: give receipt_seq"),
+    };
+    let inner = match lock(state) {
+        Ok(g) => g,
+        Err(e) => return e,
+    };
+    let Some(p) = inner
+        .pending
+        .get(&req.receipt_seq)
+        .filter(|p| p.decision.result == "escalate")
+    else {
+        return (
+            404,
+            json!({"error": "no escalated decision waiting with that receipt_seq"}),
+        );
+    };
+    let action = logged(&inner.log, &p.action);
+    let (passes, failures) = inner.ledger.tally(&p.agent_id, &action.capability);
+    (
+        200,
+        json!({
+            "receipt_seq": req.receipt_seq,
+            "agent": p.agent_id,
+            "action_sha256": action_sha256(&action),
+            "action": action,
+            "to": p.decision.to,
+            "level": p.decision.level,
+            "passes": passes,
+            "failures": failures,
+            "suspended": inner.ledger.is_suspended(&p.agent_id),
+        }),
+    )
 }
 
 #[derive(Deserialize)]
