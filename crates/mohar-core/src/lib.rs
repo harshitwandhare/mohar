@@ -12,6 +12,7 @@ use sha2::{Digest, Sha256};
 pub mod checkpoint;
 pub mod lessons;
 pub mod policy;
+pub mod predict;
 pub mod privacy;
 mod shell;
 pub mod store;
