@@ -40,7 +40,7 @@ img { max-width: 100%; height: auto; display: block; }
   height: 64px; padding: 0 var(--edge); background: var(--ground); }
 .wordmark { flex-shrink: 0; font-weight: 800; font-size: 19px; letter-spacing: -0.01em; text-decoration: none; display: flex; align-items: center; gap: 10px; min-height: 44px; }
 .wordmark img { width: 28px; height: 28px; }
-.bar nav { display: flex; align-items: center; gap: 4px; font-size: 15px; }
+.bar nav { display: flex; align-items: center; gap: 4px; font-size: var(--s-small); }
 .bar nav a { display: inline-flex; align-items: center; min-height: 44px; text-decoration: none; color: var(--soft); padding: 8px 12px; border-radius: var(--radius); transition: color .15s ease, background .15s ease; }
 .bar nav a:hover { color: var(--ink); background: var(--field); }
 .bar nav a[aria-current="page"] { color: var(--ink); }
@@ -48,7 +48,7 @@ img { max-width: 100%; height: auto; display: block; }
 .bar nav a.action:hover { background: var(--seal-hover); }
 .menu { display: none; position: relative; }
 .menu summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 14px;
-  background: var(--field); border-radius: var(--radius); font-size: 15px; font-weight: 500; }
+  background: var(--field); border-radius: var(--radius); font-size: var(--s-small); font-weight: 500; }
 .menu summary::-webkit-details-marker { display: none; }
 .menu summary::after { content: ""; width: 7px; height: 7px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: translateY(-2px) rotate(45deg); transition: transform .15s ease; }
 .menu[open] summary::after { transform: translateY(2px) rotate(-135deg); }
@@ -314,7 +314,7 @@ figcaption { color: var(--soft); font-size: var(--s-small); margin-top: 10px; }
 .close .blocks span:nth-child(4) { height: 64%; background: #3f6b3c; }
 .close .blocks span:nth-child(5) { height: 94%; background: var(--seal-text); }
 .foot-cols { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; margin-bottom: 40px; }
-.foot-cols nav { display: grid; gap: 8px; align-content: start; font-size: 15px; }
+.foot-cols nav { display: grid; gap: 8px; align-content: start; font-size: var(--s-small); }
 .foot-cols a { text-decoration: none; display: inline-flex; align-items: center; min-height: 44px; }
 .foot-cols nav { gap: 0; }
 @media (max-width: 760px) { .foot-cols { grid-template-columns: 1fr 1fr; } .close .blocks { height: 22svh; } }
