@@ -1,0 +1,17 @@
+{
+  "name": "mohar",
+  "owner": { "name": "Harshit Wandhare" },
+  "metadata": {
+    "description": "Mohar's Claude Code plugin: every tool call asks the local Mohar daemon first and leaves a signed receipt."
+  },
+  "plugins": [
+    {
+      "name": "mohar",
+      "source": "./integrations/claude-code",
+      "description": "Every tool call asks the local Mohar daemon first: allowed, sent to you, or denied, with a signed receipt for each decision. Denies when the daemon isn't running.",
+      "version": "0.3.0",
+      "license": "Apache-2.0",
+      "homepage": "https://mohar-liard.vercel.app"
+    }
+  ]
+}

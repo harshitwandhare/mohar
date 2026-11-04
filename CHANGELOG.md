@@ -7,6 +7,13 @@ receipt format; each such change is called out.
 
 ## [Unreleased]
 
+### Added
+
+- The repository is a Claude Code plugin marketplace: `/plugin marketplace add harshitwandhare/mohar` then
+  `/plugin install mohar@mohar`. The getting started guide and README show how to put Mohar in front of
+  Claude Code. The plugin's version follows the release, and `displayName`, which Claude Code's manifest
+  check rejects, is gone.
+
 ## [0.3.0] - 2026-11-04
 
 ### Added

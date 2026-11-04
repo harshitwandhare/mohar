@@ -6,9 +6,10 @@ actually checked, takes that permission away the moment a gated action fails, an
 an agent hasn't earned to a person.
 
 !!! note "Status"
-    Mohar is early. The receipt log and the `mohar` CLI are released (0.1). The trust engine, the
-    escalation flow and the host adapters are designed and in progress; the
-    [roadmap](ROADMAP.md) and its milestones say exactly what exists.
+    Mohar is early. Released in 0.3: the receipt log and `mohar` CLI, the trust engine with gates,
+    the daemon and the Claude Code plugin, and escalation to the right person. The per-person answer
+    model, other hosts and the benchmark are in progress; the [roadmap](ROADMAP.md) and its milestones
+    say exactly what exists.
 
 ## Start here
 

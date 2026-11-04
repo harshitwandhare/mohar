@@ -59,6 +59,31 @@ mohar verify
 # ok: 1 receipts and 0 checkpoints verified
 ```
 
+## Put it in front of Claude Code
+
+Start the daemon in the project you want to guard and leave it running. Every tool call waits on it,
+and while it's down tool calls are denied:
+
+```bash
+cd your-project
+mohar init
+mohar daemon
+```
+
+Then, inside Claude Code, add this repository as a plugin marketplace and install the plugin:
+
+```text
+/plugin marketplace add harshitwandhare/mohar
+/plugin install mohar@mohar
+```
+
+Restart Claude Code. Reads go through, pushing to the default branch is refused at any level, and
+anything the agent hasn't earned yet comes back to you as Claude Code's usual permission prompt.
+`mohar log` shows each decision. Once your policy names people (see the [CLI reference](cli.md)),
+escalations go to them instead, and they answer with `mohar approve <seq> --by <id>`. The
+[integrations page](integrations.md) covers team setup through managed settings, where users can't
+switch the hooks off.
+
 ## See it catch tampering
 
 Change any receipt in `.mohar/receipts.jsonl`, for example `"allow"` to `"deny"`, and run

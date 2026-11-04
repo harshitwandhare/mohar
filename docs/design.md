@@ -1,7 +1,7 @@
 # Mohar design
 
-Version 0.1, October 2026. This is the design Mohar is being built to. Nothing here is implemented yet
-unless the [roadmap](ROADMAP.md) marks it done. Numbers in this document are starting values that the
+Revised for 0.3, November 2026. This is the design Mohar is being built to. Phases 0 to 3 are built and
+Phase 4 is under way; the [roadmap](ROADMAP.md) says which parts exist. Numbers in this document are starting values that the
 benchmark (Phase 5) is meant to test and change.
 
 ## 1. What Mohar decides
