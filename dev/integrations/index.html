@@ -1274,7 +1274,8 @@ and lands in Phase 6.</p>
 <li>Install <code>mohar</code> (<a href="../getting-started/">getting started</a>), create a log with <code>mohar init</code> and start the
    daemon with <code>mohar daemon</code>. Keep it running: every tool call waits on it, and if it's down, tool calls
    are denied.</li>
-<li>Load the plugin from <code>integrations/claude-code</code> in this repository, for example with
+<li>In Claude Code, run <code>/plugin marketplace add harshitwandhare/mohar</code> and then
+   <code>/plugin install mohar@mohar</code>, or load it from a clone with
    <code>claude --plugin-dir path/to/mohar/integrations/claude-code</code>. Its <code>hooks/hooks.json</code> runs
    <code>mohar hook claude-code</code> on every <code>PreToolUse</code> and <code>PostToolUse</code>, and on <code>Stop</code> and <code>SubagentStop</code> to
    verify the finished task, with <code>onFailure: "block"</code> (Claude Code
