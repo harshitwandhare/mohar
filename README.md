@@ -25,6 +25,10 @@ result was actually right, and turns that record into permission: an agent that 
 on a kind of task stops asking you about it, and an agent that breaks something loses that right straight
 away. Every decision leaves a signed receipt.
 
+<p align="center"><img src=".github/assets/demo.gif" alt="A terminal: Mohar allows an agent's file read, refuses git push origin main and a push hidden behind ls, lists the three signed receipts, then reports BadSignature after one word in the log is edited by hand" width="900"></p>
+
+Running agents at work and want to try it? [Tell us what you'd need](https://github.com/harshitwandhare/mohar/issues/new?template=try.yml).
+
 ## Status
 
 Mohar is early, and this table is kept honest.

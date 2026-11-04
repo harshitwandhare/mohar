@@ -1,0 +1,67 @@
+name: Try Mohar with your team
+description: You run coding agents and want to try Mohar on real work. Tell us what you'd need.
+title: "Trying Mohar: "
+labels: ["user-interest"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Mohar is free and Apache-2.0. This form helps decide what gets built next. Don't paste secrets,
+        customer names or anything from inside your company that you can't share in public.
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Which agents do you run?
+      multiple: true
+      options:
+        - Claude Code
+        - Codex
+        - Cursor
+        - GitHub Copilot agent
+        - Gemini CLI
+        - My own agent (MCP, ADK, LangGraph or similar)
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: size
+    attributes:
+      label: How many people use agents where you work?
+      options:
+        - Just me
+        - 2 to 10
+        - 11 to 100
+        - More than 100
+    validations:
+      required: true
+  - type: textarea
+    id: pain
+    attributes:
+      label: What goes wrong today?
+      description: Too many permission prompts, prompts switched off, an agent that did something it shouldn't have, no record of what an agent did. Whatever it is, in your words.
+    validations:
+      required: true
+  - type: dropdown
+    id: audit
+    attributes:
+      label: Does anyone need to show what your agents did?
+      description: An auditor (SOC 2, ISO 27001 or 42001), a security team, a customer, or nobody yet.
+      options:
+        - Yes, an auditor asks or will ask
+        - Yes, our security team
+        - Yes, customers ask
+        - Not yet
+        - Don't know
+    validations:
+      required: true
+  - type: textarea
+    id: blocker
+    attributes:
+      label: What would stop you using Mohar on real work?
+      description: A host it doesn't support, a missing feature, setup time, trust in a young project.
+  - type: checkboxes
+    id: contact
+    attributes:
+      label: Follow-up
+      options:
+        - label: I'm happy to get a short follow-up question in this issue.
