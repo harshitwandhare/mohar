@@ -113,6 +113,18 @@ end after a checkpoint and `verify` reports how many receipts are missing. The
 [getting started guide](https://harshitwandhare.github.io/mohar/latest/getting-started/) walks through
 both.
 
+## Use it with Claude Code
+
+Run `mohar init` and `mohar daemon` in your project, then in Claude Code:
+
+```text
+/plugin marketplace add harshitwandhare/mohar
+/plugin install mohar@mohar
+```
+
+The [getting started guide](https://harshitwandhare.github.io/mohar/latest/getting-started/#put-it-in-front-of-claude-code)
+has the details.
+
 ## What's planned to plug into
 
 Claude Code hooks, MCP servers through a proxy, awslabs/cli-agent-orchestrator, Google ADK, Microsoft's
