@@ -859,7 +859,7 @@ fn check_people(p: &People) -> Result<(), PolicyError> {
 
 /// Glob match. In path mode `*` and `?` stop at `/` and `**` crosses it; in command mode `*` matches
 /// anything.
-fn glob(pat: &[u8], text: &[u8], path: bool) -> bool {
+pub(crate) fn glob(pat: &[u8], text: &[u8], path: bool) -> bool {
     match pat.first() {
         None => text.is_empty(),
         Some(b'*') if path && pat.get(1) == Some(&b'*') => {

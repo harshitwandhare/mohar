@@ -9,6 +9,11 @@ receipt format; each such change is called out.
 
 ### Added
 
+- `mohar_core::predict`: a calibrated model of one person's yes and no answers (logistic regression,
+  Platt scaling on out-of-fold scores, at least 30 answers) and the rule for when it may answer for them.
+  It answers only yes, only on a low-risk reversible capability they switched on, inside their paths and
+  daily count, at a probability of at least 0.98, and one in twenty still goes to them as a check. The
+  daemon doesn't use it yet (#190).
 - A person's verdict on an outcome names the reviewer and the seconds they spent (receipt spec 1.5.0,
   four conformance vectors), and goes through the rubber-stamping guard live and on replay, so a restart
   keeps each reviewer's flag. A human outcome without them is refused by the daemon and never counts (#129).
