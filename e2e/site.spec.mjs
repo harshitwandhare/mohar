@@ -126,6 +126,17 @@ test('body text stays readable but not oversized on a phone', async ({ page }) =
   expect(size).toBeLessThanOrEqual(17);
 });
 
+test('header and footer links use the small step of the type scale', async ({ page }) => {
+  await page.goto('/');
+  const sizes = await page.evaluate(() => {
+    const small = getComputedStyle(document.documentElement).getPropertyValue('--s-small').trim();
+    const els = [...document.querySelectorAll('.bar > nav a, .menu summary, .foot-cols nav a')];
+    return { small, got: [...new Set(els.map(e => getComputedStyle(e).fontSize))], n: els.length };
+  });
+  expect(sizes.n).toBeGreaterThan(4);
+  expect(sizes.got).toEqual([sizes.small]);
+});
+
 test('no text spills out of its box at phone, tablet or desktop width', async ({ page }) => {
   for (const width of [320, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
