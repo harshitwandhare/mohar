@@ -446,6 +446,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#put-it-in-front-of-claude-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Put it in front of Claude Code
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-it-catch-tampering" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1110,6 +1121,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#put-it-in-front-of-claude-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Put it in front of Claude Code
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-it-catch-tampering" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1186,6 +1208,23 @@ receipt file into <code>.mohar/</code>:</p>
 mohar<span class="w"> </span>verify
 <span class="c1"># ok: 1 receipts and 0 checkpoints verified</span>
 </code></pre></div>
+<h2 id="put-it-in-front-of-claude-code">Put it in front of Claude Code<a class="headerlink" href="#put-it-in-front-of-claude-code" title="Permanent link">&para;</a></h2>
+<p>Start the daemon in the project you want to guard and leave it running. Every tool call waits on it,
+and while it's down tool calls are denied:</p>
+<div class="highlight"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>your-project
+mohar<span class="w"> </span>init
+mohar<span class="w"> </span>daemon
+</code></pre></div>
+<p>Then, inside Claude Code, add this repository as a plugin marketplace and install the plugin:</p>
+<div class="highlight"><pre><span></span><code>/plugin marketplace add harshitwandhare/mohar
+/plugin install mohar@mohar
+</code></pre></div>
+<p>Restart Claude Code. Reads go through, pushing to the default branch is refused at any level, and
+anything the agent hasn't earned yet comes back to you as Claude Code's usual permission prompt.
+<code>mohar log</code> shows each decision. Once your policy names people (see the <a href="../cli/">CLI reference</a>),
+escalations go to them instead, and they answer with <code>mohar approve &lt;seq&gt; --by &lt;id&gt;</code>. The
+<a href="../integrations/">integrations page</a> covers team setup through managed settings, where users can't
+switch the hooks off.</p>
 <h2 id="see-it-catch-tampering">See it catch tampering<a class="headerlink" href="#see-it-catch-tampering" title="Permanent link">&para;</a></h2>
 <p>Change any receipt in <code>.mohar/receipts.jsonl</code>, for example <code>"allow"</code> to <code>"deny"</code>, and run
 <code>mohar verify</code> again. It names the receipt that broke and why, and exits with status 1:</p>
