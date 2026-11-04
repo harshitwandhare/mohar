@@ -130,11 +130,14 @@ test('header and footer links use the small step of the type scale', async ({ pa
   await page.goto('/');
   const sizes = await page.evaluate(() => {
     const small = getComputedStyle(document.documentElement).getPropertyValue('--s-small').trim();
-    const els = [...document.querySelectorAll('.bar > nav a, .menu summary, .foot-cols nav a')];
+    const els = [...document.querySelectorAll('.bar > nav a, .foot-cols nav a')];
     return { small, got: [...new Set(els.map(e => getComputedStyle(e).fontSize))], n: els.length };
   });
   expect(sizes.n).toBeGreaterThan(4);
   expect(sizes.got).toEqual([sizes.small]);
+  // The Menu button only shows on narrow screens; WebKit can report a stale size while it's hidden.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator('.menu summary')).toHaveCSS('font-size', sizes.small);
 });
 
 test('no text spills out of its box at phone, tablet or desktop width', async ({ page }) => {
@@ -375,4 +378,19 @@ test('no page uses an em-dash or stock marketing words', async ({ page }) => {
     expect(text, `${name} has an em-dash`).not.toContain('\u2014');
     for (const word of STOCK) expect(text, `${name} says "${word}"`).not.toContain(word);
   }
+});
+
+test('the demo video is self-hosted, waits for a click and has a poster and caption', async ({ page, request }) => {
+  await page.goto('/');
+  const video = page.locator('#run video');
+  await expect(video).toHaveAttribute('preload', 'none');
+  await expect(video).not.toHaveAttribute('autoplay', /.*/);
+  expect(await video.evaluate(v => v.muted)).toBe(true);
+  await expect(page.locator('#run figcaption')).toContainText('asciinema');
+  for (const src of ['assets/demo/mohar-cli.mp4', 'assets/demo/mohar-cli-poster.jpg']) {
+    const res = await request.get('/' + src);
+    expect(res.status(), src).toBe(200);
+  }
+  const box = await video.boundingBox();
+  expect(box.width).toBeGreaterThan(200);
 });
