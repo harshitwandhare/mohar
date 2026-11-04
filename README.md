@@ -41,7 +41,8 @@ Mohar is early, and this table is kept honest.
 | Trust engine with hard gates and proportionate demotion; tests and diff verifiers | Released in 0.2 |
 | `mohar daemon` and the Claude Code hook (fails closed), shell commands split before they are judged | Released in 0.2 |
 | Checkpoints published to a file or git, strict privacy mode, OpenTelemetry export | Released in 0.2 |
-| Escalation to the right person, more host adapters, the benchmark | Designed in [docs/design.md](docs/design.md), being built ([roadmap](docs/ROADMAP.md)) |
+| Escalation to the right person, two-person approval, `mohar approve` and `refuse`; lessons after a failure; log segments; receipt spec 1.5 with conformance vectors | Released in 0.3 |
+| Per-person answer model wired into the daemon, more host adapters, the benchmark | Designed in [docs/design.md](docs/design.md), being built ([roadmap](docs/ROADMAP.md)) |
 
 Nothing here is production-ready yet.
 
