@@ -7,6 +7,8 @@ receipt format; each such change is called out.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-04
+
 ### Added
 
 - `mohar_core::predict`: a calibrated model of one person's yes and no answers (logistic regression,
@@ -229,6 +231,7 @@ The first release: a signed, hash-chained receipt log and the `mohar` command li
   line-coverage floor on every pull request; branch protection on `main`; release tags limited to
   admins; release artefacts carry GitHub build attestations.
 
-[Unreleased]: https://github.com/harshitwandhare/mohar/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/harshitwandhare/mohar/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/harshitwandhare/mohar/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/harshitwandhare/mohar/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/harshitwandhare/mohar/releases/tag/v0.1.0
