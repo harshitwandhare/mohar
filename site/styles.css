@@ -318,3 +318,7 @@ figcaption { color: var(--soft); font-size: var(--s-small); margin-top: 10px; }
 .foot-cols a { text-decoration: none; display: inline-flex; align-items: center; min-height: 44px; }
 .foot-cols nav { gap: 0; }
 @media (max-width: 760px) { .foot-cols { grid-template-columns: 1fr 1fr; } .close .blocks { height: 22svh; } }
+.run-film { margin: 0; max-width: 1280px; }
+.run-film video { display: block; width: 100%; height: auto; background: #0c0a08; border-radius: var(--radius); }
+/* The native controls take focus inside the video, so the ring goes on the video itself. */
+.run-film video:focus-within { outline: 3px solid var(--ink); outline-offset: 3px; }

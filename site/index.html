@@ -168,6 +168,15 @@ $ echo $?
     </div>
   </section>
 
+  <section class="run reveal" id="run" aria-labelledby="run-h">
+    <h2 id="run-h">See it run</h2>
+    <p class="lede">A real recording of the CLI, 48 seconds. A read goes through, a push to main is refused, and so is the same push hidden behind <code>ls &amp;&amp;</code>. Then one word of the log is changed by hand, and <code>mohar verify</code> names the receipt.</p>
+    <figure class="run-film">
+      <video controls muted playsinline preload="none" width="1280" height="796" poster="assets/demo/mohar-cli-poster.jpg" aria-describedby="run-cap"><source src="assets/demo/mohar-cli.mp4" type="video/mp4"></video>
+      <figcaption id="run-cap">Recorded with asciinema on Linux against the 0.3 binary. The <code>agent</code> lines send the same JSON Claude Code's PreToolUse hook sends.</figcaption>
+    </figure>
+  </section>
+
   <section class="cta reveal" aria-labelledby="cta-h">
     <div class="cta-row">
       <div class="cta-flank ink"></div>
