@@ -112,6 +112,9 @@ struct Member {
     holds: Vec<String>,
     #[serde(default)]
     reports_to: Option<String>,
+    /// Capabilities this person lets their answers be predicted on, with the limits they set.
+    #[serde(default)]
+    predict: BTreeMap<String, crate::predict::Limits>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -294,6 +297,16 @@ pub enum PolicyError {
         /// The name.
         name: String,
     },
+    /// A capability a person asked to have predicted that can never be.
+    #[error("people.members.{person}.predict names {name:?}, {why}")]
+    BadPrediction {
+        /// The person.
+        person: String,
+        /// The capability.
+        name: String,
+        /// Why it can't be predicted.
+        why: &'static str,
+    },
     /// Following `reports_to` from this person comes back to them.
     #[error("people.members: the reporting line from {0:?} goes round in a circle")]
     ReportingCycle(String),
@@ -367,6 +380,7 @@ impl Policy {
         }
         if let Some(p) = &file.people {
             check_people(p)?;
+            check_predictions(p, &file.capabilities, &file.gates)?;
         }
         Ok(Self {
             root: resolve(&root),
@@ -471,6 +485,22 @@ impl Policy {
             to: people.owners.clone(),
             via: "owners",
         })
+    }
+
+    /// The capabilities `person` lets their answers be predicted on, with their limits. Empty for anyone
+    /// not listed under `people.members`.
+    pub fn predict_limits(&self, person: &str) -> BTreeMap<String, crate::predict::Limits> {
+        self.people
+            .as_ref()
+            .and_then(|p| p.members.get(person))
+            .map(|m| m.predict.clone())
+            .unwrap_or_default()
+    }
+
+    /// A target as a path relative to the root, with `.` and `..` resolved, or `None` when it is
+    /// empty or outside the root.
+    pub fn relative_path(&self, target: &str) -> Option<String> {
+        self.relative(target)
     }
 
     /// The tests verifier, if the project configured one.
@@ -852,6 +882,43 @@ fn check_people(p: &People) -> Result<(), PolicyError> {
                 Some(b) => at = b,
                 None => break,
             }
+        }
+    }
+    Ok(())
+}
+
+/// Every capability a person asked to have predicted is one the model may ever answer: defined, low
+/// risk, reversible, needing one person, and held by them, with at least one path and one answer a day.
+fn check_predictions(
+    p: &People,
+    capabilities: &BTreeMap<String, Capability>,
+    gates: &Gates,
+) -> Result<(), PolicyError> {
+    for (person, m) in &p.members {
+        for (name, l) in &m.predict {
+            let held = m
+                .holds
+                .iter()
+                .any(|h| glob(h.as_bytes(), name.as_bytes(), false));
+            let why = match capabilities.get(name) {
+                None => "which is not defined under capabilities",
+                Some(c) if c.risk > Risk::Low || !c.reversible => {
+                    "which is above low risk or can't be undone, so it is never predicted"
+                }
+                Some(_) if gates.two_person.contains(name) => {
+                    "which needs two people, so it is never predicted"
+                }
+                Some(_) if !held => "which they don't hold, so nothing on it is routed to them",
+                Some(_) if l.paths.is_empty() || l.per_day == 0 => {
+                    "with no paths or a daily count of 0; give both, or leave it out"
+                }
+                Some(_) => continue,
+            };
+            return Err(PolicyError::BadPrediction {
+                person: person.clone(),
+                name: name.clone(),
+                why,
+            });
         }
     }
     Ok(())

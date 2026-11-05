@@ -4,6 +4,7 @@
 mod answer;
 mod daemon;
 mod hook;
+mod prediction;
 mod publish;
 mod telemetry;
 
