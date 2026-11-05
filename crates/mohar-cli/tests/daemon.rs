@@ -2749,6 +2749,10 @@ fn checks_go_to_the_person_and_their_answers_measure_agreement_across_a_restart(
     let dir = predicting_project("predict-checks", 1000, false);
     let d = Daemon::start(&dir, &[]);
     teach_yes(d.port);
+    // Teaching can already have answered a check (the model was sure, the draw sent it to the dev
+    // anyway), so count from here.
+    let before = predictions(d.port)["people"]["user:dev-1"].clone();
+    let count = |k: &str| before[k].as_u64().unwrap_or(0);
     let mut checks = Vec::new();
     let mut allowed = 1;
     let mut n = 100;
@@ -2778,7 +2782,8 @@ fn checks_go_to_the_person_and_their_answers_measure_agreement_across_a_restart(
             "action_sha256": a["approver"]["action_sha256"]});
         assert_eq!(post(d.port, act, &body.to_string()).0, 200);
     }
-    let want = json!({"predicted_today": allowed, "checks": 2, "agreed": 1});
+    let want = json!({"predicted_today": allowed, "checks": count("checks") + 2,
+        "agreed": count("agreed") + 1});
     assert_eq!(predictions(d.port)["people"]["user:dev-1"], want);
     d.stop();
     let d = Daemon::start(&dir, &[]);
