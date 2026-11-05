@@ -532,6 +532,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Gates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#predicted-answers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Predicted answers
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
       </ul>
@@ -1245,6 +1262,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Gates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#predicted-answers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Predicted answers
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
       </ul>
@@ -1434,7 +1468,7 @@ and cumulative metrics: <code>mohar.decisions</code> by result, <code>mohar.outc
 <code>mohar.decide.duration</code> (a histogram in milliseconds) and <code>mohar.inflight</code>. Spans carry no agent ids,
 targets or arguments. Export runs on its own thread; a collector that is down or slow loses telemetry
 and never delays or changes a decision. Without the flag nothing is collected.</p>
-<p>Seven endpoints, JSON in and out:</p>
+<p>Eight endpoints, JSON in and out:</p>
 <div class="highlight"><pre><span></span><code>POST /v1/decide   {agent, tool, target, args_sha256, call_id?}  -&gt;  {result, level, receipt_seq, lessons}
 POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256, reviewer?, review_secs?}  -&gt;  {receipt_seq}
 POST /v1/verify   {agent, task}  -&gt;  {verified, result}
@@ -1442,6 +1476,7 @@ POST /v1/person   {by, act, agent, capability?, lesson?, until?}  -&gt;  {receip
 POST /v1/approve  {receipt_seq, by, action_sha256}  -&gt;  {receipt_seq, until}
 POST /v1/refuse   {receipt_seq, by, action_sha256}  -&gt;  {receipt_seq}
 POST /v1/escalation  {receipt_seq}  -&gt;  {agent, action, action_sha256, to, level, passes, failures, suspended}
+POST /v1/predictions  {}  -&gt;  {people: {&lt;id&gt;: {predicted_today, checks, agreed}}}
 </code></pre></div>
 <p>When the policy has a <code>people</code> section, an <code>escalate</code> answer from <code>/v1/decide</code> also carries <code>approver</code>:
 <code>to</code> (the people who may answer), <code>via</code> (<code>delegator</code>, <code>reporting_tree</code> or <code>owners</code>) and <code>action_sha256</code>,
@@ -1611,6 +1646,30 @@ prompt decides.</p>
 <span class="w">  </span><span class="nt">"delegations"</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="nt">"agent"</span><span class="p">:</span><span class="w"> </span><span class="s2">"agent:claude-code/*"</span><span class="p">,</span><span class="w"> </span><span class="nt">"from"</span><span class="p">:</span><span class="w"> </span><span class="s2">"user:dev-1"</span><span class="p">}]</span>
 <span class="p">}</span>
 </code></pre></div>
+<h4 id="predicted-answers">Predicted answers<a class="headerlink" href="#predicted-answers" title="Permanent link">&para;</a></h4>
+<p>A member can let the daemon answer some escalations for them, from their own past answers. <code>predict</code>
+names the capabilities, each with the paths the target must match and how many answers a day may be
+predicted:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">"user:dev-1"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"holds"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"fs.edit.docs"</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">"predict"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"fs.edit.docs"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"paths"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"docs/guide/**"</span><span class="p">],</span><span class="w"> </span><span class="nt">"per_day"</span><span class="p">:</span><span class="w"> </span><span class="mi">20</span><span class="p">}}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>The daemon keeps each person's approvals and refusals of escalations and trains a calibrated logistic
+regression on them (<code>mohar_core::predict</code>). When an escalation goes to that one person, on a capability
+they switched on, inside their paths and daily count, and the model puts the chance of yes at 0.98 or
+more, the daemon answers yes for them. The receipt says <code>"by": "predicted"</code> and names them in
+<code>decision.to</code>, and <code>/v1/decide</code> returns <code>predicted</code> (<code>by</code> and <code>p_yes</code>) instead of <code>approver</code>. It never
+answers no: anything else goes to the person as before. A model needs 30 answers and, for someone who
+always says yes, about 50 before it is sure enough.</p>
+<p>One prediction in twenty still goes to the person as an ordinary escalation, and isn't marked as a check.
+Their answer to it counts toward <code>/v1/predictions</code>: <code>checks</code> is how many they answered, <code>agreed</code> how many
+of those were yes, as the model would have said. <code>predicted_today</code> is today's count against <code>per_day</code>
+(UTC days). All of it is rebuilt from the log on start.</p>
+<p>Loading the policy fails if <code>predict</code> names a capability that is above low risk, can't be undone, needs
+two people (<code>gates.two_person</code>), or isn't one the person holds, or has no paths or a <code>per_day</code> of 0. An
+escalation that goes to several people, such as every owner, is never predicted. Nothing is predicted in
+strict privacy mode, where the log holds no paths or names to rebuild the checks from.</p>
 <p>The built-in policy (<code>mohar_core::policy::BUILTIN</code>) is a fuller example: reads, docs, tests, code and
 config edits, read-only shell commands, pushes to a branch and to the default branch.</p>
 <p>After a crash, decisions without an outcome are rebuilt from the log on the next start and can still be
