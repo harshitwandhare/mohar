@@ -9,6 +9,13 @@ receipt format; each such change is called out.
 
 ### Added
 
+- The daemon answers some escalations for a person from their own past answers (#52). A member's
+  `predict` setting names the low-risk, reversible capabilities they allow it on, with paths and a daily
+  count. When the model is at least 98% sure of a yes, the decision is `allow` by `predicted`, naming the
+  person; one in twenty goes to them anyway, and `POST /v1/predictions` reports how often they agreed.
+  The receipt spec is 1.6.0: `decision.to` also names the person on a predicted decision, with three
+  conformance vectors. Off in strict privacy mode.
+
 - The repository is a Claude Code plugin marketplace: `/plugin marketplace add harshitwandhare/mohar` then
   `/plugin install mohar@mohar`. The getting started guide and README show how to put Mohar in front of
   Claude Code. The plugin's version follows the release, and `displayName`, which Claude Code's manifest

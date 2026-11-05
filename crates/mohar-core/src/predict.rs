@@ -107,8 +107,10 @@ impl Model {
     }
 }
 
-/// What a person allows the model to answer for them on one capability.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// What a person allows the model to answer for them on one capability, as `people.members.<id>.predict`
+/// in the policy file.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Limits {
     /// Path globs the target must match (`*`, `**`, `?`). Empty allows nothing.
     pub paths: Vec<String>,
@@ -205,7 +207,9 @@ pub fn decide(
     }
 }
 
-fn drawn_for_check(seed: &[u8; 32], seq: u64) -> bool {
+/// Whether decision `seq` is one of the predictions that still go to the person. Cheap, so a caller
+/// rebuilding checks from the log can skip training a model for every other escalation.
+pub fn drawn_for_check(seed: &[u8; 32], seq: u64) -> bool {
     // Its own tag, so checks are drawn independently of review samples from the same seed.
     let digest = Sha256::new()
         .chain_update(b"mohar prediction check v1")

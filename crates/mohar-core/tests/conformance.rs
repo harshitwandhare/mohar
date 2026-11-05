@@ -219,6 +219,44 @@ fn reviewed_log(seed: &[u8; 32]) -> (Vec<Receipt>, Vec<Checkpoint>) {
     (log.receipts().to_vec(), checkpoints)
 }
 
+/// [`reviewed_log`] with a decision a model answered yes to for the one person it names (spec 1.6.0).
+fn predicted_log(seed: &[u8; 32]) -> (Vec<Receipt>, Vec<Checkpoint>) {
+    let (receipts, checkpoints) = reviewed_log(seed);
+    let mut log = Log::new(SigningKey::from_seed(seed));
+    for r in &receipts {
+        log.append(Entry {
+            ts: r.ts.clone(),
+            agent_id: r.agent.id.clone(),
+            action: r.action.clone(),
+            decision: r.decision.clone(),
+            verification: r.verification.clone(),
+            person: r.person.clone(),
+        })
+        .expect("append");
+    }
+    log.append(Entry {
+        ts: "2026-11-05T09:12:44.318Z".into(),
+        agent_id: receipts[0].agent.id.clone(),
+        action: Action {
+            capability: "fs.edit.docs".into(),
+            tool: "Edit".into(),
+            target: "docs/guide/install.md".into(),
+            args_sha256: "5c0d7a93".into(),
+        },
+        decision: Decision {
+            result: "allow".into(),
+            level: 0,
+            by: "predicted".into(),
+            review: false,
+            to: vec!["human:1c9e44d0".into()],
+        },
+        verification: None,
+        person: None,
+    })
+    .expect("append");
+    (log.receipts().to_vec(), checkpoints)
+}
+
 fn case(
     name: &str,
     about: &str,
@@ -426,6 +464,7 @@ fn cases() -> Vec<Value> {
     out.extend(person_cases());
     out.extend(routed_cases());
     out.extend(reviewed_cases());
+    out.extend(predicted_cases());
     out
 }
 
@@ -464,6 +503,43 @@ fn reviewed_cases() -> Vec<Value> {
             "Receipt 8's review_secs is lowered after it was signed.",
             "review_secs",
             json!(3),
+        ),
+    ]
+}
+
+/// Spec 1.6.0: a predicted answer that names whose answer it was, and the ways to alter that.
+fn predicted_cases() -> Vec<Value> {
+    let (good, checkpoints) = predicted_log(&SEED);
+    let changed = |name: &str, about: &str, value: Option<Value>| {
+        let mut c = case(name, about, 0, &SEED, Some(&SEED), &good, &checkpoints);
+        let decision = c["receipts"][9]["decision"]
+            .as_object_mut()
+            .expect("decision");
+        match value {
+            Some(v) => decision.insert("to".into(), v),
+            None => decision.remove("to"),
+        };
+        c
+    };
+    vec![
+        case(
+            "predicted-answer-names-person",
+            "Receipt 9 was allowed by a model answering for one person, whom its decision names.",
+            2,
+            &SEED,
+            Some(&SEED),
+            &good,
+            &checkpoints,
+        ),
+        changed(
+            "predicted-person-swapped",
+            "Receipt 9 names someone else as the person whose answer was predicted after it was signed.",
+            Some(json!(["human:7f3a09c2"])),
+        ),
+        changed(
+            "predicted-person-dropped",
+            "Receipt 9's \"to\" is removed after it was signed, hiding whose answer was predicted.",
+            None,
         ),
     ]
 }
@@ -789,7 +865,7 @@ fn level_on_disk(case: &Value) -> u8 {
 fn build() -> Value {
     json!({
         "format": "mohar receipts v1 conformance",
-        "spec": "spec/receipts-v1.md, spec version 1.5.0",
+        "spec": "spec/receipts-v1.md, spec version 1.6.0",
         "notes": "Seeds are bytes 0x00..0x1f (the log's key) and 0x20..0x3f (another key), for testing only. Each case is a log: log_key is public.key in the log directory, pinned_key is the key the verifier was given some other way (null if none), published_checkpoints were kept outside the machine. A rotated log also has segments (file name under segments/ and its receipts, oldest first) and local_checkpoints (checkpoints.jsonl in the log directory); receipts is then receipts.jsonl. A verifier must report expect_level. Level 3 has no cases yet.",
         "cases": cases(),
     })

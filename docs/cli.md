@@ -128,7 +128,7 @@ and cumulative metrics: `mohar.decisions` by result, `mohar.outcomes` by verifie
 targets or arguments. Export runs on its own thread; a collector that is down or slow loses telemetry
 and never delays or changes a decision. Without the flag nothing is collected.
 
-Seven endpoints, JSON in and out:
+Eight endpoints, JSON in and out:
 
 ```
 POST /v1/decide   {agent, tool, target, args_sha256, call_id?}  ->  {result, level, receipt_seq, lessons}
@@ -138,6 +138,7 @@ POST /v1/person   {by, act, agent, capability?, lesson?, until?}  ->  {receipt_s
 POST /v1/approve  {receipt_seq, by, action_sha256}  ->  {receipt_seq, until}
 POST /v1/refuse   {receipt_seq, by, action_sha256}  ->  {receipt_seq}
 POST /v1/escalation  {receipt_seq}  ->  {agent, action, action_sha256, to, level, passes, failures, suspended}
+POST /v1/predictions  {}  ->  {people: {<id>: {predicted_today, checks, agreed}}}
 ```
 
 When the policy has a `people` section, an `escalate` answer from `/v1/decide` also carries `approver`:
@@ -335,6 +336,37 @@ prompt decides.
   "delegations": [{"agent": "agent:claude-code/*", "from": "user:dev-1"}]
 }
 ```
+
+#### Predicted answers
+
+A member can let the daemon answer some escalations for them, from their own past answers. `predict`
+names the capabilities, each with the paths the target must match and how many answers a day may be
+predicted:
+
+```json
+"user:dev-1": {
+  "holds": ["fs.edit.docs"],
+  "predict": {"fs.edit.docs": {"paths": ["docs/guide/**"], "per_day": 20}}
+}
+```
+
+The daemon keeps each person's approvals and refusals of escalations and trains a calibrated logistic
+regression on them (`mohar_core::predict`). When an escalation goes to that one person, on a capability
+they switched on, inside their paths and daily count, and the model puts the chance of yes at 0.98 or
+more, the daemon answers yes for them. The receipt says `"by": "predicted"` and names them in
+`decision.to`, and `/v1/decide` returns `predicted` (`by` and `p_yes`) instead of `approver`. It never
+answers no: anything else goes to the person as before. A model needs 30 answers and, for someone who
+always says yes, about 50 before it is sure enough.
+
+One prediction in twenty still goes to the person as an ordinary escalation, and isn't marked as a check.
+Their answer to it counts toward `/v1/predictions`: `checks` is how many they answered, `agreed` how many
+of those were yes, as the model would have said. `predicted_today` is today's count against `per_day`
+(UTC days). All of it is rebuilt from the log on start.
+
+Loading the policy fails if `predict` names a capability that is above low risk, can't be undone, needs
+two people (`gates.two_person`), or isn't one the person holds, or has no paths or a `per_day` of 0. An
+escalation that goes to several people, such as every owner, is never predicted. Nothing is predicted in
+strict privacy mode, where the log holds no paths or names to rebuild the checks from.
 
 The built-in policy (`mohar_core::policy::BUILTIN`) is a fuller example: reads, docs, tests, code and
 config edits, read-only shell commands, pushes to a branch and to the default branch.
