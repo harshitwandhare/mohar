@@ -295,6 +295,7 @@ figcaption { color: var(--soft); font-size: var(--s-small); margin-top: 10px; }
 .cta-main h2 { margin: 0; max-width: 18ch; }
 .cta-main p { margin: 0; max-width: 56ch; }
 .cta-main pre { margin: 0; background: #7d1e19; border-radius: 4px; padding: 16px 18px; overflow-x: auto; font: 400 13px/1.5 var(--mono); }
+.cta-main p code { font-family: var(--mono); font-size: 0.9em; white-space: nowrap; }
 .button.light { background: var(--seal-ink); color: #3b0e0b; }
 .button.light:hover { background: #f2e9e1; }
 .button.quiet.on-seal { color: var(--seal-ink); background: #a92a24; }

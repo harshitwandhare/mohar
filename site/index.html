@@ -184,7 +184,10 @@ $ echo $?
         <h2 id="cta-h">Seal your first receipt</h2>
         <p>The receipt log, the trust engine, the <code>mohar</code> daemon with its Claude Code hook and escalation to the right person ship in 0.3, for Linux, macOS and Windows. Nothing is production-ready yet.</p>
         <pre data-ui><code>curl --proto '=https' --tlsv1.2 -LsSf https://github.com/harshitwandhare/mohar/releases/latest/download/mohar-cli-installer.sh | sh</code></pre>
-        <p class="actions"><a class="button light" href="https://harshitwandhare.github.io/mohar/latest/getting-started/">Read the install guide <span class="arrow" aria-hidden="true">→</span></a><a class="button quiet on-seal" href="roadmap.html">Read the roadmap</a></p>
+        <p>On Windows, the install guide has the PowerShell line. Then run <code>mohar init</code> and <code>mohar daemon</code> in your project, and in Claude Code:</p>
+        <pre data-ui><code>/plugin marketplace add harshitwandhare/mohar
+/plugin install mohar@mohar</code></pre>
+        <p class="actions"><a class="button light" href="https://harshitwandhare.github.io/mohar/latest/getting-started/">Read the install guide <span class="arrow" aria-hidden="true">→</span></a><a class="button quiet on-seal" href="https://github.com/harshitwandhare/mohar/issues/new?template=try.yml">Try it with your team</a></p>
       </div>
       <div class="cta-flank field"></div>
     </div>
