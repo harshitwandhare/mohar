@@ -406,3 +406,19 @@ test('the closing section gives both installs and a way to try it with a team', 
   await expect(cta).toContainText('Windows');
   await expect(cta.locator('a[href$="issues/new?template=try.yml"]')).toHaveCount(1);
 });
+
+test('the integrations board shows which one ships and which are planned', async ({ page }) => {
+  await page.goto('/');
+  const tiles = page.locator('.fit-tile');
+  await expect(tiles).toHaveCount(8);
+  const shipped = page.locator('.fit-tile.ships');
+  await expect(shipped).toHaveCount(1);
+  await expect(shipped).toContainText('Claude Code hooks');
+  await expect(shipped.locator('.fit-state')).toHaveText('Ships today');
+  await expect(page.locator('.fit-tile:not(.ships) .fit-state')).toHaveText(Array(7).fill('Planned'));
+  const [ground, shippedGround] = await Promise.all([
+    tiles.nth(1).evaluate(el => getComputedStyle(el).backgroundColor),
+    shipped.evaluate(el => getComputedStyle(el).backgroundColor),
+  ]);
+  expect(shippedGround, 'the one that ships stands out').not.toBe(ground);
+});
