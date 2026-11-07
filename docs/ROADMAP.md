@@ -32,7 +32,8 @@ to the [engineering bar](engineering-bar.md). Each phase ships as small pull req
 
 - Route out-of-bounds actions to the right person.
 - A small per-person model of past yes/no decisions, allowed only to skip prompts on low-risk, reversible
-  actions inside limits that person set.
+  actions inside limits that person set. Done: the daemon predicts answers and measures them against
+  checks (#52).
 
 ## Phase 5: benchmark (May to Aug 2027)
 

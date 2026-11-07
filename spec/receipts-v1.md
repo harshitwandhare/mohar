@@ -1,6 +1,6 @@
 # Mohar receipts, format version 1
 
-Spec version 1.5.0
+Spec version 1.6.0
 
 This document describes the receipts and checkpoints Mohar writes, apart from the Rust code, so a
 verifier can be written in any language. It covers receipt format `v: 1`. The reference implementation is
@@ -45,7 +45,7 @@ A receipt is a JSON object with these keys, and no others:
 | `decision.level` | integer | The agent's trust level on this capability at the time: 0 ask first, 1 supervised, 2 trusted. |
 | `decision.by` | string | What decided: `gate`, `score`, `human` or `predicted`. |
 | `decision.review` | `true` | Present only when the allowed action was sampled for a person to review. |
-| `decision.to` | array of strings | Present only on an escalation that was routed to named people (added in 1.4.0): any one of them may answer. In strict privacy mode, pseudonyms like `agent.id`. |
+| `decision.to` | array of strings | Present only on an escalation that was routed to named people (added in 1.4.0): any one of them may answer. On a `predicted` decision (added in 1.6.0), the one person whose answer was predicted. In strict privacy mode, pseudonyms like `agent.id`. |
 | `sig` | signature | Signature over the receipt without `sig` (section 3). |
 | `verification` | object | Present only on a receipt that records an outcome (section 5). |
 | `verification.reviewer` | string | On a `human` outcome (added in 1.5.0): who reviewed it. In strict privacy mode, a pseudonym like `agent.id`. |
@@ -138,6 +138,11 @@ bound to the SHA-256 of the action's canonical form (RFC 8785, the four `action`
 the person was shown. An approval lets the next
 decision for exactly that action, before `until`, be `{"result": "allow", "by": "human"}`. That decision
 uses the approval up; a later one needs another.
+
+A decision with `by` `predicted` (section 2) is a yes that a model of one person's past answers gave
+for them, without asking. Its `decision.to` names that person and nobody else, and its `result` is
+`allow`. The reference daemon writes one only on a low-risk, reversible capability the person switched
+prediction on for, inside the paths and daily count they set; how sure the model was is not recorded.
 
 Who the person is rests on whoever runs the daemon: `by` is recorded, not authenticated. Binding it to a
 key the person holds is future work.

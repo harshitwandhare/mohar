@@ -394,3 +394,15 @@ test('the demo video is self-hosted, waits for a click and has a poster and capt
   const box = await video.boundingBox();
   expect(box.width).toBeGreaterThan(200);
 });
+
+test('the closing section gives both installs and a way to try it with a team', async ({ page }) => {
+  await page.goto('/');
+  const cta = page.locator('.cta-main');
+  const blocks = cta.locator('pre');
+  await expect(blocks).toHaveCount(2);
+  await expect(blocks.nth(0)).toContainText('mohar-cli-installer.sh');
+  await expect(blocks.nth(1)).toContainText('/plugin marketplace add harshitwandhare/mohar');
+  await expect(blocks.nth(1)).toContainText('/plugin install mohar@mohar');
+  await expect(cta).toContainText('Windows');
+  await expect(cta.locator('a[href$="issues/new?template=try.yml"]')).toHaveCount(1);
+});

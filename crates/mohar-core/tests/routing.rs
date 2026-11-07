@@ -14,7 +14,8 @@ fn with_people(people: &str) -> Result<Policy, PolicyError> {
                 "capabilities": {{
                   "fs.edit.docs": {{"risk": "low", "reversible": true, "ceiling": 2}},
                   "fs.edit.code": {{"risk": "medium", "reversible": true, "ceiling": 2}},
-                  "db.migrate":   {{"risk": "high", "reversible": false, "ceiling": 1}}
+                  "db.migrate":   {{"risk": "high", "reversible": false, "ceiling": 1}},
+                  "fs.rm.tmp":    {{"risk": "low", "reversible": false, "ceiling": 1}}
                 }},
                 "rules": [{{"tools": ["Edit"], "paths": ["**"], "capability": "fs.edit.code"}}],
                 "people": {people}}}"#
@@ -189,4 +190,102 @@ fn the_sponsor_is_the_person_who_delegated_to_the_agent() {
     assert_eq!(p.sponsor("agent:ops/deploy"), Some("user:lead-1"));
     assert_eq!(p.sponsor("agent:other/1"), None);
     assert_eq!(Policy::builtin(Path::new("/repo")).sponsor("agent:x"), None);
+}
+
+/// The team, with the dev's answers on docs edits predicted inside `docs/guide/`.
+fn predicting(dev: &str) -> Result<Policy, PolicyError> {
+    with_people(&format!(
+        r#"{{"owners": ["user:owner-1"],
+            "members": {{"user:dev-1": {{"holds": ["fs.edit.*", "db.migrate", "fs.rm.tmp"], "predict": {dev}}}}}}}"#
+    ))
+}
+
+#[test]
+fn a_person_s_prediction_limits_are_read_and_nobody_else_has_any() {
+    let p = predicting(r#"{"fs.edit.docs": {"paths": ["docs/guide/**"], "per_day": 20}}"#)
+        .expect("valid");
+    let mine = p.predict_limits("user:dev-1");
+    assert_eq!(mine.len(), 1);
+    assert_eq!(mine["fs.edit.docs"].paths, ["docs/guide/**"]);
+    assert_eq!(mine["fs.edit.docs"].per_day, 20);
+    assert!(p.predict_limits("user:owner-1").is_empty());
+    assert!(p.predict_limits("user:nobody").is_empty());
+}
+
+#[test]
+fn a_capability_that_can_never_be_predicted_is_refused_by_name() {
+    let docs = r#"{"paths": ["docs/**"], "per_day": 5}"#;
+    for (predict, name, why) in [
+        (
+            format!(r#"{{"fs.edit.code": {docs}}}"#),
+            "fs.edit.code",
+            "above low risk",
+        ),
+        (
+            format!(r#"{{"db.migrate": {docs}}}"#),
+            "db.migrate",
+            "above low risk",
+        ),
+        (
+            format!(r#"{{"fs.rm.tmp": {docs}}}"#),
+            "fs.rm.tmp",
+            "can't be undone",
+        ),
+        (
+            format!(r#"{{"fs.edit.nope": {docs}}}"#),
+            "fs.edit.nope",
+            "not defined",
+        ),
+        (
+            r#"{"fs.edit.docs": {"paths": [], "per_day": 5}}"#.to_string(),
+            "fs.edit.docs",
+            "no paths",
+        ),
+        (
+            r#"{"fs.edit.docs": {"paths": ["docs/**"], "per_day": 0}}"#.to_string(),
+            "fs.edit.docs",
+            "daily count of 0",
+        ),
+    ] {
+        match predicting(&predict) {
+            Err(e @ PolicyError::BadPrediction { .. }) => {
+                let text = e.to_string();
+                assert!(text.contains(name) && text.contains(why), "{text}");
+            }
+            other => panic!("{predict}: {other:?}"),
+        }
+    }
+    // An unknown key in the limits is refused like anywhere else in the file.
+    assert!(matches!(
+        predicting(r#"{"fs.edit.docs": {"paths": ["docs/**"], "per_day": 5, "p": 0.5}}"#),
+        Err(PolicyError::Parse(_))
+    ));
+}
+
+#[test]
+fn a_capability_the_person_does_not_hold_or_that_needs_two_people_is_refused() {
+    let limits = r#"{"fs.edit.docs": {"paths": ["docs/**"], "per_day": 5}}"#;
+    let not_held = with_people(&format!(
+        r#"{{"owners": ["user:owner-1"],
+            "members": {{"user:dev-1": {{"holds": ["fs.edit.code"], "predict": {limits}}}}}}}"#
+    ));
+    assert!(
+        matches!(&not_held, Err(PolicyError::BadPrediction { why, .. }) if why.contains("don't hold")),
+        "{not_held:?}"
+    );
+    let two = Policy::from_json(
+        &format!(
+            r#"{{"version": 1,
+                "capabilities": {{"fs.edit.docs": {{"risk": "low", "reversible": true, "ceiling": 2}}}},
+                "rules": [{{"tools": ["Edit"], "paths": ["**"], "capability": "fs.edit.docs"}}],
+                "gates": {{"two_person": ["fs.edit.docs"]}},
+                "people": {{"owners": ["user:owner-1"],
+                  "members": {{"user:dev-1": {{"holds": ["*"], "predict": {limits}}}}}}}}}"#
+        ),
+        Path::new("/repo"),
+    );
+    assert!(
+        matches!(&two, Err(PolicyError::BadPrediction { why, .. }) if why.contains("two people")),
+        "{two:?}"
+    );
 }

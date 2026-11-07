@@ -2541,3 +2541,307 @@ fn a_human_failure_with_no_reviewer_named_teaches_nothing() {
     let a = ask_as(d.port, "agent:w/1", "Edit", "docs/a.md", SHA);
     assert_eq!(a["lessons"], json!([]), "{a}");
 }
+
+/// The routed project with docs edits low risk, and the dev letting their answers be predicted on them
+/// inside `docs/guide/`, at most `per_day` a day.
+fn predicting_project(name: &str, per_day: u32, strict: bool) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("mohar-daemon-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut init = Command::new(BIN);
+    init.arg("--dir").arg(&dir).arg("init");
+    if strict {
+        init.arg("--strict-privacy");
+    }
+    assert!(init.status().expect("init").success());
+    let mut policy = people_policy();
+    policy["capabilities"]["fs.edit.docs"]["risk"] = json!("low");
+    policy["people"]["members"]["user:dev-1"]["predict"] =
+        json!({"fs.edit.docs": {"paths": ["docs/guide/**"], "per_day": per_day}});
+    std::fs::write(dir.join("policy.json"), policy.to_string()).expect("policy");
+    dir
+}
+
+const WRITER: &str = "agent:claude-code/docs-writer";
+
+/// Arguments no other action in a test shares, so every ask is a new action.
+fn args_n(n: u64) -> String {
+    format!("{n:064x}")
+}
+
+/// Ask for `target` and have the dev answer the escalation; `yes` approves, otherwise refuses.
+fn dev_answers(port: u16, target: &str, n: u64, yes: bool) {
+    let a = ask_as(port, WRITER, "Edit", target, &args_n(n));
+    assert_eq!(a["result"], "escalate", "{a}");
+    assert_eq!(a["approver"]["to"], json!(["user:dev-1"]), "{a}");
+    let body = json!({"receipt_seq": a["receipt_seq"], "by": "user:dev-1",
+        "action_sha256": a["approver"]["action_sha256"]});
+    let act = if yes { "/v1/approve" } else { "/v1/refuse" };
+    let (status, r) = post(port, act, &body.to_string());
+    assert_eq!(status, 200, "{r}");
+}
+
+/// The dev says yes on guide pages until the model answers for them once. Thirty answers is the
+/// fewest a model is trained on, and it takes about fifty before one is sure enough.
+fn teach_yes(port: u16) {
+    for n in 0..80 {
+        let a = ask_as(
+            port,
+            WRITER,
+            "Edit",
+            &format!("docs/guide/t{n}.md"),
+            &args_n(n),
+        );
+        if a["result"] == "allow" {
+            assert!(n >= 30, "answered after {n} answers: {a}");
+            return;
+        }
+        let body = json!({"receipt_seq": a["receipt_seq"], "by": "user:dev-1",
+            "action_sha256": a["approver"]["action_sha256"]});
+        assert_eq!(post(port, "/v1/approve", &body.to_string()).0, 200);
+    }
+    panic!("eighty yes answers and the model never answered");
+}
+
+fn predictions(port: u16) -> Value {
+    let (status, p) = post(port, "/v1/predictions", "{}");
+    assert_eq!(status, 200, "{p}");
+    p
+}
+
+#[test]
+fn a_confident_model_answers_yes_for_the_person_inside_their_limits_and_says_so() {
+    let dir = predicting_project("predict-yes", 50, false);
+    let d = Daemon::start(&dir, &[]);
+    teach_yes(d.port);
+    // One in twenty still goes to the dev as a check, so ask until the model answers.
+    let mut yes = None;
+    for n in 100..120 {
+        let a = ask_as(
+            d.port,
+            WRITER,
+            "Edit",
+            &format!("docs/guide/n{n}.md"),
+            &args_n(n),
+        );
+        if a["result"] == "allow" {
+            yes = Some(a);
+            break;
+        }
+        assert_eq!(
+            a["approver"]["to"],
+            json!(["user:dev-1"]),
+            "a check goes to the dev"
+        );
+    }
+    let yes = yes.expect("the model answered within twenty asks");
+    assert_eq!(yes["predicted"]["by"], "user:dev-1", "{yes}");
+    assert!(
+        yes["predicted"]["p_yes"].as_f64().expect("p_yes") >= 0.98,
+        "{yes}"
+    );
+    assert_eq!(yes["approver"], Value::Null, "nobody is asked");
+    let seq = yes["receipt_seq"].as_u64().expect("seq");
+    let receipt = &log_of(&dir)[seq as usize];
+    assert_eq!(
+        receipt["decision"],
+        json!({"result": "allow", "level": 0, "by": "predicted", "to": ["user:dev-1"]})
+    );
+    // A predicted yes is not an escalation, so nobody answers it afterwards.
+    let body = json!({"receipt_seq": seq, "by": "user:dev-1", "action_sha256": SHA});
+    assert_eq!(post(d.port, "/v1/approve", &body.to_string()).0, 404);
+
+    // Outside the dev's paths, on a capability they didn't switch on, or for an agent routed to
+    // someone else, the person is asked.
+    for (agent, target) in [
+        (WRITER, "docs/other.md"),
+        (WRITER, "src/a.rs"),
+        ("agent:other/1", "docs/guide/x.md"),
+    ] {
+        let a = ask_as(d.port, agent, "Edit", target, &args_n(500));
+        assert_eq!(a["result"], "escalate", "{agent} {target}");
+        assert_eq!(a["predicted"], Value::Null, "{agent} {target}");
+    }
+    d.stop();
+    verify(&dir);
+}
+
+#[test]
+fn too_few_answers_or_a_mixed_record_and_the_person_is_asked() {
+    let dir = predicting_project("predict-few", 50, false);
+    let d = Daemon::start(&dir, &[]);
+    for n in 0..29 {
+        dev_answers(d.port, &format!("docs/guide/t{n}.md"), n, true);
+    }
+    let a = ask_as(d.port, WRITER, "Edit", "docs/guide/x.md", &args_n(99));
+    assert_eq!(
+        a["result"], "escalate",
+        "29 answers are too few for a model"
+    );
+    d.stop();
+
+    let dir = predicting_project("predict-mixed", 50, false);
+    let d = Daemon::start(&dir, &[]);
+    for n in 0..40 {
+        dev_answers(d.port, &format!("docs/guide/t{n}.md"), n, n % 2 == 0);
+    }
+    for n in 100..110 {
+        let a = ask_as(
+            d.port,
+            WRITER,
+            "Edit",
+            &format!("docs/guide/n{n}.md"),
+            &args_n(n),
+        );
+        assert_eq!(
+            a["result"], "escalate",
+            "half yes is nowhere near sure: {a}"
+        );
+    }
+    assert_eq!(
+        predictions(d.port)["people"]["user:dev-1"]["predicted_today"],
+        0
+    );
+}
+
+#[test]
+fn the_daily_count_holds_across_a_restart() {
+    let dir = predicting_project("predict-daily", 2, false);
+    let d = Daemon::start(&dir, &[]);
+    teach_yes(d.port);
+    let mut n = 100;
+    let mut allowed = 1;
+    while allowed < 2 && n < 140 {
+        let a = ask_as(
+            d.port,
+            WRITER,
+            "Edit",
+            &format!("docs/guide/n{n}.md"),
+            &args_n(n),
+        );
+        allowed += usize::from(a["result"] == "allow");
+        n += 1;
+    }
+    assert_eq!(allowed, 2);
+    let a = ask_as(d.port, WRITER, "Edit", "docs/guide/over.md", &args_n(n));
+    assert_eq!(a["result"], "escalate", "the third today goes to the dev");
+    assert_eq!(
+        predictions(d.port)["people"]["user:dev-1"]["predicted_today"],
+        2
+    );
+    d.stop();
+    let d = Daemon::start(&dir, &[]);
+    assert_eq!(
+        predictions(d.port)["people"]["user:dev-1"]["predicted_today"],
+        2
+    );
+    let a = ask_as(
+        d.port,
+        WRITER,
+        "Edit",
+        "docs/guide/over2.md",
+        &args_n(n + 1),
+    );
+    assert_eq!(a["result"], "escalate", "a restart doesn't reset the count");
+}
+
+#[test]
+fn checks_go_to_the_person_and_their_answers_measure_agreement_across_a_restart() {
+    let dir = predicting_project("predict-checks", 1000, false);
+    let d = Daemon::start(&dir, &[]);
+    teach_yes(d.port);
+    // Teaching can already have answered a check (the model was sure, the draw sent it to the dev
+    // anyway), so count from here.
+    let before = predictions(d.port)["people"]["user:dev-1"].clone();
+    let count = |k: &str| before[k].as_u64().unwrap_or(0);
+    let mut checks = Vec::new();
+    let mut allowed = 1;
+    let mut n = 100;
+    while checks.len() < 2 && n < 600 {
+        let a = ask_as(
+            d.port,
+            WRITER,
+            "Edit",
+            &format!("docs/guide/n{n}.md"),
+            &args_n(n),
+        );
+        if a["result"] == "allow" {
+            allowed += 1;
+        } else {
+            checks.push(a);
+        }
+        n += 1;
+    }
+    assert_eq!(checks.len(), 2, "one in twenty is a check");
+    for (a, act) in checks.iter().zip(["/v1/approve", "/v1/refuse"]) {
+        assert_eq!(
+            a["predicted"],
+            Value::Null,
+            "the person isn't told it's a check"
+        );
+        let body = json!({"receipt_seq": a["receipt_seq"], "by": "user:dev-1",
+            "action_sha256": a["approver"]["action_sha256"]});
+        assert_eq!(post(d.port, act, &body.to_string()).0, 200);
+    }
+    let want = json!({"predicted_today": allowed, "checks": count("checks") + 2,
+        "agreed": count("agreed") + 1});
+    assert_eq!(predictions(d.port)["people"]["user:dev-1"], want);
+    d.stop();
+    let d = Daemon::start(&dir, &[]);
+    assert_eq!(
+        predictions(d.port)["people"]["user:dev-1"],
+        want,
+        "rebuilt from the log"
+    );
+    d.stop();
+    verify(&dir);
+}
+
+#[test]
+fn in_strict_privacy_mode_nothing_is_predicted() {
+    let dir = predicting_project("predict-strict", 50, true);
+    let d = Daemon::start(&dir, &[]);
+    for n in 0..60 {
+        dev_answers(d.port, &format!("docs/guide/t{n}.md"), n, true);
+    }
+    for n in 100..110 {
+        let a = ask_as(
+            d.port,
+            WRITER,
+            "Edit",
+            &format!("docs/guide/n{n}.md"),
+            &args_n(n),
+        );
+        assert_eq!(a["result"], "escalate", "{a}");
+    }
+    assert_eq!(predictions(d.port)["people"], json!({}));
+    for wrong in ["", "[]", r#"{"by": "user:dev-1"}"#] {
+        assert_eq!(post(d.port, "/v1/predictions", wrong).0, 400, "{wrong:?}");
+    }
+}
+
+#[test]
+fn an_escalation_that_goes_to_several_people_is_never_predicted() {
+    let dir = predicting_project("predict-owners", 50, false);
+    let mut policy: Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("policy.json")).expect("policy"))
+            .expect("json");
+    // The first owner says yes to everything and let their answers be predicted, but anything no
+    // delegator holds goes to both owners, and either may answer.
+    policy["people"]["owners"] = json!(["user:dev-1", "user:owner-2"]);
+    std::fs::write(dir.join("policy.json"), policy.to_string()).expect("policy");
+    let d = Daemon::start(&dir, &[]);
+    for n in 0..70 {
+        let a = ask_as(
+            d.port,
+            "agent:other/1",
+            "Edit",
+            &format!("docs/guide/t{n}.md"),
+            &args_n(n),
+        );
+        assert_eq!(a["result"], "escalate", "after {n} yes answers: {a}");
+        assert_eq!(a["approver"]["to"], json!(["user:dev-1", "user:owner-2"]));
+        let body = json!({"receipt_seq": a["receipt_seq"], "by": "user:dev-1",
+            "action_sha256": a["approver"]["action_sha256"]});
+        assert_eq!(post(d.port, "/v1/approve", &body.to_string()).0, 200);
+    }
+}
