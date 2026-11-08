@@ -282,7 +282,10 @@ figcaption { color: var(--soft); font-size: var(--s-small); margin-top: 10px; }
 .fit-head h2 { margin: 0; }
 .fit-head p { margin: 0; max-width: 40ch; }
 .fit-head a { color: inherit; }
-.fit-tile { overflow-wrap: break-word; hyphens: auto; margin: 0; background: var(--tile); border-radius: 4px; padding: 22px; min-height: 140px; font-weight: 800; font-size: clamp(20px, 1.8vw, 28px); letter-spacing: -0.01em; line-height: 1.15; }
+.fit-tile { overflow-wrap: break-word; hyphens: auto; margin: 0; background: var(--tile); border-radius: 4px; padding: 22px; min-height: 140px; font-weight: 800; font-size: clamp(20px, 1.8vw, 28px); letter-spacing: -0.01em; line-height: 1.15; display: flex; flex-direction: column; justify-content: space-between; gap: 16px; }
+.fit-state { font-size: var(--s-small); font-weight: 500; letter-spacing: 0; color: var(--soft); }
+.fit-tile.ships { background: var(--ink); color: var(--ground); }
+.fit-tile.ships .fit-state { color: var(--ground); }
 @media (max-width: 900px) { .fit-board { grid-template-columns: repeat(2, minmax(0, 1fr)); } .fit-tile { min-height: 96px; } }
 
 /* Closing row: the accent tile flanked by a photograph and a field, cropped by the page edges. */
