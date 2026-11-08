@@ -34,6 +34,8 @@ to the [engineering bar](engineering-bar.md). Each phase ships as small pull req
 - A small per-person model of past yes/no decisions, allowed only to skip prompts on low-risk, reversible
   actions inside limits that person set. Done: the daemon predicts answers and measures them against
   checks (#52).
+- An hourly budget per approver, with requests past it held and reported (#205). Batching and escalation
+  levels with timeouts are next (#89).
 
 ## Phase 5: benchmark (May to Aug 2027)
 

@@ -289,3 +289,33 @@ fn a_capability_the_person_does_not_hold_or_that_needs_two_people_is_refused() {
         "{two:?}"
     );
 }
+
+#[test]
+fn a_person_s_hourly_budget_is_read_and_a_budget_of_zero_is_refused() {
+    let team = |dev: &str| {
+        with_people(&format!(
+            r#"{{"owners": ["user:owner-1"], "members": {{"user:dev-1": {dev}}}}}"#
+        ))
+    };
+    let p = team(r#"{"escalations_per_hour": 7}"#).expect("valid");
+    assert_eq!(p.escalation_budget("user:dev-1"), Some(7));
+    assert_eq!(
+        p.escalation_budget("user:owner-1"),
+        None,
+        "not listed under members"
+    );
+    assert_eq!(p.escalation_budgets(), [("user:dev-1", 7)]);
+    let none = team("{}").expect("valid");
+    assert_eq!(none.escalation_budget("user:dev-1"), None);
+    assert!(none.escalation_budgets().is_empty());
+    let builtin = Policy::builtin(Path::new("/repo"));
+    assert_eq!(builtin.escalation_budget("user:dev-1"), None);
+    assert!(builtin.escalation_budgets().is_empty());
+
+    let err = team(r#"{"escalations_per_hour": 0}"#).expect_err("zero");
+    assert!(
+        matches!(&err, PolicyError::BadBudget(who) if who == "user:dev-1"),
+        "{err}"
+    );
+    assert!(err.to_string().contains("user:dev-1"), "{err}");
+}

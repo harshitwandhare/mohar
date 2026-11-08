@@ -46,7 +46,7 @@ the command returns.
 | `--args-sha256` | SHA-256 of the exact arguments |
 | `--result` | `allow`, `escalate` or `deny` |
 | `--level` | The agent's trust level on this capability (default `0`) |
-| `--by` | What decided it: `gate`, `score`, `human` or `predicted` (default `human`) |
+| `--by` | What decided it: `gate`, `score`, `human`, `predicted` or `budget` (default `human`) |
 
 Opening the log verifies the whole chain and its checkpoints first; a log that doesn't verify is
 refused rather than extended. Only one process may write to a log at a time.
@@ -128,7 +128,7 @@ and cumulative metrics: `mohar.decisions` by result, `mohar.outcomes` by verifie
 targets or arguments. Export runs on its own thread; a collector that is down or slow loses telemetry
 and never delays or changes a decision. Without the flag nothing is collected.
 
-Eight endpoints, JSON in and out:
+Nine endpoints, JSON in and out:
 
 ```
 POST /v1/decide   {agent, tool, target, args_sha256, call_id?}  ->  {result, level, receipt_seq, lessons}
@@ -139,6 +139,7 @@ POST /v1/approve  {receipt_seq, by, action_sha256}  ->  {receipt_seq, until}
 POST /v1/refuse   {receipt_seq, by, action_sha256}  ->  {receipt_seq}
 POST /v1/escalation  {receipt_seq}  ->  {agent, action, action_sha256, to, level, passes, failures, suspended}
 POST /v1/predictions  {}  ->  {people: {<id>: {predicted_today, checks, agreed}}}
+POST /v1/load  {}  ->  {people: {<id>: {per_hour, asked, held, agents}}}
 ```
 
 When the policy has a `people` section, an `escalate` answer from `/v1/decide` also carries `approver`:
@@ -367,6 +368,30 @@ Loading the policy fails if `predict` names a capability that is above low risk,
 two people (`gates.two_person`), or isn't one the person holds, or has no paths or a `per_day` of 0. An
 escalation that goes to several people, such as every owner, is never predicted. Nothing is predicted in
 strict privacy mode, where the log holds no paths or names to rebuild the checks from.
+
+#### Escalation budgets
+
+A member can limit how many new requests reach them in an hour. List an owner under `members` to give
+them one too:
+
+```json
+"user:dev-1": {"holds": ["fs.edit.docs"], "escalations_per_hour": 20}
+```
+
+Each distinct action by each agent counts once in a sliding hour, from when it was first asked, so an
+agent asking again about the same thing costs nothing. When several people could answer, the request goes
+only to those with room. When fewer have room than the capability needs (one, or two under
+`gates.two_person`), the request is held: `/v1/decide` returns `deny` with `held` (`to`, the people who
+are full, and `retry_after`, in seconds), and the receipt says `"by": "budget"` and names them in
+`decision.to`. Nobody is asked and there is nothing to answer. A hold isn't a mark against the agent: it
+is not a near miss and changes no trust. The Claude Code hook tells the agent who is full and when to ask
+again.
+
+A model's yes asks nobody, so it uses no budget and isn't held, and neither is using an approval already
+given. One in twenty still goes to the person as a check, and that does count. `/v1/load` reports everyone
+with a budget: `per_hour`, `asked` this hour, `held` this hour and `agents`, how many of those holds came
+from each agent. All of it is rebuilt from the log on start, and it works in strict privacy mode, where
+`agents` holds pseudonyms. Loading the policy fails if the budget is 0.
 
 The built-in policy (`mohar_core::policy::BUILTIN`) is a fuller example: reads, docs, tests, code and
 config edits, read-only shell commands, pushes to a branch and to the default branch.

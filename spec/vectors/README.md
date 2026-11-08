@@ -23,9 +23,8 @@ python spec/vectors/check.py spec/vectors/v1.json
 
 ## Conformance
 
-`conformance-v1.json` holds seventeen small logs, each with the conformance level a verifier must report:
-one that reaches Level 2, seven that stop at Level 1 and nine that reach no level. Each case gives the key
-in the log directory (`log_key`), the key the verifier was given some other way (`pinned_key`, or null)
+`conformance-v1.json` holds small logs, each with the conformance level a verifier must report. Each
+case gives the key in the log directory (`log_key`), the key the verifier was given some other way (`pinned_key`, or null)
 and the checkpoints published outside the machine. `crates/mohar-core/tests/conformance.rs` builds the
 file from two fixed seeds and checks every case with the Rust verifier; `check.py` writes each case out as
 a log directory, reads it back and must reach the same level.

@@ -211,6 +211,14 @@ when all of these hold:
 Every predicted answer is marked as predicted in the receipt, and 5% of them are sent to the person
 anyway as a check. The model never relaxes a gate and never answers for high-risk capabilities.
 
+### Budgets
+
+People who are asked too often stop reading, so a person can cap how many new requests reach them in an
+hour. Past that they aren't asked. If nobody else who could answer has room, the request is held: a signed
+deny that names who was full and says when to ask again, and that counts against nobody's record. So one
+busy agent can use up a person's attention for an hour but can't push them past the limit they chose.
+Batching related requests and walking up the chain on a timeout are still to come.
+
 ## 7. Receipts
 
 One receipt per decision. Receipts are JSON, canonicalised with RFC 8785 (JSON Canonicalization Scheme)

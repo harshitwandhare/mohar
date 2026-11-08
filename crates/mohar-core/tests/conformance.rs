@@ -257,6 +257,44 @@ fn predicted_log(seed: &[u8; 32]) -> (Vec<Receipt>, Vec<Checkpoint>) {
     (log.receipts().to_vec(), checkpoints)
 }
 
+/// [`predicted_log`] with a request held because the person it would have gone to was full (spec 1.7.0).
+fn held_log(seed: &[u8; 32]) -> (Vec<Receipt>, Vec<Checkpoint>) {
+    let (receipts, checkpoints) = predicted_log(seed);
+    let mut log = Log::new(SigningKey::from_seed(seed));
+    for r in &receipts {
+        log.append(Entry {
+            ts: r.ts.clone(),
+            agent_id: r.agent.id.clone(),
+            action: r.action.clone(),
+            decision: r.decision.clone(),
+            verification: r.verification.clone(),
+            person: r.person.clone(),
+        })
+        .expect("append");
+    }
+    log.append(Entry {
+        ts: "2026-11-06T16:40:03.905Z".into(),
+        agent_id: receipts[0].agent.id.clone(),
+        action: Action {
+            capability: "fs.edit.docs".into(),
+            tool: "Edit".into(),
+            target: "docs/guide/upgrade.md".into(),
+            args_sha256: "a17f02c6".into(),
+        },
+        decision: Decision {
+            result: "deny".into(),
+            level: 0,
+            by: "budget".into(),
+            review: false,
+            to: vec!["human:1c9e44d0".into()],
+        },
+        verification: None,
+        person: None,
+    })
+    .expect("append");
+    (log.receipts().to_vec(), checkpoints)
+}
+
 fn case(
     name: &str,
     about: &str,
@@ -465,6 +503,7 @@ fn cases() -> Vec<Value> {
     out.extend(routed_cases());
     out.extend(reviewed_cases());
     out.extend(predicted_cases());
+    out.extend(held_cases());
     out
 }
 
@@ -540,6 +579,39 @@ fn predicted_cases() -> Vec<Value> {
             "predicted-person-dropped",
             "Receipt 9's \"to\" is removed after it was signed, hiding whose answer was predicted.",
             None,
+        ),
+    ]
+}
+
+/// Spec 1.7.0: a request held for a full budget, naming who was full, and the ways to alter that.
+fn held_cases() -> Vec<Value> {
+    let (good, checkpoints) = held_log(&SEED);
+    let changed = |name: &str, about: &str, key: &str, value: Value| {
+        let mut c = case(name, about, 0, &SEED, Some(&SEED), &good, &checkpoints);
+        c["receipts"][10]["decision"][key] = value;
+        c
+    };
+    vec![
+        case(
+            "held-request-names-who-was-full",
+            "Receipt 10 was held because the person it would have gone to had used up their hourly budget.",
+            2,
+            &SEED,
+            Some(&SEED),
+            &good,
+            &checkpoints,
+        ),
+        changed(
+            "held-person-swapped",
+            "Receipt 10 names someone else as the person who was full after it was signed.",
+            "to",
+            json!(["human:7f3a09c2"]),
+        ),
+        changed(
+            "held-turned-into-allow",
+            "Receipt 10's result is changed to allow after it was signed.",
+            "result",
+            json!("allow"),
         ),
     ]
 }
@@ -865,7 +937,7 @@ fn level_on_disk(case: &Value) -> u8 {
 fn build() -> Value {
     json!({
         "format": "mohar receipts v1 conformance",
-        "spec": "spec/receipts-v1.md, spec version 1.6.0",
+        "spec": "spec/receipts-v1.md, spec version 1.7.0",
         "notes": "Seeds are bytes 0x00..0x1f (the log's key) and 0x20..0x3f (another key), for testing only. Each case is a log: log_key is public.key in the log directory, pinned_key is the key the verifier was given some other way (null if none), published_checkpoints were kept outside the machine. A rotated log also has segments (file name under segments/ and its receipts, oldest first) and local_checkpoints (checkpoints.jsonl in the log directory); receipts is then receipts.jsonl. A verifier must report expect_level. Level 3 has no cases yet.",
         "cases": cases(),
     })
