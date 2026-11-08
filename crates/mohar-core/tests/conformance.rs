@@ -295,6 +295,59 @@ fn held_log(seed: &[u8; 32]) -> (Vec<Receipt>, Vec<Checkpoint>) {
     (log.receipts().to_vec(), checkpoints)
 }
 
+/// [`held_log`] with an accept by one reviewer and a second person's re-check of it (spec 1.8.0).
+fn rechecked_log(seed: &[u8; 32]) -> (Vec<Receipt>, Vec<Checkpoint>) {
+    let (receipts, checkpoints) = held_log(seed);
+    let mut log = Log::new(SigningKey::from_seed(seed));
+    for r in &receipts {
+        log.append(Entry {
+            ts: r.ts.clone(),
+            agent_id: r.agent.id.clone(),
+            action: r.action.clone(),
+            decision: r.decision.clone(),
+            verification: r.verification.clone(),
+            person: r.person.clone(),
+        })
+        .expect("append");
+    }
+    let first = &receipts[0];
+    let accept = log
+        .append(Entry {
+            ts: "2026-11-07T18:02:11.204Z".into(),
+            agent_id: first.agent.id.clone(),
+            action: first.action.clone(),
+            decision: first.decision.clone(),
+            verification: Some(Verification {
+                evidence_sha256: "5b0e7d2a".into(),
+                kind: "human".into(),
+                of: first.seq,
+                result: "pass".into(),
+                review_secs: Some(41),
+                reviewer: Some("human:1c9e44d0".into()),
+            }),
+            person: None,
+        })
+        .expect("append")
+        .seq;
+    log.append(Entry {
+        ts: "2026-11-07T18:30:45.877Z".into(),
+        agent_id: first.agent.id.clone(),
+        action: first.action.clone(),
+        decision: first.decision.clone(),
+        verification: Some(Verification {
+            evidence_sha256: "c3d81f60".into(),
+            kind: "recheck".into(),
+            of: accept,
+            result: "pass".into(),
+            review_secs: Some(95),
+            reviewer: Some("human:7f3a09c2".into()),
+        }),
+        person: None,
+    })
+    .expect("append");
+    (log.receipts().to_vec(), checkpoints)
+}
+
 fn case(
     name: &str,
     about: &str,
@@ -504,7 +557,47 @@ fn cases() -> Vec<Value> {
     out.extend(reviewed_cases());
     out.extend(predicted_cases());
     out.extend(held_cases());
+    out.extend(rechecked_cases());
     out
+}
+
+/// Spec 1.8.0: a second person's re-check of an accept, and the ways to alter it.
+fn rechecked_cases() -> Vec<Value> {
+    let (good, checkpoints) = rechecked_log(&SEED);
+    let changed = |name: &str, about: &str, key: &str, value: Value| {
+        let mut c = case(name, about, 0, &SEED, Some(&SEED), &good, &checkpoints);
+        c["receipts"][12]["verification"][key] = value;
+        c
+    };
+    vec![
+        case(
+            "recheck-of-an-accept",
+            "Receipt 11 is a reviewer's accept and receipt 12 is another person's re-check of it.",
+            2,
+            &SEED,
+            Some(&SEED),
+            &good,
+            &checkpoints,
+        ),
+        changed(
+            "recheck-pointed-elsewhere",
+            "Receipt 12's of is changed to another receipt after it was signed.",
+            "of",
+            json!(10),
+        ),
+        changed(
+            "recheck-turned-into-human-outcome",
+            "Receipt 12's kind is changed from recheck to human after it was signed.",
+            "kind",
+            json!("human"),
+        ),
+        changed(
+            "recheck-reviewer-swapped",
+            "Receipt 12 names the first reviewer as the re-checker after it was signed.",
+            "reviewer",
+            json!("human:1c9e44d0"),
+        ),
+    ]
 }
 
 /// Spec 1.5.0: a person's verdict that names the reviewer and their time, and the ways to alter them.

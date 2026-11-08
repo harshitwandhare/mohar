@@ -26,6 +26,7 @@ use serde::Deserialize;
 
 use crate::load::{self, Load};
 use crate::prediction::{Ask, Predictions};
+use crate::recheck::Rechecks;
 use crate::telemetry::{self, Event, Telemetry};
 use serde_json::json;
 
@@ -118,6 +119,8 @@ struct Inner {
     predictions: Predictions,
     /// What was asked of each approver this hour and what was held, rebuilt from the log.
     load: Load,
+    /// Accepts drawn for a second person to re-check, rebuilt from the log.
+    rechecks: Rechecks,
 }
 
 /// Serve until the process is stopped. Prints `listening on ADDR` once bound, so callers that ask
@@ -137,7 +140,8 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
         .transpose()?;
     let mut log = FileLog::open(dir).map_err(|e| e.to_string())?;
     log.set_segment_bytes(cfg.segment_bytes);
-    let (pending, ledger, lessons, approvals, predictions, load) = replay(dir, &policy, &log)?;
+    let (pending, ledger, lessons, approvals, predictions, load, rechecks) =
+        replay(dir, &policy, &log)?;
     let listener = TcpListener::bind(cfg.addr).map_err(|e| format!("{}: {e}", cfg.addr))?;
     let local = listener.local_addr().map_err(|e| e.to_string())?;
     // Nobody may be reading stdout (a closed pipe on Windows); the daemon must not die over that.
@@ -178,6 +182,7 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
             approvals,
             predictions,
             load,
+            rechecks,
             tasks: HashMap::new(),
             ran: HashSet::new(),
             baselines: HashMap::new(),
@@ -268,6 +273,7 @@ type Replayed = (
     Vec<Approval>,
     Predictions,
     Load,
+    Rechecks,
 );
 
 /// Read the log once: decisions still waiting for an outcome, the trust ledger and lesson book rebuilt
@@ -280,11 +286,19 @@ fn replay(dir: &Path, policy: &Policy, log: &FileLog) -> Result<Replayed, String
     let mut lessons = Book::new(log.verifying_key());
     let mut predictions = Predictions::default();
     let mut load = Load::default();
+    let mut rechecks = Rechecks::default();
     let seed = log.review_seed();
     // Signing a lesson has no failing input today; if one appears, the daemon doesn't start on a
     // book it couldn't rebuild.
     let mut failed = None;
     for_each_log_receipt(dir, |r: Receipt| match &r.verification {
+        // A re-check closes the one it answers and passing clears the flag; it never counts as an
+        // outcome for the agent. The live path does the same.
+        Some(v) if v.kind == "recheck" => {
+            if let Some(checked) = rechecks.close(v.of) {
+                apply_recheck(&mut ledger, &checked, &v.result);
+            }
+        }
         Some(v) => {
             if v.kind != "host" {
                 pending.remove(&v.of);
@@ -300,6 +314,8 @@ fn replay(dir: &Path, policy: &Policy, log: &FileLog) -> Result<Replayed, String
             {
                 failed.get_or_insert(e);
             }
+            let flagged = is_flagged(&ledger, &r);
+            rechecks.on_outcome(&r, flagged, &seed);
         }
         None if r
             .person
@@ -357,7 +373,15 @@ fn replay(dir: &Path, policy: &Policy, log: &FileLog) -> Result<Replayed, String
     .map_err(|e| e.to_string())?;
     match failed {
         Some(e) => Err(e),
-        None => Ok((pending, ledger, lessons, approvals, predictions, load)),
+        None => Ok((
+            pending,
+            ledger,
+            lessons,
+            approvals,
+            predictions,
+            load,
+            rechecks,
+        )),
     }
 }
 
@@ -414,7 +438,8 @@ fn verified(
     policy: &Policy,
     at: u64,
 ) -> Option<Outcome> {
-    if kind == "host" {
+    // A host report says only that a tool ran; a re-check is about the reviewer, not the agent.
+    if kind == "host" || kind == "recheck" {
         return None;
     }
     let passed = match result {
@@ -480,6 +505,7 @@ fn handle(stream: &mut TcpStream, state: &State) {
         "/v1/escalation" => escalation(state, &body),
         "/v1/predictions" => predictions(state, &body),
         "/v1/load" => load_report(state, &body),
+        "/v1/rechecks" => rechecks(state, &body),
         _ => (404, json!({"error": "no such endpoint"})),
     };
     respond(stream, status, &answer);
@@ -1489,6 +1515,25 @@ fn load_report(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     (200, json!({ "people": people }))
 }
 
+/// The accepts waiting for a second person to re-check, oldest first, with whose accept each was. The
+/// body is `{}`.
+fn rechecks(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
+    if !is_empty_object(body) {
+        return bad("body must be {}");
+    }
+    let inner = match lock(state) {
+        Ok(g) => g,
+        Err(e) => return e,
+    };
+    let open: Vec<serde_json::Value> = inner
+        .rechecks
+        .list()
+        .into_iter()
+        .map(|(seq, reviewer)| json!({"receipt_seq": seq, "reviewer": reviewer}))
+        .collect();
+    (200, json!({ "open": open }))
+}
+
 fn outcome(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     let req: OutcomeRequest = match serde_json::from_slice(body) {
         Ok(r) => r,
@@ -1497,9 +1542,9 @@ fn outcome(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     // `host` is the host's own report that a tool ran. It is recorded, never counted as verification.
     if !matches!(
         req.verifier.as_str(),
-        "tests" | "diff" | "replay" | "human" | "host"
+        "tests" | "diff" | "replay" | "human" | "host" | "recheck"
     ) {
-        return bad("verifier must be tests, diff, replay, human or host");
+        return bad("verifier must be tests, diff, replay, human, host or recheck");
     }
     if !matches!(req.result.as_str(), "pass" | "fail" | "unknown") {
         return bad("result must be pass, fail or unknown");
@@ -1509,21 +1554,36 @@ fn outcome(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     }
     // A person's verdict counts only through the rubber-stamping guard, which needs both.
     let review = match (req.verifier.as_str(), req.reviewer, req.review_secs) {
-        ("human", Some(reviewer), Some(seconds))
+        ("human" | "recheck", Some(reviewer), Some(seconds))
             if field_ok(&reviewer, MAX_FIELD) && !is_pseudonym(&reviewer) =>
         {
             Some(HumanReview { reviewer, seconds })
         }
-        ("human", ..) => {
-            return bad("a human outcome needs reviewer (not a pseudonym) and review_secs");
+        ("human" | "recheck", ..) => {
+            return bad(
+                "a human outcome or re-check needs reviewer (not a pseudonym) and review_secs",
+            );
         }
         (_, None, None) => None,
-        _ => return bad("reviewer and review_secs belong to human outcomes only"),
+        _ => return bad("reviewer and review_secs belong to human outcomes and re-checks only"),
     };
     let mut inner = match lock(state) {
         Ok(g) => g,
         Err(e) => return e,
     };
+    if let (Some(review), "recheck") = (&review, req.verifier.as_str()) {
+        return match (req.receipt_seq, req.call_id) {
+            (Some(seq), None) => record_recheck(
+                state,
+                &mut inner,
+                seq,
+                &req.result,
+                req.evidence_sha256,
+                review,
+            ),
+            _ => bad("a re-check names the outcome it checks by receipt_seq"),
+        };
+    }
     let seq = match (req.receipt_seq, req.call_id) {
         (Some(seq), None) => seq,
         (None, Some(call)) => match inner.calls.remove(&call) {
@@ -1545,20 +1605,20 @@ fn outcome(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     }
     match append_outcome(
         &mut inner,
-        &state.policy,
+        state,
         seq,
         &req.verifier,
         &req.result,
         req.evidence_sha256,
         review,
     ) {
-        Ok(r) => {
+        Ok((r, recheck)) => {
             report(state, || Event::Outcome {
                 verifier: req.verifier.clone(),
                 result: req.result.clone(),
                 count: 1,
             });
-            (200, json!({ "receipt_seq": r }))
+            (200, json!({ "receipt_seq": r, "recheck": recheck }))
         }
         // As in `decide`: a write the disk refused is never acknowledged.
         Err(e) => (500, json!({ "error": e })),
@@ -1567,15 +1627,18 @@ fn outcome(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
 
 /// Sign an outcome for a pending decision, and let it change trust once it is on disk. A `host` report
 /// only marks the decision as having run: it is recorded, but the decision stays open for a verifier.
+/// Record an outcome for the pending decision `seq`. Returns the receipt's seq and whether the outcome was
+/// drawn for a re-check.
 fn append_outcome(
     inner: &mut Inner,
-    policy: &Policy,
+    state: &State,
     seq: u64,
     kind: &str,
     result: &str,
     evidence_sha256: String,
     review: Option<HumanReview>,
-) -> Result<u64, String> {
+) -> Result<(u64, bool), String> {
+    let policy = &state.policy;
     let p = inner
         .pending
         .get(&seq)
@@ -1611,7 +1674,86 @@ fn append_outcome(
     {
         learn(&mut inner.lessons, &inner.log, &r, &o)?;
     }
-    Ok(r.seq)
+    let flagged = is_flagged(&inner.ledger, &r);
+    let recheck = inner.rechecks.on_outcome(&r, flagged, &state.review_seed);
+    Ok((r.seq, recheck))
+}
+
+/// Whether the reviewer on outcome receipt `r` is flagged for rubber-stamping, as the ledger stands.
+fn is_flagged(ledger: &Ledger, r: &Receipt) -> bool {
+    r.verification
+        .as_ref()
+        .and_then(|v| v.reviewer.as_deref())
+        .is_some_and(|reviewer| ledger.is_rubber_stamping(reviewer))
+}
+
+/// Apply a re-check of the accept in `checked` to its reviewer: a pass clears their flag, a fail keeps it.
+fn apply_recheck(ledger: &mut Ledger, checked: &Receipt, result: &str) {
+    if let Some(reviewer) = checked
+        .verification
+        .as_ref()
+        .and_then(|v| v.reviewer.as_deref())
+    {
+        ledger.recheck(reviewer, result == "pass");
+    }
+}
+
+/// A second person's look at an accept that was drawn for a re-check. It is its own outcome receipt,
+/// `kind` `recheck`, whose `of` is the outcome it checks, and it changes nothing about the agent.
+fn record_recheck(
+    state: &State,
+    inner: &mut Inner,
+    seq: u64,
+    result: &str,
+    evidence_sha256: String,
+    review: &HumanReview,
+) -> (u16, serde_json::Value) {
+    if result == "unknown" {
+        return bad("a re-check passes or fails");
+    }
+    let Some(checked) = inner.rechecks.get(seq).cloned() else {
+        return (
+            404,
+            json!({"error": "no open re-check for that receipt_seq"}),
+        );
+    };
+    let first = checked
+        .verification
+        .as_ref()
+        .and_then(|v| v.reviewer.clone());
+    if first.as_deref() == Some(inner.log.pseudonym(&review.reviewer).as_str()) {
+        return (
+            403,
+            json!({"error": "a reviewer can't re-check their own accept"}),
+        );
+    }
+    let entry = Entry {
+        ts: crate::now_rfc3339(),
+        agent_id: checked.agent.id.clone(),
+        action: checked.action.clone(),
+        decision: checked.decision.clone(),
+        person: None,
+        verification: Some(Verification {
+            evidence_sha256,
+            kind: "recheck".to_string(),
+            of: seq,
+            result: result.to_string(),
+            review_secs: Some(review.seconds),
+            reviewer: Some(review.reviewer.clone()),
+        }),
+    };
+    let r = match inner.log.append(entry) {
+        Ok(r) => r,
+        Err(e) => return (500, json!({ "error": e.to_string() })),
+    };
+    inner.rechecks.close(seq);
+    apply_recheck(&mut inner.ledger, &checked, result);
+    report(state, || Event::Outcome {
+        verifier: "recheck".to_string(),
+        result: result.to_string(),
+        count: 1,
+    });
+    (200, json!({ "receipt_seq": r.seq }))
 }
 
 /// Let a verified outcome change trust, from the receipt as written, so live and replay agree. A
@@ -1728,15 +1870,9 @@ fn verify_task(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     let mut recorded = 0;
     for seq in seqs {
         if inner.pending.contains_key(&seq) {
-            if let Err(e) = append_outcome(
-                &mut inner,
-                &state.policy,
-                seq,
-                kind,
-                result,
-                evidence.clone(),
-                None,
-            ) {
+            if let Err(e) =
+                append_outcome(&mut inner, state, seq, kind, result, evidence.clone(), None)
+            {
                 // As in `decide`: a write the disk refused is never acknowledged.
                 return (500, json!({ "error": e }));
             }
@@ -1923,6 +2059,7 @@ mod tests {
                 approvals: Vec::new(),
                 predictions: Predictions::default(),
                 load: Load::default(),
+                rechecks: Rechecks::default(),
             }),
             policy: Policy::builtin(&dir),
             log_dir: dir,

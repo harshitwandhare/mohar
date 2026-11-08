@@ -1,6 +1,6 @@
 # Mohar receipts, format version 1
 
-Spec version 1.7.0
+Spec version 1.8.0
 
 This document describes the receipts and checkpoints Mohar writes, apart from the Rust code, so a
 verifier can be written in any language. It covers receipt format `v: 1`. The reference implementation is
@@ -48,8 +48,8 @@ A receipt is a JSON object with these keys, and no others:
 | `decision.to` | array of strings | Present only on an escalation that was routed to named people (added in 1.4.0): any one of them may answer. On a `predicted` decision (added in 1.6.0), the one person whose answer was predicted. On a `budget` decision (added in 1.7.0), the people who had no room. In strict privacy mode, pseudonyms like `agent.id`. |
 | `sig` | signature | Signature over the receipt without `sig` (section 3). |
 | `verification` | object | Present only on a receipt that records an outcome (section 5). |
-| `verification.reviewer` | string | On a `human` outcome (added in 1.5.0): who reviewed it. In strict privacy mode, a pseudonym like `agent.id`. |
-| `verification.review_secs` | integer | On a `human` outcome (added in 1.5.0): how many seconds the reviewer spent on it. |
+| `verification.reviewer` | string | On a `human` outcome (added in 1.5.0): who reviewed it. On a `recheck` (added in 1.8.0): who re-checked it. In strict privacy mode, a pseudonym like `agent.id`. |
+| `verification.review_secs` | integer | On a `human` outcome (added in 1.5.0) or a `recheck` (added in 1.8.0): how many seconds the person spent on it. |
 | `person` | object | Present only on a receipt that records what a person did (section 5.1, added in 1.2.0). |
 
 Rules for every receipt:
@@ -97,7 +97,7 @@ A receipt that records the checked outcome of an earlier decision carries `verif
 | Key | Type | Meaning |
 |---|---|---|
 | `evidence_sha256` | string | SHA-256 of what the verifier looked at: a test log, a diff, a review. |
-| `kind` | string | `tests`, `diff`, `replay`, `human`, or `host` for the host's own report that a tool ran. |
+| `kind` | string | `tests`, `diff`, `replay`, `human`, `host` for the host's own report that a tool ran, or `recheck` (added in 1.8.0) for a second person's look at a `human` accept. |
 | `of` | integer | `seq` of the decision this is the outcome of. |
 | `result` | string | `pass`, `fail` or `unknown`. |
 
@@ -105,6 +105,12 @@ An outcome receipt MUST name, in `of`, an earlier receipt that is itself a decis
 `verification`), and MUST repeat that decision's `agent`, `action` and `decision` exactly. These rules are
 part of Level 3 (section 8). The reference verifier writes outcomes this way but doesn't yet refuse a log
 that breaks them; `check.py` checks them on `v1.json`.
+
+A `recheck` is the exception: its `of` names an earlier `human` outcome receipt with `result` `pass`, and
+it repeats that receipt's `agent`, `action` and `decision`. It carries `reviewer` and `review_secs`, its
+`reviewer` MUST differ from the checked outcome's, and its `result` is `pass` or `fail`. It says whether the
+first reviewer was still reading; it is not an outcome of the agent's action, and the reference daemon
+never counts it toward the agent's trust. A passed re-check clears that reviewer's rubber-stamping flag.
 
 ### 5.1 Person acts
 

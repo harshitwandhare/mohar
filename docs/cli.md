@@ -128,11 +128,11 @@ and cumulative metrics: `mohar.decisions` by result, `mohar.outcomes` by verifie
 targets or arguments. Export runs on its own thread; a collector that is down or slow loses telemetry
 and never delays or changes a decision. Without the flag nothing is collected.
 
-Nine endpoints, JSON in and out:
+Ten endpoints, JSON in and out:
 
 ```
 POST /v1/decide   {agent, tool, target, args_sha256, call_id?}  ->  {result, level, receipt_seq, lessons}
-POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256, reviewer?, review_secs?}  ->  {receipt_seq}
+POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256, reviewer?, review_secs?}  ->  {receipt_seq, recheck}
 POST /v1/verify   {agent, task}  ->  {verified, result}
 POST /v1/person   {by, act, agent, capability?, lesson?, until?}  ->  {receipt_seq}
 POST /v1/approve  {receipt_seq, by, action_sha256}  ->  {receipt_seq, until}
@@ -140,6 +140,7 @@ POST /v1/refuse   {receipt_seq, by, action_sha256}  ->  {receipt_seq}
 POST /v1/escalation  {receipt_seq}  ->  {agent, action, action_sha256, to, level, passes, failures, suspended}
 POST /v1/predictions  {}  ->  {people: {<id>: {predicted_today, checks, agreed}}}
 POST /v1/load  {}  ->  {people: {<id>: {set, per_hour, flagged, asked, held, agents, flooding}}}
+POST /v1/rechecks  {}  ->  {open: [{receipt_seq, reviewer}]}
 ```
 
 When the policy has a `people` section, an `escalate` answer from `/v1/decide` also carries `approver`:
@@ -161,6 +162,15 @@ if it sends them). Both are signed into the receipt, and the reviewer goes throu
 strict privacy mode. A person's accept counts toward trust only if they spent at least 30 seconds and
 haven't approved more than 95% of their last 50 reviews; a reject always counts. The daemon rebuilds
 each reviewer's window and flag from the log on start.
+
+One accept in ten (a draw fixed by the log's seed), and every accept by a reviewer flagged for
+rubber-stamping, is drawn for a second person to re-check; the outcome's answer says `"recheck": true`
+and `/v1/rechecks` lists the open ones. The re-check goes to the same endpoint with `verifier` `recheck`,
+the `receipt_seq` of the accept, `pass` or `fail`, and the second person's `reviewer` and `review_secs`.
+The first reviewer can't re-check their own accept (403), and an accept that isn't open gets a 404. A
+pass clears the first reviewer's flag, so their accepts count again and their budget is whole again; a
+fail keeps it. Either way it changes nothing about the agent. Open re-checks and cleared flags are rebuilt
+from the log on start.
 
 `/v1/person` records what a person did as a signed receipt (receipt spec section 5.1) and applies it:
 `promote` with `lesson` (the `failure` hash from a lesson) shares that lesson with every agent on its
