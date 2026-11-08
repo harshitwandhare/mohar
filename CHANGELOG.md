@@ -9,6 +9,12 @@ receipt format; each such change is called out.
 
 ### Added
 
+- A member can set `escalations_per_hour` (#205). Past it they aren't asked: the request goes to whoever
+  else can answer, or is held, a signed `deny` by `budget` that names who was full, says when to ask again
+  and counts against nobody. Asking again about the same action costs nothing, and a model's yes uses no
+  budget. `POST /v1/load` reports each budget and which agents were held. The receipt spec is 1.7.0, with
+  three conformance vectors.
+
 - The daemon answers some escalations for a person from their own past answers (#52). A member's
   `predict` setting names the low-risk, reversible capabilities they allow it on, with paths and a daily
   count. When the model is at least 98% sure of a yes, the decision is `allow` by `predicted`, naming the

@@ -97,9 +97,19 @@ fn pre_tool_use(daemon: &str, p: &Value) -> String {
                 reason("not earned yet on this capability, so a person decides"),
             ),
         },
-        Some("deny") => match answer["reason"].as_str() {
-            Some(why) => ("deny", reason(&format!("refused by a gate: {why}"))),
-            None => ("deny", reason("denied")),
+        Some("deny") => match (approvers(&answer["held"]["to"]), answer["reason"].as_str()) {
+            (Some(who), _) => {
+                let wait = answer["held"]["retry_after"].as_u64().unwrap_or(3_600);
+                let wait = wait.div_ceil(60);
+                (
+                    "deny",
+                    reason(&format!(
+                        "{who} can't take more requests this hour; ask again in about {wait} min"
+                    )),
+                )
+            }
+            (None, Some(why)) => ("deny", reason(&format!("refused by a gate: {why}"))),
+            (None, None) => ("deny", reason("denied")),
         },
         _ => ("deny", reason("unexpected answer from the daemon; denying")),
     };
@@ -405,6 +415,30 @@ mod tests {
             let (url, _) = fake(200, body);
             let (decision, why) = answer_of(&run(&url, &pre("Read", json!({"file_path": "a"}))));
             assert_eq!((decision.as_str(), why.as_str()), expect, "{body}");
+        }
+    }
+
+    #[test]
+    fn a_held_request_says_who_is_full_and_when_to_ask_again() {
+        for (held, expect) in [
+            (
+                r#"{"to": ["user:a", "user:b"], "retry_after": 121}"#,
+                "Mohar: user:a or user:b can't take more requests this hour; ask again in about 3 min (receipt 4)",
+            ),
+            (
+                r#"{"to": ["user:a"]}"#,
+                "Mohar: user:a can't take more requests this hour; ask again in about 60 min (receipt 4)",
+            ),
+            (r#"{"to": []}"#, "Mohar: denied (receipt 4)"),
+        ] {
+            let body = format!(r#"{{"result": "deny", "receipt_seq": 4, "held": {held}}}"#);
+            let (url, _) = fake(200, &body);
+            let (decision, why) = answer_of(&run(&url, &pre("Read", json!({"file_path": "a"}))));
+            assert_eq!(
+                (decision.as_str(), why.as_str()),
+                ("deny", expect),
+                "{body}"
+            );
         }
     }
 

@@ -115,6 +115,9 @@ struct Member {
     /// Capabilities this person lets their answers be predicted on, with the limits they set.
     #[serde(default)]
     predict: BTreeMap<String, crate::predict::Limits>,
+    /// The most new requests this person may be asked in an hour. Absent means no limit.
+    #[serde(default)]
+    escalations_per_hour: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -297,6 +300,9 @@ pub enum PolicyError {
         /// The name.
         name: String,
     },
+    /// An hourly budget of 0, which would hold everything meant for that person.
+    #[error("people.members.{0}.escalations_per_hour is 0; give a number above 0, or leave it out")]
+    BadBudget(String),
     /// A capability a person asked to have predicted that can never be.
     #[error("people.members.{person}.predict names {name:?}, {why}")]
     BadPrediction {
@@ -495,6 +501,25 @@ impl Policy {
             .and_then(|p| p.members.get(person))
             .map(|m| m.predict.clone())
             .unwrap_or_default()
+    }
+
+    /// How many new requests `person` may be asked in an hour; `None` when they set no limit or aren't
+    /// listed under `people.members`.
+    pub fn escalation_budget(&self, person: &str) -> Option<u32> {
+        self.people
+            .as_ref()?
+            .members
+            .get(person)?
+            .escalations_per_hour
+    }
+
+    /// Everyone with an hourly budget and what it is, by id.
+    pub fn escalation_budgets(&self) -> Vec<(&str, u32)> {
+        self.people
+            .iter()
+            .flat_map(|p| &p.members)
+            .filter_map(|(id, m)| Some((id.as_str(), m.escalations_per_hour?)))
+            .collect()
     }
 
     /// A target as a path relative to the root, with `.` and `..` resolved, or `None` when it is
@@ -860,6 +885,9 @@ fn check_people(p: &People) -> Result<(), PolicyError> {
         })
     };
     for (id, m) in &p.members {
+        if m.escalations_per_hour == Some(0) {
+            return Err(PolicyError::BadBudget(id.clone()));
+        }
         if let Some(e) = m
             .reports_to
             .as_deref()

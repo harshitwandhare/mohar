@@ -4,6 +4,7 @@
 mod answer;
 mod daemon;
 mod hook;
+mod load;
 mod prediction;
 mod publish;
 mod telemetry;
@@ -67,7 +68,7 @@ enum Command {
         /// Trust level at decision time.
         #[arg(long, default_value_t = 0)]
         level: u8,
-        /// gate, score, human or predicted.
+        /// gate, score, human, predicted or budget.
         #[arg(long, default_value = "human")]
         by: String,
     },
