@@ -217,7 +217,9 @@ People who are asked too often stop reading, so a person can cap how many new re
 hour. Past that they aren't asked. If nobody else who could answer has room, the request is held: a signed
 deny that names who was full and says when to ask again, and that counts against nobody's record. So one
 busy agent can use up a person's attention for an hour but can't push them past the limit they chose.
-Batching related requests and walking up the chain on a timeout are still to come.
+A reviewer flagged for rubber-stamping gets half their budget until a re-check clears them, and the
+load report names any agent asking a person three times as often as it usually does. Batching related
+requests and walking up the chain on a timeout are still to come.
 
 ## 7. Receipts
 
