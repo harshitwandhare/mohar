@@ -1,6 +1,6 @@
 # Mohar receipts, format version 1
 
-Spec version 1.6.0
+Spec version 1.7.0
 
 This document describes the receipts and checkpoints Mohar writes, apart from the Rust code, so a
 verifier can be written in any language. It covers receipt format `v: 1`. The reference implementation is
@@ -43,9 +43,9 @@ A receipt is a JSON object with these keys, and no others:
 | `action.args_sha256` | string | SHA-256 of the exact arguments; an approval is bound to them. |
 | `decision.result` | string | `allow`, `escalate` or `deny`. |
 | `decision.level` | integer | The agent's trust level on this capability at the time: 0 ask first, 1 supervised, 2 trusted. |
-| `decision.by` | string | What decided: `gate`, `score`, `human` or `predicted`. |
+| `decision.by` | string | What decided: `gate`, `score`, `human`, `predicted` or `budget`. |
 | `decision.review` | `true` | Present only when the allowed action was sampled for a person to review. |
-| `decision.to` | array of strings | Present only on an escalation that was routed to named people (added in 1.4.0): any one of them may answer. On a `predicted` decision (added in 1.6.0), the one person whose answer was predicted. In strict privacy mode, pseudonyms like `agent.id`. |
+| `decision.to` | array of strings | Present only on an escalation that was routed to named people (added in 1.4.0): any one of them may answer. On a `predicted` decision (added in 1.6.0), the one person whose answer was predicted. On a `budget` decision (added in 1.7.0), the people who had no room. In strict privacy mode, pseudonyms like `agent.id`. |
 | `sig` | signature | Signature over the receipt without `sig` (section 3). |
 | `verification` | object | Present only on a receipt that records an outcome (section 5). |
 | `verification.reviewer` | string | On a `human` outcome (added in 1.5.0): who reviewed it. In strict privacy mode, a pseudonym like `agent.id`. |
@@ -143,6 +143,13 @@ A decision with `by` `predicted` (section 2) is a yes that a model of one person
 for them, without asking. Its `decision.to` names that person and nobody else, and its `result` is
 `allow`. The reference daemon writes one only on a low-risk, reversible capability the person switched
 prediction on for, inside the paths and daily count they set; how sure the model was is not recorded.
+
+A decision with `by` `budget` is a request held because the people it would have gone to had used up the
+hourly budget they set. Its `result` is `deny` and its `decision.to` names those people. Nobody was asked,
+so nobody answers it, and it says nothing about the agent: a verifier MUST NOT read it as a gate stop. The
+reference daemon counts the distinct actions each person was asked in the last hour from the `escalate`
+receipts that name them, so a log rebuilds the counts without any other state. The budgets themselves are
+in the policy, not the log.
 
 Who the person is rests on whoever runs the daemon: `by` is recorded, not authenticated. Binding it to a
 key the person holds is future work.

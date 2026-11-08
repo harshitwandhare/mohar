@@ -24,6 +24,7 @@ use mohar_core::{
 };
 use serde::Deserialize;
 
+use crate::load::{self, Load};
 use crate::prediction::{Ask, Predictions};
 use crate::telemetry::{self, Event, Telemetry};
 use serde_json::json;
@@ -115,6 +116,8 @@ struct Inner {
     approvals: Vec<Approval>,
     /// People's answers, the models trained on them and what was predicted, rebuilt from the log.
     predictions: Predictions,
+    /// What was asked of each approver this hour and what was held, rebuilt from the log.
+    load: Load,
 }
 
 /// Serve until the process is stopped. Prints `listening on ADDR` once bound, so callers that ask
@@ -134,7 +137,7 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
         .transpose()?;
     let mut log = FileLog::open(dir).map_err(|e| e.to_string())?;
     log.set_segment_bytes(cfg.segment_bytes);
-    let (pending, ledger, lessons, approvals, predictions) = replay(dir, &policy, &log)?;
+    let (pending, ledger, lessons, approvals, predictions, load) = replay(dir, &policy, &log)?;
     let listener = TcpListener::bind(cfg.addr).map_err(|e| format!("{}: {e}", cfg.addr))?;
     let local = listener.local_addr().map_err(|e| e.to_string())?;
     // Nobody may be reading stdout (a closed pipe on Windows); the daemon must not die over that.
@@ -174,6 +177,7 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
             lessons,
             approvals,
             predictions,
+            load,
             tasks: HashMap::new(),
             ran: HashSet::new(),
             baselines: HashMap::new(),
@@ -263,6 +267,7 @@ type Replayed = (
     Book,
     Vec<Approval>,
     Predictions,
+    Load,
 );
 
 /// Read the log once: decisions still waiting for an outcome, the trust ledger and lesson book rebuilt
@@ -274,6 +279,7 @@ fn replay(dir: &Path, policy: &Policy, log: &FileLog) -> Result<Replayed, String
     let mut ledger = Ledger::new();
     let mut lessons = Book::new(log.verifying_key());
     let mut predictions = Predictions::default();
+    let mut load = Load::default();
     let seed = log.review_seed();
     // Signing a lesson has no failing input today; if one appears, the daemon doesn't start on a
     // book it couldn't rebuild.
@@ -308,6 +314,7 @@ fn replay(dir: &Path, policy: &Policy, log: &FileLog) -> Result<Replayed, String
             apply_person(&mut ledger, &mut lessons, &r);
         }
         None => {
+            load.record(&r);
             // A gate stop is a near miss (S0) unless it only stopped a suspended agent; an action
             // run on the record uses up one raised review draw. The live path does the same.
             let (by, result) = (r.decision.by.as_str(), r.decision.result.as_str());
@@ -350,7 +357,7 @@ fn replay(dir: &Path, policy: &Policy, log: &FileLog) -> Result<Replayed, String
     .map_err(|e| e.to_string())?;
     match failed {
         Some(e) => Err(e),
-        None => Ok((pending, ledger, lessons, approvals, predictions)),
+        None => Ok((pending, ledger, lessons, approvals, predictions, load)),
     }
 }
 
@@ -426,7 +433,7 @@ fn verified(
 }
 
 /// Seconds since the Unix epoch for an RFC 3339 UTC timestamp as the log writes it; 0 if malformed.
-fn parse_rfc3339(ts: &str) -> u64 {
+pub(crate) fn parse_rfc3339(ts: &str) -> u64 {
     let num = |a: usize, b: usize| ts.get(a..b).and_then(|s| s.parse::<i64>().ok());
     let (Some(y), Some(m), Some(d), Some(hh), Some(mm), Some(ss)) = (
         num(0, 4),
@@ -472,6 +479,7 @@ fn handle(stream: &mut TcpStream, state: &State) {
         "/v1/refuse" => answer(state, &body, "refuse"),
         "/v1/escalation" => escalation(state, &body),
         "/v1/predictions" => predictions(state, &body),
+        "/v1/load" => load_report(state, &body),
         _ => (404, json!({"error": "no such endpoint"})),
     };
     respond(stream, status, &answer);
@@ -1189,7 +1197,7 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     };
     // Who decides an escalation, from the id as the agent sent it, which is what delegations name. It
     // goes into the receipt, so the log alone says who was asked.
-    let route = (stop.is_none() && !approved && verdict.result == "escalate")
+    let mut route = (stop.is_none() && !approved && verdict.result == "escalate")
         .then(|| state.policy.route(&req.agent, &action.capability))
         .flatten();
     // The model may answer only for the one person an escalation goes to. A suspended agent is denied
@@ -1215,6 +1223,34 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         (Some(person), Some(Prediction::Yes { p_yes })) => Some((person.clone(), p_yes)),
         _ => None,
     };
+    // A person with no room in their hourly budget isn't asked. If too few people are left to answer,
+    // the request is held; a model's yes asks nobody, so it never comes to this.
+    let held = match route.as_mut().filter(|_| predicted_yes.is_none()) {
+        Some(r) => {
+            let question = load::question(&agent, &logged);
+            let at = parse_rfc3339(&ts);
+            let (room, full) = with_room(state, &inner, &r.to, &question, at);
+            if !full.is_empty() && room.len() < state.policy.approvals_needed(&action.capability) {
+                Some(full)
+            } else {
+                // Enough people have room: only they are asked, and only they may answer.
+                r.to = room;
+                None
+            }
+        }
+        None => None,
+    };
+    let held_answer = held.as_ref().map(|full| {
+        let at = parse_rfc3339(&ts);
+        let retry_after = full
+            .iter()
+            .map(|p| inner.load.retry_after(&inner.log.pseudonym(p), at))
+            .min();
+        json!({"to": full, "retry_after": retry_after})
+    });
+    if held.is_some() {
+        route = None;
+    }
     let decision = match &stop {
         Some(_) => Decision {
             result: "deny".to_string(),
@@ -1222,6 +1258,14 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
             by: "gate".to_string(),
             review: false,
             to: Vec::new(),
+        },
+        // Names who was full; nobody is being asked. Not a mistake by the agent, so no near miss.
+        None if held.is_some() => Decision {
+            result: "deny".to_string(),
+            level: verdict.level,
+            by: "budget".to_string(),
+            review: false,
+            to: held.clone().unwrap_or_default(),
         },
         None if approved => Decision {
             result: "allow".to_string(),
@@ -1269,6 +1313,7 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         // The disk refused the write: nothing is acknowledged that isn't on disk.
         Err(e) => return (500, json!({ "error": e.to_string() })),
     };
+    inner.load.record(&receipt);
     let capability = action.capability.clone();
     let lessons: Vec<serde_json::Value> = {
         let all = inner.lessons.for_context(&agent, &capability);
@@ -1314,7 +1359,8 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
                 .predictions
                 .predicted(person, parse_rfc3339(&receipt.ts));
         }
-        (Some(person), Some(Prediction::Check { .. })) => {
+        // A check that was held was never asked, so nobody can answer it.
+        (Some(person), Some(Prediction::Check { .. })) if held.is_none() => {
             inner.predictions.check_opened(receipt.seq, person);
         }
         _ => {}
@@ -1365,23 +1411,67 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
             "lessons": lessons,
             "remediation": remediation,
             "approver": approver,
+            "held": held_answer,
             "predicted": predicted_yes.map(|(by, p_yes)| json!({"by": by, "p_yes": p_yes})),
         }),
     )
 }
 
+/// Split `people` into those with room in their hourly budget for `question` at `at`, and those without.
+/// Someone with no budget always has room. Budgets are set by id in the clear; the counts are kept as
+/// the log writes ids.
+fn with_room(
+    state: &State,
+    inner: &Inner,
+    people: &[String],
+    question: &str,
+    at: u64,
+) -> (Vec<String>, Vec<String>) {
+    people
+        .iter()
+        .cloned()
+        .partition(|p| match state.policy.escalation_budget(p) {
+            Some(n) => inner
+                .load
+                .has_room(&inner.log.pseudonym(p), n, question, at),
+            None => true,
+        })
+}
+
+fn is_empty_object(body: &[u8]) -> bool {
+    serde_json::from_slice::<serde_json::Map<String, serde_json::Value>>(body)
+        .is_ok_and(|m| m.is_empty())
+}
+
 /// For each person with answers or predictions: how many answers were predicted for them today, how
 /// many checks they answered and how many of those agreed with the prediction. The body is `{}`.
 fn predictions(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
-    if serde_json::from_slice::<serde_json::Map<String, serde_json::Value>>(body)
-        .map_or(true, |m| !m.is_empty())
-    {
+    if !is_empty_object(body) {
         return bad("body must be {}");
     }
     match lock(state) {
         Ok(inner) => (200, inner.predictions.report(now_secs())),
         Err(e) => e,
     }
+}
+
+/// For each person with an hourly budget: the budget, what they were asked this hour, how many requests
+/// were held for them and which agents sent those. The body is `{}`.
+fn load_report(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
+    if !is_empty_object(body) {
+        return bad("body must be {}");
+    }
+    let inner = match lock(state) {
+        Ok(g) => g,
+        Err(e) => return e,
+    };
+    let now = now_secs();
+    let mut people = serde_json::Map::new();
+    for (id, per_hour) in state.policy.escalation_budgets() {
+        let report = inner.load.report(&inner.log.pseudonym(id), per_hour, now);
+        people.insert(id.to_string(), report);
+    }
+    (200, json!({ "people": people }))
 }
 
 fn outcome(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
@@ -1817,6 +1907,7 @@ mod tests {
                 ledger: Ledger::new(),
                 approvals: Vec::new(),
                 predictions: Predictions::default(),
+                load: Load::default(),
             }),
             policy: Policy::builtin(&dir),
             log_dir: dir,
@@ -2107,13 +2198,13 @@ mod tests {
         for _ in 0..49 {
             human_pass(&mut inner.log, "user:r1");
         }
-        let (_, ledger, _, _, _) = replay(&s.log_dir, &s.policy, &inner.log).expect("replay");
+        let (_, ledger, ..) = replay(&s.log_dir, &s.policy, &inner.log).expect("replay");
         assert!(!ledger.is_rubber_stamping("user:r1"));
         // The 50th accept, all of them accepts: flagged, and a rebuilt ledger says so too. Another
         // reviewer's record is their own.
         human_pass(&mut inner.log, "user:r1");
         human_pass(&mut inner.log, "user:r2");
-        let (_, ledger, _, _, _) = replay(&s.log_dir, &s.policy, &inner.log).expect("replay");
+        let (_, ledger, ..) = replay(&s.log_dir, &s.policy, &inner.log).expect("replay");
         assert!(ledger.is_rubber_stamping("user:r1"));
         assert!(!ledger.is_rubber_stamping("user:r2"));
     }

@@ -2845,3 +2845,318 @@ fn an_escalation_that_goes_to_several_people_is_never_predicted() {
         assert_eq!(post(d.port, "/v1/approve", &body.to_string()).0, 200);
     }
 }
+
+/// A project with `policy`, in strict privacy mode if asked.
+fn project_with(name: &str, policy: &Value, strict: bool) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("mohar-daemon-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut init = Command::new(BIN);
+    init.arg("--dir").arg(&dir).arg("init");
+    if strict {
+        init.arg("--strict-privacy");
+    }
+    assert!(init.status().expect("init").success());
+    std::fs::write(dir.join("policy.json"), policy.to_string()).expect("policy");
+    dir
+}
+
+/// The routed team with the dev asked at most `per_hour` escalations an hour.
+fn budget_policy(per_hour: u32) -> Value {
+    let mut policy = people_policy();
+    policy["people"]["members"]["user:dev-1"]["escalations_per_hour"] = json!(per_hour);
+    policy
+}
+
+fn load(port: u16) -> Value {
+    let (status, l) = post(port, "/v1/load", "{}");
+    assert_eq!(status, 200, "{l}");
+    l
+}
+
+/// Ask for a docs page nobody asked about yet.
+fn ask_page(port: u16, n: u64) -> Value {
+    ask_as(port, WRITER, "Edit", &format!("docs/p{n}.md"), &args_n(n))
+}
+
+#[test]
+fn past_their_budget_a_person_is_not_asked_and_the_hold_survives_a_restart() {
+    let dir = project_with("budget", &budget_policy(2), false);
+    let d = Daemon::start(&dir, &[]);
+    let first = ask_page(d.port, 0);
+    assert_eq!(first["result"], "escalate", "{first}");
+    assert_eq!(ask_page(d.port, 1)["result"], "escalate");
+    // Asking again about the same action costs nothing and isn't held, even with the budget full.
+    let again = ask_page(d.port, 0);
+    assert_eq!(again["approver"]["to"], json!(["user:dev-1"]), "{again}");
+
+    let held = ask_page(d.port, 2);
+    assert_eq!(held["result"], "deny", "{held}");
+    assert_eq!(held["held"]["to"], json!(["user:dev-1"]), "{held}");
+    let wait = held["held"]["retry_after"].as_u64().expect("retry_after");
+    assert!((3_500..=3_600).contains(&wait), "{held}");
+    assert_eq!(held["approver"], Value::Null, "nobody is asked: {held}");
+    assert_eq!(held["gate"], Value::Null, "no gate stopped it: {held}");
+    let seq = held["receipt_seq"].as_u64().expect("seq");
+    assert_eq!(
+        log_of(&dir)[seq as usize]["decision"],
+        json!({"result": "deny", "level": 0, "by": "budget", "to": ["user:dev-1"]})
+    );
+    // A hold is no question, so there is nothing to answer.
+    let body = json!({"receipt_seq": seq, "by": "user:dev-1", "action_sha256": SHA});
+    assert_eq!(post(d.port, "/v1/approve", &body.to_string()).0, 404);
+    assert_eq!(
+        post(
+            d.port,
+            "/v1/escalation",
+            &json!({"receipt_seq": seq}).to_string()
+        )
+        .0,
+        404
+    );
+
+    let want = json!({"people": {"user:dev-1": {
+        "per_hour": 2, "asked": 2, "held": 1, "agents": {WRITER: 1}}}});
+    assert_eq!(load(d.port), want, "people with no budget aren't listed");
+    for wrong in ["", "[]", r#"{"by": "user:dev-1"}"#] {
+        assert_eq!(post(d.port, "/v1/load", wrong).0, 400, "{wrong:?}");
+    }
+    d.stop();
+
+    let d = Daemon::start(&dir, &[]);
+    assert_eq!(load(d.port), want, "rebuilt from the log");
+    let still = ask_page(d.port, 3);
+    assert_eq!(
+        still["result"], "deny",
+        "a restart doesn't refill it: {still}"
+    );
+    assert_eq!(
+        ask_page(d.port, 0)["result"],
+        "escalate",
+        "still costs nothing"
+    );
+
+    // Answering and using an approval doesn't take a place either.
+    let body = json!({"receipt_seq": first["receipt_seq"], "by": "user:dev-1",
+        "action_sha256": first["approver"]["action_sha256"]});
+    assert_eq!(post(d.port, "/v1/approve", &body.to_string()).0, 200);
+    assert_eq!(ask_page(d.port, 0)["result"], "allow", "the approval runs");
+    assert_eq!(load(d.port)["people"]["user:dev-1"]["asked"], 2);
+
+    // Someone else's agent goes to someone else.
+    let other = ask_as(d.port, "agent:other/1", "Edit", "src/a.rs", &args_n(9));
+    assert_eq!(other["result"], "escalate", "{other}");
+    d.stop();
+    verify(&dir);
+}
+
+#[test]
+fn a_budget_of_one_person_never_touches_another_s() {
+    let dir = project_with("budget-own", &budget_policy(1), false);
+    let d = Daemon::start(&dir, &[]);
+    assert_eq!(ask_page(d.port, 0)["result"], "escalate");
+    assert_eq!(ask_page(d.port, 1)["result"], "deny");
+    // Code edits go up to the lead, who has no budget.
+    for n in 0..5 {
+        let a = ask_as(
+            d.port,
+            WRITER,
+            "Edit",
+            &format!("src/{n}.rs"),
+            &args_n(100 + n),
+        );
+        assert_eq!(a["approver"]["to"], json!(["user:lead-1"]), "{a}");
+    }
+}
+
+#[test]
+fn several_people_are_asked_only_if_they_have_room_and_held_when_all_are_full() {
+    let mut policy = people_policy();
+    policy["people"]["owners"] = json!(["user:owner-1", "user:owner-2"]);
+    policy["people"]["members"]["user:owner-1"] = json!({"escalations_per_hour": 1});
+    policy["people"]["members"]["user:owner-2"] = json!({"escalations_per_hour": 2});
+    let dir = project_with("budget-owners", &policy, false);
+    let d = Daemon::start(&dir, &[]);
+    let ask = |n: u64| {
+        ask_as(
+            d.port,
+            "agent:other/1",
+            "Bash",
+            &format!("migrate {n}"),
+            &args_n(n),
+        )
+    };
+    let both = ["user:owner-1", "user:owner-2"];
+    assert_eq!(ask(0)["approver"]["to"], json!(both));
+    let one = ask(1);
+    assert_eq!(one["approver"]["to"], json!(["user:owner-2"]), "{one}");
+    let seq = one["receipt_seq"].as_u64().expect("seq");
+    assert_eq!(
+        log_of(&dir)[seq as usize]["decision"]["to"],
+        json!(["user:owner-2"])
+    );
+    // Only someone it went to may answer it.
+    let body = json!({"receipt_seq": seq, "by": "user:owner-1",
+        "action_sha256": one["approver"]["action_sha256"]});
+    assert_eq!(post(d.port, "/v1/approve", &body.to_string()).0, 403);
+    let held = ask(2);
+    assert_eq!(held["held"]["to"], json!(both), "{held}");
+    let people = &load(d.port)["people"];
+    assert_eq!(people["user:owner-1"]["asked"], 1, "{people}");
+    assert_eq!(people["user:owner-2"]["asked"], 2, "{people}");
+    assert_eq!(people["user:owner-1"]["held"], 1, "{people}");
+}
+
+#[test]
+fn a_two_person_capability_is_held_when_fewer_than_two_have_room() {
+    let mut policy = people_policy();
+    policy["gates"] = json!({"two_person": ["fs.edit.code"]});
+    policy["people"]["members"]["user:lead-1"]["escalations_per_hour"] = json!(1);
+    let dir = project_with("budget-two", &policy, false);
+    let d = Daemon::start(&dir, &[]);
+    let ask = |n: u64| ask_as(d.port, WRITER, "Edit", &format!("src/{n}.rs"), &args_n(n));
+    assert_eq!(
+        ask(0)["approver"]["to"],
+        json!(["user:lead-1", "user:owner-1"])
+    );
+    let held = ask(1);
+    assert_eq!(
+        held["result"], "deny",
+        "one person left can't give two approvals: {held}"
+    );
+    assert_eq!(
+        held["held"]["to"],
+        json!(["user:lead-1"]),
+        "only the full one is named"
+    );
+}
+
+#[test]
+fn a_two_person_route_with_one_person_is_not_a_hold() {
+    // Nobody's budget is full, so this is the ordinary escalation it always was.
+    let mut policy = people_policy();
+    policy["gates"] = json!({"two_person": ["fs.edit.docs"]});
+    policy["people"] = json!({"owners": ["user:owner-1"],
+        "members": {"user:owner-1": {"holds": ["*"], "escalations_per_hour": 5}},
+        "delegations": [{"agent": "agent:claude-code/docs-*", "from": "user:owner-1"}]});
+    let dir = project_with("budget-one-route", &policy, false);
+    let d = Daemon::start(&dir, &[]);
+    let a = ask_page(d.port, 0);
+    assert_eq!(a["result"], "escalate", "{a}");
+    assert_eq!(a["held"], Value::Null, "{a}");
+}
+
+#[test]
+fn a_predicted_answer_uses_no_budget() {
+    let mut policy = people_policy();
+    policy["capabilities"]["fs.edit.docs"]["risk"] = json!("low");
+    policy["people"]["members"]["user:dev-1"]["predict"] =
+        json!({"fs.edit.docs": {"paths": ["docs/guide/**"], "per_day": 1000}});
+    policy["people"]["members"]["user:dev-1"]["escalations_per_hour"] = json!(1000);
+    let dir = project_with("budget-predicted", &policy, false);
+    let d = Daemon::start(&dir, &[]);
+    teach_yes(d.port);
+    let before = load(d.port)["people"]["user:dev-1"]["asked"]
+        .as_u64()
+        .expect("asked");
+    let (mut allowed, mut asked) = (0, 0);
+    for n in 100..130 {
+        let a = ask_as(
+            d.port,
+            WRITER,
+            "Edit",
+            &format!("docs/guide/n{n}.md"),
+            &args_n(n),
+        );
+        if a["result"] == "allow" {
+            allowed += 1;
+        } else {
+            asked += 1;
+        }
+    }
+    assert!(allowed > 0);
+    assert_eq!(
+        load(d.port)["people"]["user:dev-1"]["asked"],
+        before + asked
+    );
+    // With the budget full, a model's yes still answers: it asks nobody, so nothing is held for it.
+    drop(d);
+    policy["people"]["members"]["user:dev-1"]["escalations_per_hour"] = json!(1);
+    std::fs::write(dir.join("policy.json"), policy.to_string()).expect("policy");
+    let d = Daemon::start(&dir, &[]);
+    let mut predicted = 0;
+    for n in 200..230 {
+        let a = ask_as(
+            d.port,
+            WRITER,
+            "Edit",
+            &format!("docs/guide/n{n}.md"),
+            &args_n(n),
+        );
+        if a["predicted"]["by"] == "user:dev-1" {
+            predicted += 1;
+            assert!(a["held"].is_null(), "{a}");
+        }
+    }
+    assert!(predicted > 0, "the full budget stopped predicted answers");
+}
+
+#[test]
+fn in_strict_privacy_mode_budgets_hold_and_the_receipt_names_a_pseudonym() {
+    let dir = project_with("budget-strict", &budget_policy(1), true);
+    let d = Daemon::start(&dir, &[]);
+    assert_eq!(ask_page(d.port, 0)["result"], "escalate");
+    assert_eq!(
+        ask_page(d.port, 0)["result"],
+        "escalate",
+        "same action, free"
+    );
+    let held = ask_page(d.port, 1);
+    assert_eq!(
+        held["held"]["to"],
+        json!(["user:dev-1"]),
+        "answers name people: {held}"
+    );
+    let seq = held["receipt_seq"].as_u64().expect("seq");
+    let to = log_of(&dir)[seq as usize]["decision"]["to"][0].clone();
+    assert!(to.as_str().expect("to").starts_with("hmac-sha256:"), "{to}");
+    let people = &load(d.port)["people"];
+    assert_eq!(people["user:dev-1"]["asked"], 1, "{people}");
+    assert_eq!(people["user:dev-1"]["held"], 1, "{people}");
+    d.stop();
+    let d = Daemon::start(&dir, &[]);
+    assert_eq!(
+        ask_page(d.port, 2)["result"],
+        "deny",
+        "a restart doesn't refill it"
+    );
+    assert_eq!(load(d.port)["people"]["user:dev-1"]["held"], 2);
+    d.stop();
+    verify(&dir);
+}
+
+#[test]
+fn a_hold_is_not_a_near_miss() {
+    use mohar_core::trust::{review_per_mille, sampled_at};
+    let mut policy = budget_policy(1);
+    policy["capabilities"]["fs.edit.docs"]["risk"] = json!("low");
+    let dir = project_with("budget-near-miss", &policy, false);
+    let d = Daemon::start(&dir, &[]);
+    assert_eq!(ask_page(d.port, 0)["result"], "escalate");
+    assert_eq!(ask_page(d.port, 1)["held"]["to"], json!(["user:dev-1"]));
+    d.stop();
+    earn_docs_trust(&dir, WRITER);
+    let seed = mohar_core::store::FileLog::open(&dir)
+        .expect("open")
+        .review_seed();
+    let d = Daemon::start(&dir, &[]);
+    for _ in 0..40 {
+        let a = ask_as(d.port, WRITER, "Edit", "docs/a.md", SHA);
+        assert_eq!(a["result"], "allow", "{a}");
+        let seq = a["receipt_seq"].as_u64().expect("seq");
+        assert_eq!(
+            a["review"].as_bool(),
+            Some(sampled_at(&seed, seq, review_per_mille(1))),
+            "no raised sampling after a hold (receipt {seq})"
+        );
+    }
+}
