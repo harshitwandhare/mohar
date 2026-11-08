@@ -1499,7 +1499,7 @@ POST /v1/approve  {receipt_seq, by, action_sha256}  -&gt;  {receipt_seq, until}
 POST /v1/refuse   {receipt_seq, by, action_sha256}  -&gt;  {receipt_seq}
 POST /v1/escalation  {receipt_seq}  -&gt;  {agent, action, action_sha256, to, level, passes, failures, suspended}
 POST /v1/predictions  {}  -&gt;  {people: {&lt;id&gt;: {predicted_today, checks, agreed}}}
-POST /v1/load  {}  -&gt;  {people: {&lt;id&gt;: {per_hour, asked, held, agents}}}
+POST /v1/load  {}  -&gt;  {people: {&lt;id&gt;: {set, per_hour, flagged, asked, held, agents, flooding}}}
 </code></pre></div>
 <p>When the policy has a <code>people</code> section, an <code>escalate</code> answer from <code>/v1/decide</code> also carries <code>approver</code>:
 <code>to</code> (the people who may answer), <code>via</code> (<code>delegator</code>, <code>reporting_tree</code> or <code>owners</code>) and <code>action_sha256</code>,
@@ -1707,9 +1707,14 @@ are full, and <code>retry_after</code>, in seconds), and the receipt says <code>
 is not a near miss and changes no trust. The Claude Code hook tells the agent who is full and when to ask
 again.</p>
 <p>A model's yes asks nobody, so it uses no budget and isn't held, and neither is using an approval already
-given. One in twenty still goes to the person as a check, and that does count. <code>/v1/load</code> reports everyone
-with a budget: <code>per_hour</code>, <code>asked</code> this hour, <code>held</code> this hour and <code>agents</code>, how many of those holds came
-from each agent. All of it is rebuilt from the log on start, and it works in strict privacy mode, where
+given. One in twenty still goes to the person as a check, and that does count.</p>
+<p>A reviewer the rubber-stamping guard has flagged gets half the budget they set, rounded up, until a
+passed re-check clears the flag.</p>
+<p><code>/v1/load</code> reports everyone with a budget: <code>set</code>, the budget in the policy; <code>per_hour</code>, the one in force;
+<code>flagged</code>; <code>asked</code> this hour; <code>held</code> this hour; <code>agents</code>, how many of those holds came from each agent;
+and <code>flooding</code>, the agents asking this person far more than usual. An agent is flooding when it has
+asked at least 5 distinct things this hour and at least three times its average hourly count to the same
+person over the 23 hours before, so it shows up before the budget runs out. All of it is rebuilt from the log on start, and it works in strict privacy mode, where
 <code>agents</code> holds pseudonyms. Loading the policy fails if the budget is 0.</p>
 <p>The built-in policy (<code>mohar_core::policy::BUILTIN</code>) is a fuller example: reads, docs, tests, code and
 config edits, read-only shell commands, pushes to a branch and to the default branch.</p>

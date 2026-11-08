@@ -1388,6 +1388,11 @@ receipt format; each such change is called out.</p>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
 <li>
+<p>A reviewer flagged for rubber-stamping gets half their hourly budget, and <code>/v1/load</code> now shows the
+  budget set and in force, the flag, and <code>flooding</code>: agents that asked a person at least 5 things this
+  hour and three times their usual rate over the day before (#208).</p>
+</li>
+<li>
 <p>A member can set <code>escalations_per_hour</code> (#205). Past it they aren't asked: the request goes to whoever
   else can answer, or is held, a signed <code>deny</code> by <code>budget</code> that names who was full, says when to ask again
   and counts against nobody. Asking again about the same action costs nothing, and a model's yes uses no
