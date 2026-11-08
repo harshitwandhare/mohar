@@ -1430,12 +1430,23 @@ fn with_room(
     people
         .iter()
         .cloned()
-        .partition(|p| match state.policy.escalation_budget(p) {
-            Some(n) => inner
+        .partition(|p| match budget_in_force(state, inner, p) {
+            Some((n, _)) => inner
                 .load
                 .has_room(&inner.log.pseudonym(p), n, question, at),
             None => true,
         })
+}
+
+/// The hourly budget `person` has now, and whether it was cut: a reviewer the rubber-stamping guard
+/// flagged gets half the budget they set, rounded up, until a passed re-check clears the flag. Reviewers
+/// are keyed as the log writes them.
+fn budget_in_force(state: &State, inner: &Inner, person: &str) -> Option<(u32, bool)> {
+    let set = state.policy.escalation_budget(person)?;
+    let flagged = inner
+        .ledger
+        .is_rubber_stamping(&inner.log.pseudonym(person));
+    Some((if flagged { set.div_ceil(2) } else { set }, flagged))
 }
 
 fn is_empty_object(body: &[u8]) -> bool {
@@ -1455,8 +1466,9 @@ fn predictions(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     }
 }
 
-/// For each person with an hourly budget: the budget, what they were asked this hour, how many requests
-/// were held for them and which agents sent those. The body is `{}`.
+/// For each person with an hourly budget: the budget they set and the one in force, whether they are
+/// flagged for rubber-stamping, what they were asked this hour, how many requests were held for them,
+/// which agents sent those and which agents are flooding them. The body is `{}`.
 fn load_report(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     if !is_empty_object(body) {
         return bad("body must be {}");
@@ -1467,8 +1479,11 @@ fn load_report(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     };
     let now = now_secs();
     let mut people = serde_json::Map::new();
-    for (id, per_hour) in state.policy.escalation_budgets() {
-        let report = inner.load.report(&inner.log.pseudonym(id), per_hour, now);
+    for (id, set) in state.policy.escalation_budgets() {
+        let (per_hour, flagged) = budget_in_force(state, &inner, id).unwrap_or((set, false));
+        let mut report = inner.load.report(&inner.log.pseudonym(id), per_hour, now);
+        report["set"] = set.into();
+        report["flagged"] = flagged.into();
         people.insert(id.to_string(), report);
     }
     (200, json!({ "people": people }))

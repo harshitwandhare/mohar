@@ -9,6 +9,10 @@ receipt format; each such change is called out.
 
 ### Added
 
+- A reviewer flagged for rubber-stamping gets half their hourly budget, and `/v1/load` now shows the
+  budget set and in force, the flag, and `flooding`: agents that asked a person at least 5 things this
+  hour and three times their usual rate over the day before (#208).
+
 - A member can set `escalations_per_hour` (#205). Past it they aren't asked: the request goes to whoever
   else can answer, or is held, a signed `deny` by `budget` that names who was full, says when to ask again
   and counts against nobody. Asking again about the same action costs nothing, and a model's yes uses no

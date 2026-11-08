@@ -2915,7 +2915,8 @@ fn past_their_budget_a_person_is_not_asked_and_the_hold_survives_a_restart() {
     );
 
     let want = json!({"people": {"user:dev-1": {
-        "per_hour": 2, "asked": 2, "held": 1, "agents": {WRITER: 1}}}});
+        "per_hour": 2, "set": 2, "flagged": false, "asked": 2, "held": 1,
+        "agents": {WRITER: 1}, "flooding": []}}});
     assert_eq!(load(d.port), want, "people with no budget aren't listed");
     for wrong in ["", "[]", r#"{"by": "user:dev-1"}"#] {
         assert_eq!(post(d.port, "/v1/load", wrong).0, 400, "{wrong:?}");
@@ -3159,4 +3160,64 @@ fn a_hold_is_not_a_near_miss() {
             "no raised sampling after a hold (receipt {seq})"
         );
     }
+}
+
+#[test]
+fn a_reviewer_flagged_for_rubber_stamping_gets_half_their_budget() {
+    let dir = project_with("budget-flagged", &budget_policy(3), false);
+    let d = Daemon::start(&dir, &[]);
+    // Fifty quick-enough accepts in a row by dev-1, on code edits that go to the owner, so none of
+    // them uses dev-1's budget.
+    for n in 0..50 {
+        let a = ask_as(
+            d.port,
+            "agent:test/1",
+            "Edit",
+            &format!("src/f{n}.rs"),
+            &args_n(n),
+        );
+        assert_eq!(a["approver"]["to"], json!(["user:owner-1"]), "{a}");
+        let o = json!({"receipt_seq": a["receipt_seq"], "verifier": "human", "result": "pass",
+            "evidence_sha256": SHA, "reviewer": "user:dev-1", "review_secs": 60});
+        assert_eq!(post(d.port, "/v1/outcome", &o.to_string()).0, 200);
+    }
+    let me = |port| load(port)["people"]["user:dev-1"].clone();
+    let want = json!({"per_hour": 2, "set": 3, "flagged": true, "asked": 0, "held": 0,
+        "agents": {}, "flooding": []});
+    assert_eq!(me(d.port), want);
+    assert_eq!(ask_page(d.port, 0)["result"], "escalate");
+    assert_eq!(ask_page(d.port, 1)["result"], "escalate");
+    let held = ask_page(d.port, 2);
+    assert_eq!(
+        held["held"]["to"],
+        json!(["user:dev-1"]),
+        "two of three: {held}"
+    );
+    d.stop();
+    // A restart rebuilds the flag from the human outcomes, so the cut stays.
+    let d = Daemon::start(&dir, &[]);
+    assert_eq!(me(d.port)["per_hour"], 2);
+    assert_eq!(me(d.port)["flagged"], true);
+}
+
+#[test]
+fn an_agent_asking_far_more_than_usual_is_named_in_the_load_report() {
+    let dir = project_with("budget-flood", &budget_policy(100), false);
+    let d = Daemon::start(&dir, &[]);
+    for n in 0..4 {
+        ask_page(d.port, n);
+    }
+    assert_eq!(load(d.port)["people"]["user:dev-1"]["flooding"], json!([]));
+    ask_page(d.port, 4);
+    assert_eq!(
+        load(d.port)["people"]["user:dev-1"]["flooding"],
+        json!([WRITER])
+    );
+    d.stop();
+    let d = Daemon::start(&dir, &[]);
+    assert_eq!(
+        load(d.port)["people"]["user:dev-1"]["flooding"],
+        json!([WRITER]),
+        "rebuilt from the log"
+    );
 }
