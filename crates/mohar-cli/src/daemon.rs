@@ -2225,6 +2225,31 @@ mod tests {
     }
 
     #[test]
+    fn a_flagged_reviewer_s_budget_is_halved_until_a_recheck_passes() {
+        let mut s = state("flagged-budget");
+        s.policy = Policy::from_json(
+            r#"{"version": 1, "capabilities": {"fs.edit.docs": {"risk": "medium", "reversible": true, "ceiling": 2}},
+                "rules": [], "people": {"owners": ["user:r1"],
+                "members": {"user:r1": {"escalations_per_hour": 5}}}}"#,
+            &s.log_dir,
+        )
+        .expect("policy");
+        let mut inner = s.log.lock().expect("lock");
+        for _ in 0..50 {
+            human_pass(&mut inner.log, "user:r1");
+        }
+        let (_, ledger, ..) = replay(&s.log_dir, &s.policy, &inner.log).expect("replay");
+        inner.ledger = ledger;
+        assert_eq!(budget_in_force(&s, &inner, "user:r1"), Some((3, true)));
+        assert_eq!(budget_in_force(&s, &inner, "user:nobody"), None);
+        // A failed re-check keeps the cut; a passed one restores the budget they set.
+        inner.ledger.recheck("user:r1", false);
+        assert_eq!(budget_in_force(&s, &inner, "user:r1"), Some((3, true)));
+        inner.ledger.recheck("user:r1", true);
+        assert_eq!(budget_in_force(&s, &inner, "user:r1"), Some((5, false)));
+    }
+
+    #[test]
     fn every_status_the_daemon_sends_has_its_reason_phrase() {
         for (status, phrase) in [
             (200, "OK"),
