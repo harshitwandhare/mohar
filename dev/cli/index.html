@@ -1490,9 +1490,9 @@ and cumulative metrics: <code>mohar.decisions</code> by result, <code>mohar.outc
 <code>mohar.decide.duration</code> (a histogram in milliseconds) and <code>mohar.inflight</code>. Spans carry no agent ids,
 targets or arguments. Export runs on its own thread; a collector that is down or slow loses telemetry
 and never delays or changes a decision. Without the flag nothing is collected.</p>
-<p>Nine endpoints, JSON in and out:</p>
+<p>Ten endpoints, JSON in and out:</p>
 <div class="highlight"><pre><span></span><code>POST /v1/decide   {agent, tool, target, args_sha256, call_id?}  -&gt;  {result, level, receipt_seq, lessons}
-POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256, reviewer?, review_secs?}  -&gt;  {receipt_seq}
+POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256, reviewer?, review_secs?}  -&gt;  {receipt_seq, recheck}
 POST /v1/verify   {agent, task}  -&gt;  {verified, result}
 POST /v1/person   {by, act, agent, capability?, lesson?, until?}  -&gt;  {receipt_seq}
 POST /v1/approve  {receipt_seq, by, action_sha256}  -&gt;  {receipt_seq, until}
@@ -1500,6 +1500,7 @@ POST /v1/refuse   {receipt_seq, by, action_sha256}  -&gt;  {receipt_seq}
 POST /v1/escalation  {receipt_seq}  -&gt;  {agent, action, action_sha256, to, level, passes, failures, suspended}
 POST /v1/predictions  {}  -&gt;  {people: {&lt;id&gt;: {predicted_today, checks, agreed}}}
 POST /v1/load  {}  -&gt;  {people: {&lt;id&gt;: {set, per_hour, flagged, asked, held, agents, flooding}}}
+POST /v1/rechecks  {}  -&gt;  {open: [{receipt_seq, reviewer}]}
 </code></pre></div>
 <p>When the policy has a <code>people</code> section, an <code>escalate</code> answer from <code>/v1/decide</code> also carries <code>approver</code>:
 <code>to</code> (the people who may answer), <code>via</code> (<code>delegator</code>, <code>reporting_tree</code> or <code>owners</code>) and <code>action_sha256</code>,
@@ -1519,6 +1520,14 @@ if it sends them). Both are signed into the receipt, and the reviewer goes throu
 strict privacy mode. A person's accept counts toward trust only if they spent at least 30 seconds and
 haven't approved more than 95% of their last 50 reviews; a reject always counts. The daemon rebuilds
 each reviewer's window and flag from the log on start.</p>
+<p>One accept in ten (a draw fixed by the log's seed), and every accept by a reviewer flagged for
+rubber-stamping, is drawn for a second person to re-check; the outcome's answer says <code>"recheck": true</code>
+and <code>/v1/rechecks</code> lists the open ones. The re-check goes to the same endpoint with <code>verifier</code> <code>recheck</code>,
+the <code>receipt_seq</code> of the accept, <code>pass</code> or <code>fail</code>, and the second person's <code>reviewer</code> and <code>review_secs</code>.
+The first reviewer can't re-check their own accept (403), and an accept that isn't open gets a 404. A
+pass clears the first reviewer's flag, so their accepts count again and their budget is whole again; a
+fail keeps it. Either way it changes nothing about the agent. Open re-checks and cleared flags are rebuilt
+from the log on start.</p>
 <p><code>/v1/person</code> records what a person did as a signed receipt (receipt spec section 5.1) and applies it:
 <code>promote</code> with <code>lesson</code> (the <code>failure</code> hash from a lesson) shares that lesson with every agent on its
 capability; <code>release</code> lets an agent's quarantined lessons through again; <code>extend</code> with <code>capability</code> and

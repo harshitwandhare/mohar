@@ -1388,6 +1388,12 @@ receipt format; each such change is called out.</p>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
 <li>
+<p>Sampled re-checks (#188). One accept in ten, and every accept by a flagged reviewer, is drawn for a
+  second person; the re-check is an outcome receipt with <code>kind</code> <code>recheck</code> whose <code>of</code> is the accept. A
+  pass clears the first reviewer's rubber-stamping flag; it never counts toward the agent's trust.
+  <code>/v1/rechecks</code> lists the open ones. Receipt spec 1.8.0, with four conformance vectors.</p>
+</li>
+<li>
 <p>A reviewer flagged for rubber-stamping gets half their hourly budget, and <code>/v1/load</code> now shows the
   budget set and in force, the flag, and <code>flooding</code>: agents that asked a person at least 5 things this
   hour and three times their usual rate over the day before (#208).</p>
