@@ -671,6 +671,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#budgets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Budgets
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1397,6 +1408,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#budgets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Budgets
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1789,6 +1811,12 @@ when all of these hold:</p>
 </ul>
 <p>Every predicted answer is marked as predicted in the receipt, and 5% of them are sent to the person
 anyway as a check. The model never relaxes a gate and never answers for high-risk capabilities.</p>
+<h3 id="budgets">Budgets<a class="headerlink" href="#budgets" title="Permanent link">&para;</a></h3>
+<p>People who are asked too often stop reading, so a person can cap how many new requests reach them in an
+hour. Past that they aren't asked. If nobody else who could answer has room, the request is held: a signed
+deny that names who was full and says when to ask again, and that counts against nobody's record. So one
+busy agent can use up a person's attention for an hour but can't push them past the limit they chose.
+Batching related requests and walking up the chain on a timeout are still to come.</p>
 <h2 id="7-receipts">7. Receipts<a class="headerlink" href="#7-receipts" title="Permanent link">&para;</a></h2>
 <p>One receipt per decision. Receipts are JSON, canonicalised with RFC 8785 (JSON Canonicalization Scheme)
 before hashing and signing.</p>

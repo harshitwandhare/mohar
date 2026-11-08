@@ -1388,6 +1388,13 @@ receipt format; each such change is called out.</p>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
 <li>
+<p>A member can set <code>escalations_per_hour</code> (#205). Past it they aren't asked: the request goes to whoever
+  else can answer, or is held, a signed <code>deny</code> by <code>budget</code> that names who was full, says when to ask again
+  and counts against nobody. Asking again about the same action costs nothing, and a model's yes uses no
+  budget. <code>POST /v1/load</code> reports each budget and which agents were held. The receipt spec is 1.7.0, with
+  three conformance vectors.</p>
+</li>
+<li>
 <p>The daemon answers some escalations for a person from their own past answers (#52). A member's
   <code>predict</code> setting names the low-risk, reversible capabilities they allow it on, with paths and a daily
   count. When the model is at least 98% sure of a yes, the decision is <code>allow</code> by <code>predicted</code>, naming the
