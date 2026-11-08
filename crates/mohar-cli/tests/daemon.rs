@@ -3221,3 +3221,127 @@ fn an_agent_asking_far_more_than_usual_is_named_in_the_load_report() {
         "rebuilt from the log"
     );
 }
+
+/// One accept by `reviewer` on a code edit that goes to the owner: the outcome's answer.
+fn accept(port: u16, n: u64, reviewer: &str) -> Value {
+    let a = ask_as(
+        port,
+        "agent:test/1",
+        "Edit",
+        &format!("src/f{n}.rs"),
+        &args_n(n),
+    );
+    let o = json!({"receipt_seq": a["receipt_seq"], "verifier": "human", "result": "pass",
+        "evidence_sha256": SHA, "reviewer": reviewer, "review_secs": 60});
+    let (status, answer) = post(port, "/v1/outcome", &o.to_string());
+    assert_eq!(status, 200, "{answer}");
+    answer
+}
+
+fn open_rechecks(port: u16) -> Vec<u64> {
+    let (status, r) = post(port, "/v1/rechecks", "{}");
+    assert_eq!(status, 200, "{r}");
+    r["open"]
+        .as_array()
+        .expect("open")
+        .iter()
+        .map(|o| o["receipt_seq"].as_u64().expect("seq"))
+        .collect()
+}
+
+fn recheck(port: u16, seq: u64, by: &str, result: &str) -> (u16, Value) {
+    let b = json!({"receipt_seq": seq, "verifier": "recheck", "result": result,
+        "evidence_sha256": SHA, "reviewer": by, "review_secs": 90});
+    post(port, "/v1/outcome", &b.to_string())
+}
+
+#[test]
+fn accepts_drawn_for_a_recheck_are_listed_and_survive_a_restart() {
+    let dir = project_with("rechecks-drawn", &budget_policy(3), false);
+    let d = Daemon::start(&dir, &[]);
+    let mut drawn = Vec::new();
+    for n in 0..40 {
+        let a = accept(d.port, n, "user:dev-1");
+        if a["recheck"] == true {
+            drawn.push(a["receipt_seq"].as_u64().expect("seq"));
+        }
+    }
+    assert_eq!(open_rechecks(d.port), drawn);
+    let (status, r) = post(d.port, "/v1/rechecks", "{}");
+    assert_eq!(status, 200);
+    for o in r["open"].as_array().expect("open") {
+        assert_eq!(o["reviewer"], "user:dev-1", "{o}");
+    }
+    assert_eq!(post(d.port, "/v1/rechecks", "[]").0, 400);
+    d.stop();
+    let d = Daemon::start(&dir, &[]);
+    assert_eq!(open_rechecks(d.port), drawn, "rebuilt from the log");
+}
+
+#[test]
+fn a_recheck_by_someone_else_clears_a_flag_and_a_restart_keeps_it_cleared() {
+    let dir = project_with("rechecks-clear", &budget_policy(3), false);
+    let d = Daemon::start(&dir, &[]);
+    let flagged = |port| load(port)["people"]["user:dev-1"]["flagged"].clone();
+    let mut last = Value::Null;
+    for n in 0..50 {
+        last = accept(d.port, n, "user:dev-1");
+    }
+    assert_eq!(flagged(d.port), true);
+    assert_eq!(
+        last["recheck"], true,
+        "a flagged reviewer's accept is always drawn"
+    );
+    let seq = last["receipt_seq"].as_u64().expect("seq");
+
+    // Wrong ways in.
+    assert_eq!(
+        recheck(d.port, seq, "user:dev-1", "pass").0,
+        403,
+        "their own accept"
+    );
+    assert_eq!(recheck(d.port, seq, "user:lead-1", "unknown").0, 400);
+    assert_eq!(
+        recheck(d.port, seq - 1, "user:lead-1", "pass").0,
+        404,
+        "not an open re-check"
+    );
+    let no_reviewer = json!({"receipt_seq": seq, "verifier": "recheck", "result": "pass",
+        "evidence_sha256": SHA});
+    assert_eq!(post(d.port, "/v1/outcome", &no_reviewer.to_string()).0, 400);
+    let by_call = json!({"call_id": "x", "verifier": "recheck", "result": "pass",
+        "evidence_sha256": SHA, "reviewer": "user:lead-1", "review_secs": 9});
+    assert_eq!(post(d.port, "/v1/outcome", &by_call.to_string()).0, 400);
+
+    // A failed re-check keeps the flag, closes that one, and says nothing about the agent.
+    let (status, failed) = recheck(d.port, seq, "user:lead-1", "fail");
+    assert_eq!(status, 200, "{failed}");
+    assert_eq!(flagged(d.port), true);
+    assert_eq!(
+        recheck(d.port, seq, "user:lead-1", "pass").0,
+        404,
+        "closed once"
+    );
+    let r = &log_of(&dir)[failed["receipt_seq"].as_u64().expect("seq") as usize];
+    assert_eq!(r["verification"]["kind"], "recheck");
+    assert_eq!(r["verification"]["of"], seq);
+    assert_eq!(r["verification"]["reviewer"], "user:lead-1");
+    let next = ask_as(d.port, "agent:test/1", "Edit", "src/next.rs", &args_n(99));
+    assert_eq!(
+        next["lessons"],
+        json!([]),
+        "not a failure of the agent's: {next}"
+    );
+
+    // The next accept is drawn too, and a pass clears the flag.
+    let again = accept(d.port, 50, "user:dev-1");
+    assert_eq!(again["recheck"], true);
+    let seq = again["receipt_seq"].as_u64().expect("seq");
+    assert_eq!(recheck(d.port, seq, "user:lead-1", "pass").0, 200);
+    assert_eq!(flagged(d.port), false);
+    assert!(!open_rechecks(d.port).contains(&seq));
+    d.stop();
+    let d = Daemon::start(&dir, &[]);
+    assert_eq!(flagged(d.port), false, "a restart keeps it cleared");
+    assert_eq!(load(d.port)["people"]["user:dev-1"]["per_hour"], 3);
+}

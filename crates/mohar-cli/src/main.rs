@@ -7,6 +7,7 @@ mod hook;
 mod load;
 mod prediction;
 mod publish;
+mod recheck;
 mod telemetry;
 
 use std::collections::VecDeque;

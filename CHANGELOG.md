@@ -9,6 +9,11 @@ receipt format; each such change is called out.
 
 ### Added
 
+- Sampled re-checks (#188). One accept in ten, and every accept by a flagged reviewer, is drawn for a
+  second person; the re-check is an outcome receipt with `kind` `recheck` whose `of` is the accept. A
+  pass clears the first reviewer's rubber-stamping flag; it never counts toward the agent's trust.
+  `/v1/rechecks` lists the open ones. Receipt spec 1.8.0, with four conformance vectors.
+
 - A reviewer flagged for rubber-stamping gets half their hourly budget, and `/v1/load` now shows the
   budget set and in force, the flag, and `flooding`: agents that asked a person at least 5 things this
   hour and three times their usual rate over the day before (#208).

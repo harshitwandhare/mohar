@@ -37,6 +37,8 @@ to the [engineering bar](engineering-bar.md). Each phase ships as small pull req
 - An hourly budget per approver, with requests past it held and reported (#205); a flagged reviewer
   gets half of it and floods are named (#208). Batching and escalation levels with timeouts are next
   (#89).
+- Sampled re-checks of each reviewer's accepts by a second person, recorded as receipts, so a
+  rubber-stamping flag can clear (#188).
 
 ## Phase 5: benchmark (May to Aug 2027)
 
