@@ -319,3 +319,75 @@ fn a_person_s_hourly_budget_is_read_and_a_budget_of_zero_is_refused() {
     );
     assert!(err.to_string().contains("user:dev-1"), "{err}");
 }
+
+fn levels(people: &str, agent: &str, capability: &str) -> Vec<Route> {
+    with_people(people)
+        .expect("valid")
+        .escalation_levels(agent, capability)
+}
+
+#[test]
+fn the_levels_are_each_holder_up_the_tree_then_the_owners() {
+    let to = |who: &str, via| Route {
+        to: vec![who.to_string()],
+        via,
+    };
+    assert_eq!(
+        levels(TEAM, "agent:claude-code/docs-writer", "fs.edit.docs"),
+        vec![
+            to("user:dev-1", "delegator"),
+            to("user:lead-1", "reporting_tree"),
+            to("user:owner-1", "owners"),
+        ],
+        "the director holds nothing, so is skipped"
+    );
+    assert_eq!(
+        levels(TEAM, "agent:unknown/1", "fs.edit.docs"),
+        vec![to("user:owner-1", "owners")]
+    );
+}
+
+#[test]
+fn an_owner_who_was_already_asked_is_not_a_level_again() {
+    let team = r#"{"owners": ["user:lead-1"],
+        "members": {"user:lead-1": {"holds": ["*"]}},
+        "delegations": [{"agent": "*", "from": "user:lead-1"}]}"#;
+    let got = levels(team, "agent:x/1", "fs.edit.docs");
+    assert_eq!(got.len(), 1, "{got:?}");
+    assert_eq!(got[0].via, "delegator");
+}
+
+#[test]
+fn a_capability_needing_two_people_has_one_level() {
+    let policy = Policy::from_json(
+        r#"{"version": 1,
+                "capabilities": {"db.migrate": {"risk": "high", "reversible": false, "ceiling": 1}},
+                "rules": [{"tools": ["Bash"], "paths": ["**"], "capability": "db.migrate"}],
+                "gates": {"two_person": ["db.migrate"]},
+                "people": {"owners": ["user:owner-1"],
+                  "members": {
+                    "user:a": {"holds": ["db.migrate"], "reports_to": "user:b"},
+                    "user:b": {"holds": ["db.migrate"]}},
+                  "delegations": [{"agent": "*", "from": "user:a"}]}}"#,
+        Path::new("/repo"),
+    )
+    .expect("valid");
+    let agent = "agent:ops/1";
+    let got = policy.escalation_levels(agent, "db.migrate");
+    assert_eq!(got, vec![policy.route(agent, "db.migrate").expect("route")]);
+}
+
+#[test]
+fn a_timeout_is_read_and_zero_is_refused() {
+    let with =
+        |secs: u64| format!(r#"{{"owners": ["user:o"], "escalation_timeout_secs": {secs}}}"#);
+    assert_eq!(
+        with_people(&with(900)).expect("valid").escalation_timeout(),
+        Some(900)
+    );
+    assert_eq!(with_people(TEAM).expect("valid").escalation_timeout(), None);
+    assert!(matches!(
+        with_people(&with(0)),
+        Err(PolicyError::BadTimeout)
+    ));
+}

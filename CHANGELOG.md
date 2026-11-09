@@ -9,6 +9,11 @@ receipt format; each such change is called out.
 
 ### Added
 
+- `people.escalation_timeout_secs` (#211). When an agent asks again after that long with no answer, the
+  question moves to the next person up the reporting tree who holds the capability, then the owners. Past
+  the last level it is a signed `deny` by `timeout`, and late answers are refused. `/v1/decide` returns
+  `timed_out`. Receipt spec 1.9.0, with three conformance vectors.
+
 - Sampled re-checks (#188). One accept in ten, and every accept by a flagged reviewer, is drawn for a
   second person; the re-check is an outcome receipt with `kind` `recheck` whose `of` is the accept. A
   pass clears the first reviewer's rubber-stamping flag; it never counts toward the agent's trust.

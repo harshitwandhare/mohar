@@ -1,6 +1,6 @@
 # Mohar receipts, format version 1
 
-Spec version 1.8.0
+Spec version 1.9.0
 
 This document describes the receipts and checkpoints Mohar writes, apart from the Rust code, so a
 verifier can be written in any language. It covers receipt format `v: 1`. The reference implementation is
@@ -43,7 +43,7 @@ A receipt is a JSON object with these keys, and no others:
 | `action.args_sha256` | string | SHA-256 of the exact arguments; an approval is bound to them. |
 | `decision.result` | string | `allow`, `escalate` or `deny`. |
 | `decision.level` | integer | The agent's trust level on this capability at the time: 0 ask first, 1 supervised, 2 trusted. |
-| `decision.by` | string | What decided: `gate`, `score`, `human`, `predicted` or `budget`. |
+| `decision.by` | string | What decided: `gate`, `score`, `human`, `predicted`, `budget` or `timeout` (added in 1.9.0). |
 | `decision.review` | `true` | Present only when the allowed action was sampled for a person to review. |
 | `decision.to` | array of strings | Present only on an escalation that was routed to named people (added in 1.4.0): any one of them may answer. On a `predicted` decision (added in 1.6.0), the one person whose answer was predicted. On a `budget` decision (added in 1.7.0), the people who had no room. In strict privacy mode, pseudonyms like `agent.id`. |
 | `sig` | signature | Signature over the receipt without `sig` (section 3). |
@@ -156,6 +156,13 @@ so nobody answers it, and it says nothing about the agent: a verifier MUST NOT r
 reference daemon counts the distinct actions each person was asked in the last hour from the `escalate`
 receipts that name them, so a log rebuilds the counts without any other state. The budgets themselves are
 in the policy, not the log.
+
+A decision with `by` `timeout` (added in 1.9.0) is a question that everyone on the chain had their time to
+answer and nobody did. Its `result` is `deny` and it has no `decision.to`; the earlier `escalate` receipts
+for the same action by the same agent name who was asked, each with the level it had reached. It closes
+every one of them, so an `approve` for that action after it SHOULD be refused. Like a `budget` decision it
+says nothing about the agent: a verifier MUST NOT read it as a gate stop. The timeout is in the policy, not
+the log.
 
 Who the person is rests on whoever runs the daemon: `by` is recorded, not authenticated. Binding it to a
 key the person holds is future work.

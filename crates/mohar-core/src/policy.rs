@@ -102,6 +102,9 @@ struct People {
     /// Matched against the agent id in order; the first match wins.
     #[serde(default)]
     delegations: Vec<Delegation>,
+    /// How long each level has to answer before the question moves up. Absent means it never moves.
+    #[serde(default)]
+    escalation_timeout_secs: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -303,6 +306,9 @@ pub enum PolicyError {
     /// An hourly budget of 0, which would hold everything meant for that person.
     #[error("people.members.{0}.escalations_per_hour is 0; give a number above 0, or leave it out")]
     BadBudget(String),
+    /// A timeout of 0, which would move every question the moment it was asked again.
+    #[error("people.escalation_timeout_secs is 0; give a number above 0, or leave it out")]
+    BadTimeout,
     /// A capability a person asked to have predicted that can never be.
     #[error("people.members.{person}.predict names {name:?}, {why}")]
     BadPrediction {
@@ -491,6 +497,63 @@ impl Policy {
             to: people.owners.clone(),
             via: "owners",
         })
+    }
+
+    /// How long each level has to answer before a question moves up, if the policy sets it.
+    pub fn escalation_timeout(&self) -> Option<u64> {
+        self.people.as_ref()?.escalation_timeout_secs
+    }
+
+    /// Who a question goes to as each level times out: everyone up the chain from the first person
+    /// who holds the capability, then the owners not already on it. The first level is what
+    /// [`Policy::route`] answers. A capability needing two people has that one level, since it already
+    /// went to the owners.
+    pub fn escalation_levels(&self, agent: &str, capability: &str) -> Vec<Route> {
+        let Some(first) = self.route(agent, capability) else {
+            return Vec::new();
+        };
+        let Some(people) = self.people.as_ref() else {
+            return vec![first];
+        };
+        if self.approvals_needed(capability) > 1 || first.via == "owners" {
+            return vec![first];
+        }
+        let mut levels = vec![first];
+        let mut next = levels[0]
+            .to
+            .first()
+            .and_then(|id| people.members.get(id))
+            .and_then(|m| m.reports_to.as_deref());
+        // Loading refused cycles and unlisted names, so this walk ends; the bound only makes that
+        // visible here.
+        for _ in 0..=people.members.len() {
+            let Some((id, m)) = next.and_then(|id| people.members.get_key_value(id)) else {
+                break;
+            };
+            if m.holds
+                .iter()
+                .any(|h| glob(h.as_bytes(), capability.as_bytes(), false))
+            {
+                levels.push(Route {
+                    to: vec![id.clone()],
+                    via: "reporting_tree",
+                });
+            }
+            next = m.reports_to.as_deref();
+        }
+        let owners: Vec<String> = people
+            .owners
+            .iter()
+            .filter(|o| !levels.iter().any(|l| l.to.contains(o)))
+            .cloned()
+            .collect();
+        if !owners.is_empty() {
+            levels.push(Route {
+                to: owners,
+                via: "owners",
+            });
+        }
+        levels
     }
 
     /// The capabilities `person` lets their answers be predicted on, with their limits. Empty for anyone
@@ -884,6 +947,9 @@ fn check_people(p: &People) -> Result<(), PolicyError> {
             name: name.to_string(),
         })
     };
+    if p.escalation_timeout_secs == Some(0) {
+        return Err(PolicyError::BadTimeout);
+    }
     for (id, m) in &p.members {
         if m.escalations_per_hour == Some(0) {
             return Err(PolicyError::BadBudget(id.clone()));

@@ -220,7 +220,18 @@ deny that names who was full and says when to ask again, and that counts against
 busy agent can use up a person's attention for an hour but can't push them past the limit they chose.
 A reviewer flagged for rubber-stamping gets half their budget until a re-check clears them, and the
 load report names any agent asking a person three times as often as it usually does. Batching related
-requests and walking up the chain on a timeout are still to come.
+requests is still to come.
+
+### Timeouts
+
+A project can give each level a time to answer. When the agent asks again after that, the question moves
+to the next person up the reporting tree who holds the capability, then to the owners, one level per ask,
+so nobody loses their turn because an agent came back late. Asking again sooner doesn't restart the clock.
+A question that has already waited on someone is never answered by a model. When the last level's time is
+up the decision is a signed deny, and the question closes for everyone who was asked, so a yes that arrives
+afterwards can't let it through. The agent can ask again, which starts over from the first level. A
+capability that needs two people has one level, because it already goes to the owners. The move happens
+when the agent asks: nothing runs on a timer, and nobody is notified by Mohar itself.
 
 ## 7. Receipts
 
