@@ -2583,10 +2583,14 @@ fn dev_answers(port: u16, target: &str, n: u64, yes: bool) {
 /// The dev says yes on guide pages until the model answers for them once. Thirty answers is the
 /// fewest a model is trained on, and it takes about fifty before one is sure enough.
 fn teach_yes(port: u16) {
+    teach_yes_as(port, WRITER, "user:dev-1");
+}
+
+fn teach_yes_as(port: u16, agent: &str, person: &str) {
     for n in 0..80 {
         let a = ask_as(
             port,
-            WRITER,
+            agent,
             "Edit",
             &format!("docs/guide/t{n}.md"),
             &args_n(n),
@@ -2595,7 +2599,7 @@ fn teach_yes(port: u16) {
             assert!(n >= 30, "answered after {n} answers: {a}");
             return;
         }
-        let body = json!({"receipt_seq": a["receipt_seq"], "by": "user:dev-1",
+        let body = json!({"receipt_seq": a["receipt_seq"], "by": person,
             "action_sha256": a["approver"]["action_sha256"]});
         assert_eq!(post(port, "/v1/approve", &body.to_string()).0, 200);
     }
@@ -3344,4 +3348,197 @@ fn a_recheck_by_someone_else_clears_a_flag_and_a_restart_keeps_it_cleared() {
     let d = Daemon::start(&dir, &[]);
     assert_eq!(flagged(d.port), false, "a restart keeps it cleared");
     assert_eq!(load(d.port)["people"]["user:dev-1"]["per_hour"], 3);
+}
+
+fn timeout_policy(secs: u64) -> Value {
+    let mut policy = people_policy();
+    policy["people"]["escalation_timeout_secs"] = json!(secs);
+    policy
+}
+
+/// Longer than a one-second timeout, whichever way the receipts' timestamps round.
+fn past_timeout() {
+    std::thread::sleep(std::time::Duration::from_millis(1_100));
+}
+
+#[test]
+fn an_unanswered_question_walks_up_the_chain_and_is_denied_at_the_end() {
+    let dir = project_with("walk", &timeout_policy(1), false);
+    let d = Daemon::start(&dir, &[]);
+    let first = ask_page(d.port, 0);
+    assert_eq!(first["approver"]["to"], json!(["user:dev-1"]), "{first}");
+
+    past_timeout();
+    let second = ask_page(d.port, 0);
+    assert_eq!(second["result"], "escalate", "{second}");
+    assert_eq!(second["approver"]["to"], json!(["user:lead-1"]), "{second}");
+    assert_eq!(second["approver"]["via"], "reporting_tree", "{second}");
+    // The receipt says who has it now.
+    let seq = second["receipt_seq"].as_u64().expect("seq") as usize;
+    assert_eq!(log_of(&dir)[seq]["decision"]["to"], json!(["user:lead-1"]));
+    d.stop();
+
+    // A restart keeps the position: the next level, not the first person again.
+    let d = Daemon::start(&dir, &[]);
+    past_timeout();
+    let third = ask_page(d.port, 0);
+    assert_eq!(third["approver"]["to"], json!(["user:owner-1"]), "{third}");
+    assert_eq!(third["approver"]["via"], "owners", "{third}");
+
+    past_timeout();
+    let end = ask_page(d.port, 0);
+    assert_eq!(end["result"], "deny", "{end}");
+    assert_eq!(end["approver"], Value::Null, "nobody is asked: {end}");
+    assert_eq!(end["gate"], Value::Null, "no gate stopped it: {end}");
+    assert_eq!(end["timed_out"], json!(["user:owner-1"]), "{end}");
+    let seq = end["receipt_seq"].as_u64().expect("seq") as usize;
+    assert_eq!(
+        log_of(&dir)[seq]["decision"],
+        json!({"result": "deny", "level": 0, "by": "timeout"})
+    );
+
+    // It is closed for everyone asked, so a late yes can't let it through.
+    for (asked, by) in [(&first, "user:dev-1"), (&third, "user:owner-1")] {
+        let body = json!({"receipt_seq": asked["receipt_seq"], "by": by,
+            "action_sha256": asked["approver"]["action_sha256"]});
+        assert_eq!(
+            post(d.port, "/v1/approve", &body.to_string()).0,
+            404,
+            "{by}"
+        );
+    }
+    d.stop();
+
+    // The ending survives a restart too, and asking again is a new question from the first level.
+    let d = Daemon::start(&dir, &[]);
+    let body = json!({"receipt_seq": first["receipt_seq"], "by": "user:dev-1",
+        "action_sha256": first["approver"]["action_sha256"]});
+    assert_eq!(post(d.port, "/v1/approve", &body.to_string()).0, 404);
+    let again = ask_page(d.port, 0);
+    assert_eq!(again["approver"]["to"], json!(["user:dev-1"]), "{again}");
+    d.stop();
+    verify(&dir);
+}
+
+#[test]
+fn inside_the_timeout_a_question_stays_with_the_person_who_has_it() {
+    let dir = project_with("walk-inside", &timeout_policy(3_600), false);
+    let d = Daemon::start(&dir, &[]);
+    ask_page(d.port, 0);
+    let same = ask_page(d.port, 0);
+    assert_eq!(same["approver"]["to"], json!(["user:dev-1"]), "{same}");
+    d.stop();
+}
+
+#[test]
+fn a_refused_question_starts_again_at_the_first_level() {
+    let dir = project_with("walk-refused", &timeout_policy(1), false);
+    let d = Daemon::start(&dir, &[]);
+    ask_page(d.port, 0);
+    past_timeout();
+    let second = ask_page(d.port, 0);
+    assert_eq!(second["approver"]["to"], json!(["user:lead-1"]), "{second}");
+    let body = json!({"receipt_seq": second["receipt_seq"], "by": "user:lead-1",
+        "action_sha256": second["approver"]["action_sha256"]});
+    assert_eq!(post(d.port, "/v1/refuse", &body.to_string()).0, 200);
+    // Long enough that a walk left open would have moved on.
+    past_timeout();
+    let fresh = ask_page(d.port, 0);
+    assert_eq!(fresh["approver"]["to"], json!(["user:dev-1"]), "{fresh}");
+    d.stop();
+}
+
+#[test]
+fn in_strict_privacy_mode_a_question_still_walks() {
+    let dir = project_with("walk-strict", &timeout_policy(1), true);
+    let d = Daemon::start(&dir, &[]);
+    assert_eq!(ask_page(d.port, 0)["approver"]["to"], json!(["user:dev-1"]));
+    past_timeout();
+    let second = ask_page(d.port, 0);
+    assert_eq!(second["approver"]["to"], json!(["user:lead-1"]), "{second}");
+    d.stop();
+}
+
+#[test]
+fn a_model_never_answers_a_question_that_timed_out() {
+    let mut policy = timeout_policy(1);
+    policy["capabilities"]["fs.edit.docs"]["risk"] = json!("low");
+    policy["people"]["members"]["user:lead-1"]["predict"] =
+        json!({"fs.edit.docs": {"paths": ["docs/**"], "per_day": 1000}});
+    policy["people"]["delegations"]
+        .as_array_mut()
+        .expect("list")
+        .push(json!({"agent": "agent:ops/*", "from": "user:lead-1"}));
+    let dir = project_with("walk-predict", &policy, false);
+    let d = Daemon::start(&dir, &[]);
+    // The lead's model is trained past the bar, through an agent they delegated to directly.
+    teach_yes_as(d.port, "agent:ops/1", "user:lead-1");
+    let answers = (100..120).any(|n| {
+        let a = ask_as(
+            d.port,
+            "agent:ops/1",
+            "Edit",
+            &format!("docs/m{n}.md"),
+            &args_n(n),
+        );
+        a["predicted"]["by"] == "user:lead-1"
+    });
+    assert!(answers, "the model never answered, so this proves nothing");
+    for k in 200..220 {
+        ask_page(d.port, k);
+    }
+    past_timeout();
+    for k in 200..220 {
+        let walked = ask_page(d.port, k);
+        assert_eq!(walked["result"], "escalate", "{walked}");
+        assert_eq!(walked["approver"]["to"], json!(["user:lead-1"]), "{walked}");
+    }
+    d.stop();
+}
+
+#[test]
+fn a_timeout_of_zero_stops_the_daemon_from_starting() {
+    let dir = fresh_log("walk-zero");
+    std::fs::write(dir.join("policy.json"), timeout_policy(0).to_string()).expect("policy");
+    let out = Command::new(BIN)
+        .arg("--dir")
+        .arg(&dir)
+        .args(["daemon", "--addr", "127.0.0.1:0"])
+        .current_dir(&dir)
+        .output()
+        .expect("run");
+    assert!(!out.status.success());
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("escalation_timeout_secs"), "{err}");
+}
+
+#[test]
+fn asking_again_does_not_restart_the_clock() {
+    let dir = project_with("walk-clock", &timeout_policy(2), false);
+    let d = Daemon::start(&dir, &[]);
+    ask_page(d.port, 0);
+    past_timeout();
+    ask_page(d.port, 0);
+    past_timeout();
+    let third = ask_page(d.port, 0);
+    assert_eq!(third["approver"]["to"], json!(["user:lead-1"]), "{third}");
+    d.stop();
+}
+
+#[test]
+fn an_answer_ends_the_walk_after_a_restart_too() {
+    let dir = project_with("walk-replay", &timeout_policy(1), false);
+    let d = Daemon::start(&dir, &[]);
+    ask_page(d.port, 0);
+    past_timeout();
+    let second = ask_page(d.port, 0);
+    let body = json!({"receipt_seq": second["receipt_seq"], "by": "user:lead-1",
+        "action_sha256": second["approver"]["action_sha256"]});
+    assert_eq!(post(d.port, "/v1/refuse", &body.to_string()).0, 200);
+    d.stop();
+    let d = Daemon::start(&dir, &[]);
+    past_timeout();
+    let fresh = ask_page(d.port, 0);
+    assert_eq!(fresh["approver"]["to"], json!(["user:dev-1"]), "{fresh}");
+    d.stop();
 }

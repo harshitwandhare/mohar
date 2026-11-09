@@ -35,8 +35,8 @@ to the [engineering bar](engineering-bar.md). Each phase ships as small pull req
   actions inside limits that person set. Done: the daemon predicts answers and measures them against
   checks (#52).
 - An hourly budget per approver, with requests past it held and reported (#205); a flagged reviewer
-  gets half of it and floods are named (#208). Batching and escalation levels with timeouts are next
-  (#89).
+  gets half of it and floods are named (#208). Questions nobody answers walk up the chain and end in a
+  signed deny (#211). Batching is next (#89).
 - Sampled re-checks of each reviewer's accepts by a second person, recorded as receipts, so a
   rubber-stamping flag can clear (#188).
 

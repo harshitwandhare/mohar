@@ -9,6 +9,7 @@ mod prediction;
 mod publish;
 mod recheck;
 mod telemetry;
+mod walk;
 
 use std::collections::VecDeque;
 use std::path::PathBuf;

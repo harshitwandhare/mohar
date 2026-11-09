@@ -28,6 +28,7 @@ use crate::load::{self, Load};
 use crate::prediction::{Ask, Predictions};
 use crate::recheck::Rechecks;
 use crate::telemetry::{self, Event, Telemetry};
+use crate::walk::{self, Walks};
 use serde_json::json;
 
 /// Largest request head (request line and headers) the daemon reads.
@@ -121,6 +122,8 @@ struct Inner {
     load: Load,
     /// Accepts drawn for a second person to re-check, rebuilt from the log.
     rechecks: Rechecks,
+    /// How far up the chain each unanswered question has gone, rebuilt from the log.
+    walks: Walks,
 }
 
 /// Serve until the process is stopped. Prints `listening on ADDR` once bound, so callers that ask
@@ -140,7 +143,7 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
         .transpose()?;
     let mut log = FileLog::open(dir).map_err(|e| e.to_string())?;
     log.set_segment_bytes(cfg.segment_bytes);
-    let (pending, ledger, lessons, approvals, predictions, load, rechecks) =
+    let (pending, ledger, lessons, approvals, predictions, load, rechecks, walks) =
         replay(dir, &policy, &log)?;
     let listener = TcpListener::bind(cfg.addr).map_err(|e| format!("{}: {e}", cfg.addr))?;
     let local = listener.local_addr().map_err(|e| e.to_string())?;
@@ -182,6 +185,7 @@ pub fn serve(dir: &Path, cfg: Config) -> Result<(), String> {
             approvals,
             predictions,
             load,
+            walks,
             rechecks,
             tasks: HashMap::new(),
             ran: HashSet::new(),
@@ -274,6 +278,7 @@ type Replayed = (
     Predictions,
     Load,
     Rechecks,
+    Walks,
 );
 
 /// Read the log once: decisions still waiting for an outcome, the trust ledger and lesson book rebuilt
@@ -286,6 +291,7 @@ fn replay(dir: &Path, policy: &Policy, log: &FileLog) -> Result<Replayed, String
     let mut lessons = Book::new(log.verifying_key());
     let mut predictions = Predictions::default();
     let mut load = Load::default();
+    let mut walks = Walks::default();
     let mut rechecks = Rechecks::default();
     let seed = log.review_seed();
     // Signing a lesson has no failing input today; if one appears, the daemon doesn't start on a
@@ -323,6 +329,9 @@ fn replay(dir: &Path, policy: &Policy, log: &FileLog) -> Result<Replayed, String
             .is_some_and(|p| p.act == "approve" || p.act == "refuse") =>
         {
             if let Some(closed) = apply_answer(log, policy, &mut approvals, &mut pending, &r) {
+                if !closed.is_empty() {
+                    walks.close(&load::question(&r.agent.id, &r.action));
+                }
                 learn_answer(log, policy, &mut predictions, &r, &closed);
             }
         }
@@ -331,6 +340,7 @@ fn replay(dir: &Path, policy: &Policy, log: &FileLog) -> Result<Replayed, String
         }
         None => {
             load.record(&r);
+            track_walk(log, policy, &mut walks, &mut pending, &r);
             // A gate stop is a near miss (S0) unless it only stopped a suspended agent; an action
             // run on the record uses up one raised review draw. The live path does the same.
             let (by, result) = (r.decision.by.as_str(), r.decision.result.as_str());
@@ -381,6 +391,7 @@ fn replay(dir: &Path, policy: &Policy, log: &FileLog) -> Result<Replayed, String
             predictions,
             load,
             rechecks,
+            walks,
         )),
     }
 }
@@ -953,6 +964,9 @@ fn answer(state: &State, body: &[u8], act: &str) -> (u16, serde_json::Value) {
         &mut inner.pending,
         &r,
     ) {
+        if !closed.is_empty() {
+            inner.walks.close(&load::question(&r.agent.id, &r.action));
+        }
         learn_answer(
             &inner.log,
             &state.policy,
@@ -1022,19 +1036,44 @@ fn apply_answer(
             a.complete()
         }
     };
+    Some(if closes {
+        close_open(log, pending, r)
+    } else {
+        Vec::new()
+    })
+}
+
+/// Close every open escalation of the action in `r` by the agent in `r`, returning their receipt numbers.
+fn close_open(log: &FileLog, pending: &mut HashMap<u64, Pending>, r: &Receipt) -> Vec<u64> {
     let mut closed = Vec::new();
-    if closes {
-        pending.retain(|seq, d| {
-            let shut = d.decision.result == "escalate"
-                && d.agent_id == r.agent.id
-                && logged(log, &d.action) == r.action;
-            if shut {
-                closed.push(*seq);
-            }
-            !shut
-        });
+    pending.retain(|seq, d| {
+        let shut = d.decision.result == "escalate"
+            && d.agent_id == r.agent.id
+            && logged(log, &d.action) == r.action;
+        if shut {
+            closed.push(*seq);
+        }
+        !shut
+    });
+    closed
+}
+
+/// Keep a question's place on the chain in step with a decision receipt, live and on replay. The end
+/// of the chain closes the question for everyone asked, so a late yes can't let it through. That holds
+/// even if the policy has since dropped the timeout: the receipt is what happened.
+fn track_walk(
+    log: &FileLog,
+    policy: &Policy,
+    walks: &mut Walks,
+    pending: &mut HashMap<u64, Pending>,
+    r: &Receipt,
+) {
+    if policy.escalation_timeout().is_some() {
+        walks.record(r);
     }
-    Some(closed)
+    if r.decision.result == "deny" && r.decision.by == "timeout" {
+        close_open(log, pending, r);
+    }
 }
 
 /// Keep a person's answers and the checks' agreement in step with an answer that counted, from the
@@ -1226,13 +1265,43 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     let mut route = (stop.is_none() && !approved && verdict.result == "escalate")
         .then(|| state.policy.route(&req.agent, &action.capability))
         .flatten();
+    let question = load::question(&agent, &logged);
+    // Who has the question now, if it has been waiting. The last people asked, when nobody is left.
+    let (mut walked, mut timed_out) = (false, None);
+    if let (Some(r), Some(timeout)) = (route.as_mut(), state.policy.escalation_timeout()) {
+        let levels = state
+            .policy
+            .escalation_levels(&req.agent, &action.capability);
+        // Compared as the log writes ids, so a strict-privacy log keeps its place.
+        let written: Vec<Vec<String>> = levels
+            .iter()
+            .map(|l| l.to.iter().map(|p| inner.log.pseudonym(p)).collect())
+            .collect();
+        let at = parse_rfc3339(&ts);
+        match walk::level(inner.walks.get(&question), &written, at, timeout) {
+            Some(i) => {
+                walked = i > 0;
+                if let Some(l) = levels.get(i) {
+                    *r = l.clone();
+                }
+            }
+            None => timed_out = levels.last().map(|l| l.to.clone()),
+        }
+    }
+    if timed_out.is_some() {
+        route = None;
+    }
     // The model may answer only for the one person an escalation goes to. A suspended agent is denied
     // and an action with no effect allowed before this, and loading the policy refused prediction on a
     // capability that needs two people.
-    let predicting = route.as_ref().and_then(|r| match r.to.as_slice() {
-        [person] => Some(person.clone()),
-        _ => None,
-    });
+    // Nor for a question that has already waited on someone: that one needs a person.
+    let predicting = route
+        .as_ref()
+        .filter(|_| !walked)
+        .and_then(|r| match r.to.as_slice() {
+            [person] => Some(person.clone()),
+            _ => None,
+        });
     let prediction = predicting.as_ref().map(|person| {
         let ask = Ask {
             person,
@@ -1253,7 +1322,6 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     // the request is held; a model's yes asks nobody, so it never comes to this.
     let held = match route.as_mut().filter(|_| predicted_yes.is_none()) {
         Some(r) => {
-            let question = load::question(&agent, &logged);
             let at = parse_rfc3339(&ts);
             let (room, full) = with_room(state, &inner, &r.to, &question, at);
             if !full.is_empty() && room.len() < state.policy.approvals_needed(&action.capability) {
@@ -1292,6 +1360,14 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
             by: "budget".to_string(),
             review: false,
             to: held.clone().unwrap_or_default(),
+        },
+        // Everyone on the chain had their time. Nobody is being asked any more.
+        None if timed_out.is_some() => Decision {
+            result: "deny".to_string(),
+            level: verdict.level,
+            by: "timeout".to_string(),
+            review: false,
+            to: Vec::new(),
         },
         None if approved => Decision {
             result: "allow".to_string(),
@@ -1340,6 +1416,16 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         Err(e) => return (500, json!({ "error": e.to_string() })),
     };
     inner.load.record(&receipt);
+    {
+        let inner = &mut *inner;
+        track_walk(
+            &inner.log,
+            &state.policy,
+            &mut inner.walks,
+            &mut inner.pending,
+            &receipt,
+        );
+    }
     let capability = action.capability.clone();
     let lessons: Vec<serde_json::Value> = {
         let all = inner.lessons.for_context(&agent, &capability);
@@ -1438,6 +1524,7 @@ fn decide(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
             "remediation": remediation,
             "approver": approver,
             "held": held_answer,
+            "timed_out": timed_out,
             "predicted": predicted_yes.map(|(by, p_yes)| json!({"by": by, "p_yes": p_yes})),
         }),
     )
@@ -2060,6 +2147,7 @@ mod tests {
                 predictions: Predictions::default(),
                 load: Load::default(),
                 rechecks: Rechecks::default(),
+                walks: Walks::default(),
             }),
             policy: Policy::builtin(&dir),
             log_dir: dir,

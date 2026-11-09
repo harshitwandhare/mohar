@@ -388,6 +388,12 @@ them one too:
 "user:dev-1": {"holds": ["fs.edit.docs"], "escalations_per_hour": 20}
 ```
 
+`people.escalation_timeout_secs` gives each level a time to answer. Asking again after it moves the
+question one level up: the next person in the reporting tree who holds the capability, then the owners.
+`approver.to` says who has it now. Past the last level `/v1/decide` returns `deny` with `timed_out` (the
+last people asked), the receipt says `"by": "timeout"`, and answers to the earlier escalations get a 404.
+Asking again after that starts from the first level. Left out, a question stays with its first level.
+
 Each distinct action by each agent counts once in a sliding hour, from when it was first asked, so an
 agent asking again about the same thing costs nothing. When several people could answer, the request goes
 only to those with room. When fewer have room than the capability needs (one, or two under

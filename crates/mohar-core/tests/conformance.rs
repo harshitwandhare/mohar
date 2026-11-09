@@ -557,6 +557,7 @@ fn cases() -> Vec<Value> {
     out.extend(reviewed_cases());
     out.extend(predicted_cases());
     out.extend(held_cases());
+    out.extend(timed_out_cases());
     out.extend(rechecked_cases());
     out
 }
@@ -672,6 +673,77 @@ fn predicted_cases() -> Vec<Value> {
             "predicted-person-dropped",
             "Receipt 9's \"to\" is removed after it was signed, hiding whose answer was predicted.",
             None,
+        ),
+    ]
+}
+
+/// [`held_log`] with a question denied because nobody on the chain answered in time (spec 1.9.0).
+fn timed_out_log(seed: &[u8; 32]) -> (Vec<Receipt>, Vec<Checkpoint>) {
+    let (receipts, checkpoints) = held_log(seed);
+    let mut log = Log::new(SigningKey::from_seed(seed));
+    for r in &receipts {
+        log.append(Entry {
+            ts: r.ts.clone(),
+            agent_id: r.agent.id.clone(),
+            action: r.action.clone(),
+            decision: r.decision.clone(),
+            verification: r.verification.clone(),
+            person: r.person.clone(),
+        })
+        .expect("append");
+    }
+    log.append(Entry {
+        ts: "2026-11-07T09:12:41.220Z".into(),
+        agent_id: receipts[0].agent.id.clone(),
+        action: Action {
+            capability: "fs.edit.docs".into(),
+            tool: "Edit".into(),
+            target: "docs/guide/upgrade.md".into(),
+            args_sha256: "a17f02c6".into(),
+        },
+        decision: Decision {
+            result: "deny".into(),
+            level: 0,
+            by: "timeout".into(),
+            review: false,
+            to: Vec::new(),
+        },
+        verification: None,
+        person: None,
+    })
+    .expect("append");
+    (log.receipts().to_vec(), checkpoints)
+}
+
+/// Spec 1.9.0: a question nobody answered in time, and the ways to alter that.
+fn timed_out_cases() -> Vec<Value> {
+    let (good, checkpoints) = timed_out_log(&SEED);
+    let changed = |name: &str, about: &str, key: &str, value: Value| {
+        let mut c = case(name, about, 0, &SEED, Some(&SEED), &good, &checkpoints);
+        c["receipts"][11]["decision"][key] = value;
+        c
+    };
+    vec![
+        case(
+            "timed-out-question-denied",
+            "Receipt 11 was denied because everyone on the chain had their time and nobody answered.",
+            2,
+            &SEED,
+            Some(&SEED),
+            &good,
+            &checkpoints,
+        ),
+        changed(
+            "timed-out-turned-into-allow",
+            "Receipt 11's result is changed to allow after it was signed.",
+            "result",
+            json!("allow"),
+        ),
+        changed(
+            "timed-out-blamed-on-a-gate",
+            "Receipt 11 says a gate stopped it after it was signed.",
+            "by",
+            json!("gate"),
         ),
     ]
 }
@@ -1030,7 +1102,7 @@ fn level_on_disk(case: &Value) -> u8 {
 fn build() -> Value {
     json!({
         "format": "mohar receipts v1 conformance",
-        "spec": "spec/receipts-v1.md, spec version 1.7.0",
+        "spec": "spec/receipts-v1.md, spec version 1.9.0",
         "notes": "Seeds are bytes 0x00..0x1f (the log's key) and 0x20..0x3f (another key), for testing only. Each case is a log: log_key is public.key in the log directory, pinned_key is the key the verifier was given some other way (null if none), published_checkpoints were kept outside the machine. A rotated log also has segments (file name under segments/ and its receipts, oldest first) and local_checkpoints (checkpoints.jsonl in the log directory); receipts is then receipts.jsonl. A verifier must report expect_level. Level 3 has no cases yet.",
         "cases": cases(),
     })

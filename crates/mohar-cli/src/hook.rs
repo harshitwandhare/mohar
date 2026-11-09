@@ -97,6 +97,13 @@ fn pre_tool_use(daemon: &str, p: &Value) -> String {
                 reason("not earned yet on this capability, so a person decides"),
             ),
         },
+        Some("deny") if approvers(&answer["timed_out"]).is_some() => (
+            "deny",
+            reason(&format!(
+                "nobody answered in time, the last to be asked was {}; asking again starts over",
+                approvers(&answer["timed_out"]).unwrap_or_default()
+            )),
+        ),
         Some("deny") => match (approvers(&answer["held"]["to"]), answer["reason"].as_str()) {
             (Some(who), _) => {
                 let wait = answer["held"]["retry_after"].as_u64().unwrap_or(3_600);
@@ -416,6 +423,18 @@ mod tests {
             let (decision, why) = answer_of(&run(&url, &pre("Read", json!({"file_path": "a"}))));
             assert_eq!((decision.as_str(), why.as_str()), expect, "{body}");
         }
+    }
+
+    #[test]
+    fn a_timed_out_question_says_who_was_last_asked() {
+        let body = r#"{"result": "deny", "receipt_seq": 4, "timed_out": ["user:o"]}"#;
+        let (url, _) = fake(200, body);
+        let (decision, why) = answer_of(&run(&url, &pre("Read", json!({"file_path": "a"}))));
+        assert_eq!(decision, "deny");
+        assert_eq!(
+            why,
+            "Mohar: nobody answered in time, the last to be asked was user:o; asking again starts over (receipt 4)"
+        );
     }
 
     #[test]
