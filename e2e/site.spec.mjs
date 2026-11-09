@@ -422,3 +422,12 @@ test('the integrations board shows which one ships and which are planned', async
   ]);
   expect(shippedGround, 'the one that ships stands out').not.toBe(ground);
 });
+
+test('the wordmark sits on the body size step', async ({ page }) => {
+  await page.goto('/');
+  const sizes = await page.evaluate(() => [
+    getComputedStyle(document.querySelector('.wordmark')).fontSize,
+    getComputedStyle(document.body).fontSize,
+  ]);
+  expect(sizes[0]).toBe(sizes[1]);
+});

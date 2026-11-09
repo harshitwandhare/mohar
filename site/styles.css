@@ -38,7 +38,7 @@ img { max-width: 100%; height: auto; display: block; }
 /* Header: the same on every page. Under 900px the links fold into a menu. */
 .bar { position: sticky; top: 0; z-index: 10; display: flex; justify-content: space-between; align-items: center; gap: 24px;
   height: 64px; padding: 0 var(--edge); background: var(--ground); }
-.wordmark { flex-shrink: 0; font-weight: 800; font-size: 19px; letter-spacing: -0.01em; text-decoration: none; display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.wordmark { flex-shrink: 0; font-weight: 800; font-size: var(--s-body); letter-spacing: -0.01em; text-decoration: none; display: flex; align-items: center; gap: 10px; min-height: 44px; }
 .wordmark img { width: 28px; height: 28px; }
 .bar nav { display: flex; align-items: center; gap: 4px; font-size: var(--s-small); }
 .bar nav a { display: inline-flex; align-items: center; min-height: 44px; text-decoration: none; color: var(--soft); padding: 8px 12px; border-radius: var(--radius); transition: color .15s ease, background .15s ease; }
