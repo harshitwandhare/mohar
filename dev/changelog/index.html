@@ -1388,6 +1388,12 @@ receipt format; each such change is called out.</p>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
 <li>
+<p><code>people.escalation_timeout_secs</code> (#211). When an agent asks again after that long with no answer, the
+  question moves to the next person up the reporting tree who holds the capability, then the owners. Past
+  the last level it is a signed <code>deny</code> by <code>timeout</code>, and late answers are refused. <code>/v1/decide</code> returns
+  <code>timed_out</code>. Receipt spec 1.9.0, with three conformance vectors.</p>
+</li>
+<li>
 <p>Sampled re-checks (#188). One accept in ten, and every accept by a flagged reviewer, is drawn for a
   second person; the re-check is an outcome receipt with <code>kind</code> <code>recheck</code> whose <code>of</code> is the accept. A
   pass clears the first reviewer's rubber-stamping flag; it never counts toward the agent's trust.

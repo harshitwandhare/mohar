@@ -1707,6 +1707,11 @@ strict privacy mode, where the log holds no paths or names to rebuild the checks
 them one too:</p>
 <div class="highlight"><pre><span></span><code><span class="nt">"user:dev-1"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"holds"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"fs.edit.docs"</span><span class="p">],</span><span class="w"> </span><span class="nt">"escalations_per_hour"</span><span class="p">:</span><span class="w"> </span><span class="mi">20</span><span class="p">}</span>
 </code></pre></div>
+<p><code>people.escalation_timeout_secs</code> gives each level a time to answer. Asking again after it moves the
+question one level up: the next person in the reporting tree who holds the capability, then the owners.
+<code>approver.to</code> says who has it now. Past the last level <code>/v1/decide</code> returns <code>deny</code> with <code>timed_out</code> (the
+last people asked), the receipt says <code>"by": "timeout"</code>, and answers to the earlier escalations get a 404.
+Asking again after that starts from the first level. Left out, a question stays with its first level.</p>
 <p>Each distinct action by each agent counts once in a sliding hour, from when it was first asked, so an
 agent asking again about the same thing costs nothing. When several people could answer, the request goes
 only to those with room. When fewer have room than the capability needs (one, or two under
