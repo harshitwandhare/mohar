@@ -514,6 +514,7 @@ fn handle(stream: &mut TcpStream, state: &State) {
         "/v1/approve" => answer(state, &body, "approve"),
         "/v1/refuse" => answer(state, &body, "refuse"),
         "/v1/escalation" => escalation(state, &body),
+        "/v1/batch" => batches(state, &body),
         "/v1/predictions" => predictions(state, &body),
         "/v1/load" => load_report(state, &body),
         "/v1/rechecks" => rechecks(state, &body),
@@ -864,6 +865,9 @@ fn escalation(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
     )
 }
 
+/// Most escalations one batch answers, and the most a batch listing shows per group.
+const MAX_BATCH: usize = 50;
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct AnswerRequest {
@@ -872,69 +876,188 @@ struct AnswerRequest {
     action_sha256: String,
 }
 
+/// One escalation in a batch answer, named the same way a single answer names it.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BatchEntry {
+    receipt_seq: u64,
+    action_sha256: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BatchAnswer {
+    by: String,
+    batch: Vec<BatchEntry>,
+}
+
+/// An answer to one escalation, or to a batch of related ones.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum AnswerBody {
+    One(AnswerRequest),
+    Many(BatchAnswer),
+}
+
 /// A person answers an escalated action, `approve` or `refuse`. Only someone it was routed to may
 /// (the escalate receipt names them), and only by naming the SHA-256 of the exact action they were
 /// shown. Either answer is a signed receipt that closes the escalation; an approval also lets that
 /// agent run that action once, within an hour.
+///
+/// A batch answers several escalations at once, each entry checked as a single answer would be. They
+/// must all be one agent's, on one capability that [`batchable`] allows, with no action named twice. If any entry fails nothing is written; otherwise each action gets its own receipt, so a
+/// batch replays exactly like the single answers it stands for.
 fn answer(state: &State, body: &[u8], act: &str) -> (u16, serde_json::Value) {
-    let req: AnswerRequest = match serde_json::from_slice(body) {
-        Ok(r) => r,
-        Err(_) => return bad("body is not a valid answer: give receipt_seq, by and action_sha256"),
+    let (by, entries, many) = match serde_json::from_slice(body) {
+        Ok(AnswerBody::One(r)) => (r.by, vec![(r.receipt_seq, r.action_sha256)], false),
+        Ok(AnswerBody::Many(b)) => (
+            b.by,
+            b.batch
+                .into_iter()
+                .map(|e| (e.receipt_seq, e.action_sha256))
+                .collect(),
+            true,
+        ),
+        Err(_) => {
+            return bad(
+                "body is not a valid answer: give receipt_seq, by and action_sha256, or by and a batch of receipt_seq and action_sha256",
+            );
+        }
     };
-    if !field_ok(&req.by, MAX_FIELD) || is_pseudonym(&req.by) {
+    if !field_ok(&by, MAX_FIELD) || is_pseudonym(&by) {
         return bad("by must be non-empty, at most 512 bytes, and not a pseudonym");
     }
-    if !is_sha256_hex(&req.action_sha256) {
+    if entries.iter().any(|(_, h)| !is_sha256_hex(h)) {
         return bad("action_sha256 must be 64 lowercase hex characters");
+    }
+    if many {
+        if !(2..=MAX_BATCH).contains(&entries.len()) {
+            return bad("a batch holds 2 to 50 escalations");
+        }
+        // A receipt named twice either repeats its hash or carries a wrong one, so this covers it.
+        let hashes: HashSet<&str> = entries.iter().map(|(_, h)| h.as_str()).collect();
+        if hashes.len() != entries.len() {
+            return bad("a batch names each action once");
+        }
     }
     let mut inner = match lock(state) {
         Ok(g) => g,
         Err(e) => return e,
     };
+    let mut checked = Vec::with_capacity(entries.len());
+    for (seq, hash) in &entries {
+        match check_answer(&inner, *seq, &by, hash, act) {
+            Ok(c) => checked.push(c),
+            Err(e) => return e,
+        }
+    }
+    if many {
+        let (agent, capability) = (&checked[0].0.agent_id, &checked[0].1.capability);
+        if checked
+            .iter()
+            .any(|(p, a)| &p.agent_id != agent || &a.capability != capability)
+        {
+            return (
+                409,
+                json!({"error": "a batch holds one agent's escalations on one capability"}),
+            );
+        }
+        if !batchable(&state.policy, capability) {
+            return (
+                409,
+                json!({"error": "only escalations on a low-risk, reversible capability that one person answers can be batched"}),
+            );
+        }
+    }
+    let (mut seqs, mut until) = (Vec::with_capacity(checked.len()), None);
+    for (p, action) in checked {
+        // Every entry was checked under this lock, so only the log write itself can fail here. The
+        // receipts already written stand: each is a whole, signed answer on its own.
+        match write_answer(state, &mut inner, p, action, &by, act) {
+            Ok(r) => {
+                until = r.person.as_ref().and_then(|p| p.until);
+                seqs.push(r.seq);
+            }
+            Err(e) => return e,
+        }
+    }
+    let seq = if many {
+        json!({ "receipt_seqs": seqs })
+    } else {
+        json!({ "receipt_seq": seqs[0] })
+    };
+    let mut out = seq;
+    out["until"] = json!(until);
+    (200, out)
+}
+
+/// Check one answer against what is waiting: the escalation is open (404), it was routed to this
+/// person (403), the hash names the exact action that was escalated (409), and on a two-person
+/// capability this person hasn't approved it already (409). Returns the decision and its action as the
+/// log writes it.
+fn check_answer(
+    inner: &Inner,
+    seq: u64,
+    by: &str,
+    hash: &str,
+    act: &str,
+) -> Result<(Pending, Action), (u16, serde_json::Value)> {
     let Some(p) = inner
         .pending
-        .get(&req.receipt_seq)
+        .get(&seq)
         .filter(|p| p.decision.result == "escalate")
         .cloned()
     else {
-        return (
+        return Err((
             404,
             json!({"error": "no escalated decision waiting with that receipt_seq"}),
-        );
+        ));
     };
     // Compared as the log writes it, so a strict-privacy log matches the person's pseudonym. An
     // escalation that named nobody went to the host's own prompt, and nobody answers it here.
-    if !p.decision.to.contains(&inner.log.pseudonym(&req.by)) {
-        return (
+    let me = inner.log.pseudonym(by);
+    if !p.decision.to.contains(&me) {
+        return Err((
             403,
             json!({"error": "that escalation was not routed to this person"}),
-        );
+        ));
     }
     let action = logged(&inner.log, &p.action);
-    if req.action_sha256 != action_sha256(&action) {
-        return (
+    if hash != action_sha256(&action) {
+        return Err((
             409,
             json!({"error": "action_sha256 is not the hash of the action that was escalated"}),
-        );
+        ));
     }
     // On a two-person capability the escalation stays open after the first approval; the same person
     // approving again would count once, so it is refused.
-    let me = inner.log.pseudonym(&req.by);
     if act == "approve"
         && inner.approvals.iter().any(|a| {
             !a.complete() && a.agent_id == p.agent_id && a.action == action && a.by.contains(&me)
         })
     {
-        return (
+        return Err((
             409,
             json!({"error": "already approved by this person; a different person has to approve too"}),
-        );
+        ));
     }
+    Ok((p, action))
+}
+
+/// Sign a checked answer into the log and apply it the way replay will.
+fn write_answer(
+    state: &State,
+    inner: &mut Inner,
+    p: Pending,
+    action: Action,
+    by: &str,
+    act: &str,
+) -> Result<Receipt, (u16, serde_json::Value)> {
     let ts = crate::now_rfc3339();
     let what = Person {
         act: act.into(),
         until: (act == "approve").then(|| parse_rfc3339(&ts) + APPROVAL_SECS),
-        by: req.by,
+        by: by.into(),
         lesson: None,
     };
     // The receipt carries the escalated action itself, so what was answered is signed, not a pointer.
@@ -952,11 +1075,10 @@ fn answer(state: &State, body: &[u8], act: &str) -> (u16, serde_json::Value) {
         verification: None,
         person: Some(what),
     };
-    let r = match inner.log.append(entry) {
-        Ok(r) => r,
-        Err(e) => return (500, json!({ "error": e.to_string() })),
-    };
-    let inner = &mut *inner;
+    let r = inner
+        .log
+        .append(entry)
+        .map_err(|e| (500, json!({ "error": e.to_string() })))?;
     if let Some(closed) = apply_answer(
         &inner.log,
         &state.policy,
@@ -975,10 +1097,67 @@ fn answer(state: &State, body: &[u8], act: &str) -> (u16, serde_json::Value) {
             &closed,
         );
     }
-    (
-        200,
-        json!({ "receipt_seq": r.seq, "until": r.person.as_ref().and_then(|p| p.until) }),
-    )
+    Ok(r)
+}
+
+/// Whether escalations on a capability may be answered as a batch: low risk, reversible, and one
+/// person's approval is enough. Anything riskier is worth a separate look each time.
+fn batchable(policy: &Policy, capability: &str) -> bool {
+    let spec = policy.spec(capability);
+    spec.risk <= Risk::Low && spec.reversible && policy.approvals_needed(capability) == 1
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BatchRequest {
+    by: String,
+}
+
+/// A person's open escalations that can be answered as one batch: grouped by agent and capability,
+/// only [`batchable`] capabilities, one entry per distinct action (its oldest escalation, since an
+/// answer closes them all), groups of at least two, at most [`MAX_BATCH`] entries each. Changes nothing.
+fn batches(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
+    let req: BatchRequest = match serde_json::from_slice(body) {
+        Ok(r) => r,
+        Err(_) => return bad("body is not a valid batch request: give by"),
+    };
+    if !field_ok(&req.by, MAX_FIELD) || is_pseudonym(&req.by) {
+        return bad("by must be non-empty, at most 512 bytes, and not a pseudonym");
+    }
+    let inner = match lock(state) {
+        Ok(g) => g,
+        Err(e) => return e,
+    };
+    let me = inner.log.pseudonym(&req.by);
+    let mut seqs: Vec<u64> = inner.pending.keys().copied().collect();
+    seqs.sort_unstable();
+    let mut groups: std::collections::BTreeMap<(String, String), Vec<serde_json::Value>> =
+        std::collections::BTreeMap::new();
+    for seq in seqs {
+        let p = &inner.pending[&seq];
+        if p.decision.result != "escalate" || !p.decision.to.contains(&me) {
+            continue;
+        }
+        let action = logged(&inner.log, &p.action);
+        if !batchable(&state.policy, &action.capability) {
+            continue;
+        }
+        let hash = action_sha256(&action);
+        let group = groups
+            .entry((p.agent_id.clone(), action.capability.clone()))
+            .or_default();
+        if group.len() < MAX_BATCH && group.iter().all(|e| e["action_sha256"] != hash) {
+            group.push(json!({ "receipt_seq": seq, "action_sha256": hash, "action": action }));
+        }
+    }
+    let list: Vec<serde_json::Value> = groups
+        .into_iter()
+        .filter(|(_, items)| items.len() >= 2)
+        .map(|((agent, capability), items)| {
+            json!({ "agent": agent, "capability": capability, "items": items })
+        })
+        .collect();
+    (200, json!({ "by": req.by, "batches": list }))
 }
 
 /// Apply an approve or refuse receipt, from the receipt as written, so live and replay agree. Either

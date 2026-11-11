@@ -128,7 +128,7 @@ and cumulative metrics: `mohar.decisions` by result, `mohar.outcomes` by verifie
 targets or arguments. Export runs on its own thread; a collector that is down or slow loses telemetry
 and never delays or changes a decision. Without the flag nothing is collected.
 
-Ten endpoints, JSON in and out:
+Eleven endpoints, JSON in and out:
 
 ```
 POST /v1/decide   {agent, tool, target, args_sha256, call_id?}  ->  {result, level, receipt_seq, lessons}
@@ -136,8 +136,10 @@ POST /v1/outcome  {receipt_seq | call_id, verifier, result, evidence_sha256, rev
 POST /v1/verify   {agent, task}  ->  {verified, result}
 POST /v1/person   {by, act, agent, capability?, lesson?, until?}  ->  {receipt_seq}
 POST /v1/approve  {receipt_seq, by, action_sha256}  ->  {receipt_seq, until}
+POST /v1/approve  {by, batch: [{receipt_seq, action_sha256}]}  ->  {receipt_seqs, until}
 POST /v1/refuse   {receipt_seq, by, action_sha256}  ->  {receipt_seq}
 POST /v1/escalation  {receipt_seq}  ->  {agent, action, action_sha256, to, level, passes, failures, suspended}
+POST /v1/batch  {by}  ->  {by, batches: [{agent, capability, items: [{receipt_seq, action_sha256, action}]}]}
 POST /v1/predictions  {}  ->  {people: {<id>: {predicted_today, checks, agreed}}}
 POST /v1/load  {}  ->  {people: {<id>: {set, per_hour, flagged, asked, held, agents, flooding}}}
 POST /v1/rechecks  {}  ->  {open: [{receipt_seq, reviewer}]}
@@ -156,6 +158,15 @@ the people it went to (`decision.to`), so an answer is checked against the log a
 restart, as do unused approvals. An escalation that named nobody went to the host's prompt and gets a
 403 here. The Claude Code hook denies a routed
 escalation with the approvers' names instead of asking whoever is at the prompt.
+
+Related low-risk questions can be answered together. `/v1/batch` lists a person's open escalations that
+qualify, grouped by agent and capability: only capabilities that are low risk, reversible and need one
+approver, one entry per distinct action, groups of two or more, at most 50 entries each. `/v1/approve`
+and `/v1/refuse` take a `batch` of 2 to 50 `{receipt_seq, action_sha256}` entries instead of one. Each
+entry is checked as a single answer would be (403, 404 and 409 as above), the batch must be one agent on
+one such capability (409 otherwise), and no action may appear twice (400). If any entry fails, nothing
+is written. Otherwise every action gets its own approve or refuse receipt, so a batch is recorded and
+replayed exactly like the single answers it stands for and needs nothing new in the receipt spec.
 
 A `human` outcome must name the `reviewer` and the `review_secs` they spent (any other verifier gets a 400
 if it sends them). Both are signed into the receipt, and the reviewer goes through the pseudonyms in

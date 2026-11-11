@@ -9,6 +9,11 @@ receipt format; each such change is called out.
 
 ### Added
 
+- Batch answers (#214). `POST /v1/batch` lists a person's open escalations that can be answered together:
+  one agent, one capability that is low risk, reversible and needs one approver. `/v1/approve` and
+  `/v1/refuse` accept a `batch` of 2 to 50 of them; every entry is checked like a single answer, and if
+  one fails nothing is written. Each action still gets its own receipt, so the receipt spec is unchanged.
+
 - `people.escalation_timeout_secs` (#211). When an agent asks again after that long with no answer, the
   question moves to the next person up the reporting tree who holds the capability, then the owners. Past
   the last level it is a signed `deny` by `timeout`, and late answers are refused. `/v1/decide` returns

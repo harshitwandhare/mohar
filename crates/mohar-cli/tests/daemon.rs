@@ -3542,3 +3542,227 @@ fn an_answer_ends_the_walk_after_a_restart_too() {
     assert_eq!(fresh["approver"]["to"], json!(["user:dev-1"]), "{fresh}");
     d.stop();
 }
+
+/// The routed team with docs edits low risk, so the dev's docs questions can be answered as a batch.
+/// Guides are a second low-risk capability the dev holds, to show a batch keeps to one capability.
+fn batch_policy() -> Value {
+    let mut policy = people_policy();
+    policy["capabilities"]["fs.edit.docs"]["risk"] = json!("low");
+    policy["capabilities"]["fs.edit.guides"] =
+        json!({"risk": "low", "reversible": true, "ceiling": 2});
+    let rules = policy["rules"].as_array_mut().expect("rules");
+    rules.insert(
+        0,
+        json!({"tools": ["Edit"], "paths": ["guides/**"], "capability": "fs.edit.guides"}),
+    );
+    policy["people"]["members"]["user:dev-1"]["holds"] = json!(["fs.edit.docs", "fs.edit.guides"]);
+    policy
+}
+
+fn batch_list(port: u16, by: &str) -> Value {
+    let (status, b) = post(port, "/v1/batch", &json!({ "by": by }).to_string());
+    assert_eq!(status, 200, "{b}");
+    b["batches"].clone()
+}
+
+/// The batch entry for an escalation decide answered with.
+fn entry(a: &Value) -> Value {
+    json!({"receipt_seq": a["receipt_seq"], "action_sha256": a["approver"]["action_sha256"]})
+}
+
+fn answer_batch(port: u16, act: &str, by: &str, batch: &[Value]) -> (u16, Value) {
+    let body = json!({ "by": by, "batch": batch });
+    post(port, &format!("/v1/{act}"), &body.to_string())
+}
+
+#[test]
+fn related_low_risk_escalations_are_listed_and_approved_in_one_batch() {
+    let dir = project_with("batch", &batch_policy(), false);
+    let d = Daemon::start(&dir, &[]);
+    let asked: Vec<Value> = (0..3).map(|n| ask_page(d.port, n)).collect();
+    for a in &asked {
+        assert_eq!(a["approver"]["to"], json!(["user:dev-1"]), "{a}");
+    }
+    // Asking again about the same page is the same action: listed once.
+    ask_page(d.port, 0);
+    // Another agent's docs edit and a code edit (medium risk, the lead's) are not in the dev's batch.
+    ask_as(
+        d.port,
+        "agent:claude-code/docs-other",
+        "Edit",
+        "docs/x.md",
+        SHA,
+    );
+    ask_as(d.port, WRITER, "Edit", "src/a.rs", SHA);
+
+    let batches = batch_list(d.port, "user:dev-1");
+    assert_eq!(batches.as_array().map(Vec::len), Some(1), "{batches}");
+    let b = &batches[0];
+    assert_eq!(b["agent"], WRITER);
+    assert_eq!(b["capability"], "fs.edit.docs");
+    let items = b["items"].as_array().expect("items");
+    let listed: Vec<Value> = items
+        .iter()
+        .map(|i| json!({"receipt_seq": i["receipt_seq"], "action_sha256": i["action_sha256"]}))
+        .collect();
+    let expected: Vec<Value> = asked.iter().map(entry).collect();
+    assert_eq!(listed, expected);
+    assert_eq!(items[1]["action"]["target"], "docs/p1.md");
+    assert_eq!(batch_list(d.port, "user:lead-1"), json!([]));
+
+    let (status, ok) = answer_batch(d.port, "approve", "user:dev-1", &expected);
+    assert_eq!(status, 200, "{ok}");
+    assert_eq!(ok["receipt_seqs"].as_array().map(Vec::len), Some(3), "{ok}");
+    assert!(ok["until"].as_u64().is_some(), "{ok}");
+    // Each action runs once, under its own approval.
+    for n in 0..3 {
+        assert_eq!(ask_page(d.port, n)["result"], "allow", "page {n}");
+        assert_eq!(ask_page(d.port, n)["result"], "escalate", "page {n}");
+    }
+    d.stop();
+    let approvals: Vec<Value> = log_of(&dir)
+        .into_iter()
+        .filter(|r| r["person"]["act"] == "approve")
+        .collect();
+    assert_eq!(approvals.len(), 3);
+    for (n, r) in approvals.iter().enumerate() {
+        assert_eq!(r["person"]["by"], "user:dev-1");
+        assert_eq!(r["action"]["target"], format!("docs/p{n}.md"));
+    }
+    verify(&dir);
+}
+
+#[test]
+fn a_batch_that_breaks_any_rule_is_refused_whole_and_writes_nothing() {
+    let dir = project_with("batch-refused", &batch_policy(), false);
+    let d = Daemon::start(&dir, &[]);
+    let pages: Vec<Value> = (0..3).map(|n| ask_page(d.port, n)).collect();
+    let again = ask_page(d.port, 0);
+    let other = ask_as(
+        d.port,
+        "agent:claude-code/docs-other",
+        "Edit",
+        "docs/x.md",
+        SHA,
+    );
+    let guide = ask_as(d.port, WRITER, "Edit", "guides/a.md", SHA);
+    assert_eq!(guide["approver"]["to"], json!(["user:dev-1"]), "{guide}");
+    let code: Vec<Value> = ["src/a.rs", "src/b.rs"]
+        .iter()
+        .map(|t| ask_as(d.port, WRITER, "Edit", t, SHA))
+        .collect();
+    let (p0, p1) = (entry(&pages[0]), entry(&pages[1]));
+    let wrong_hash = json!({"receipt_seq": pages[1]["receipt_seq"], "action_sha256": SHA});
+    let unknown = json!({"receipt_seq": 999, "action_sha256": SHA});
+    // Distinct, so only the size refuses it (each would be a 404 otherwise).
+    let too_many: Vec<Value> = (0..51)
+        .map(|n| json!({"receipt_seq": 1000 + n, "action_sha256": args_n(n)}))
+        .collect();
+    let before = std::fs::read_to_string(dir.join("receipts.jsonl")).expect("log");
+    let dev = "user:dev-1";
+    for (act, by, batch, status) in [
+        ("approve", dev, vec![p0.clone()], 400),
+        ("approve", dev, too_many, 400),
+        ("approve", dev, vec![p0.clone(), p0.clone()], 400),
+        ("approve", dev, vec![p0.clone(), entry(&again)], 400),
+        ("approve", dev, vec![p0.clone(), wrong_hash], 409),
+        ("refuse", dev, vec![p0.clone(), unknown], 404),
+        ("approve", dev, vec![p0.clone(), entry(&other)], 409),
+        ("approve", dev, vec![p0.clone(), entry(&guide)], 409),
+        ("approve", "user:owner-1", vec![p0.clone(), p1.clone()], 403),
+        (
+            "approve",
+            "user:lead-1",
+            vec![entry(&code[0]), entry(&code[1])],
+            409,
+        ),
+        ("approve", "", vec![p0.clone(), p1.clone()], 400),
+    ] {
+        let (got, why) = answer_batch(d.port, act, by, &batch);
+        assert_eq!(got, status, "{by} {batch:?}: {why}");
+    }
+    for wrong in [
+        json!({"by": dev, "batch": [p0, p1], "receipt_seq": 1}),
+        json!({"by": dev, "batch": [{"receipt_seq": 1}, {"receipt_seq": 2}]}),
+        json!({"batch": [p0, p1]}),
+    ] {
+        assert_eq!(
+            post(d.port, "/v1/approve", &wrong.to_string()).0,
+            400,
+            "{wrong}"
+        );
+    }
+    assert_eq!(post(d.port, "/v1/batch", "{}").0, 400);
+    assert_eq!(post(d.port, "/v1/batch", r#"{"by": ""}"#).0, 400);
+    assert_eq!(
+        std::fs::read_to_string(dir.join("receipts.jsonl")).expect("log"),
+        before
+    );
+    // Nothing was answered: every page is still waiting.
+    assert_eq!(
+        batch_list(d.port, dev)[0]["items"].as_array().map(Vec::len),
+        Some(3)
+    );
+    d.stop();
+}
+
+#[test]
+fn a_capability_that_needs_two_people_or_cannot_be_undone_is_never_batched() {
+    let mut two = batch_policy();
+    two["gates"] = json!({"two_person": ["fs.edit.docs"]});
+    let mut final_ = batch_policy();
+    final_["capabilities"]["fs.edit.docs"]["reversible"] = json!(false);
+    for (name, policy) in [("batch-two", two), ("batch-final", final_)] {
+        let dir = project_with(name, &policy, false);
+        let d = Daemon::start(&dir, &[]);
+        let pages: Vec<Value> = (0..2).map(|n| ask_page(d.port, n)).collect();
+        let to = pages[0]["approver"]["to"][0]
+            .as_str()
+            .expect("asked")
+            .to_string();
+        assert_eq!(batch_list(d.port, &to), json!([]), "{name}");
+        let batch = [entry(&pages[0]), entry(&pages[1])];
+        let (status, why) = answer_batch(d.port, "approve", &to, &batch);
+        assert_eq!(status, 409, "{name}: {why}");
+        d.stop();
+    }
+}
+
+#[test]
+fn a_refused_batch_closes_each_question_and_a_restart_lists_what_is_left() {
+    let dir = project_with("batch-restart", &batch_policy(), false);
+    let d = Daemon::start(&dir, &[]);
+    let pages: Vec<Value> = (0..4).map(|n| ask_page(d.port, n)).collect();
+    let (status, ok) = answer_batch(
+        d.port,
+        "refuse",
+        "user:dev-1",
+        &[entry(&pages[0]), entry(&pages[1])],
+    );
+    assert_eq!(status, 200, "{ok}");
+    assert_eq!(ok["until"], Value::Null, "{ok}");
+    d.stop();
+    let d = Daemon::start(&dir, &[]);
+    let left = batch_list(d.port, "user:dev-1");
+    let seqs: Vec<&Value> = left[0]["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .map(|i| &i["receipt_seq"])
+        .collect();
+    assert_eq!(
+        seqs,
+        vec![&pages[2]["receipt_seq"], &pages[3]["receipt_seq"]]
+    );
+    let (status, ok) = answer_batch(
+        d.port,
+        "approve",
+        "user:dev-1",
+        &[entry(&pages[2]), entry(&pages[3])],
+    );
+    assert_eq!(status, 200, "{ok}");
+    assert_eq!(ask_page(d.port, 0)["result"], "escalate");
+    assert_eq!(ask_page(d.port, 3)["result"], "allow");
+    d.stop();
+    verify(&dir);
+}
