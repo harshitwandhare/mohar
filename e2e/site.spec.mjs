@@ -431,3 +431,12 @@ test('the wordmark sits on the body size step', async ({ page }) => {
   ]);
   expect(sizes[0]).toBe(sizes[1]);
 });
+
+test('a capability level in the simulator sits on the same title step as an integration name', async ({ page }) => {
+  await page.goto('/');
+  const sizes = await page.evaluate(() => [
+    getComputedStyle(document.querySelector('.cap .level')).fontSize,
+    getComputedStyle(document.querySelector('.fit-tile')).fontSize,
+  ]);
+  expect(sizes[0]).toBe(sizes[1]);
+});

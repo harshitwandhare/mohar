@@ -18,6 +18,7 @@
   /* five sizes: display, heading, lead, body, small. Each scales down to a phone. */
   --s-display: clamp(44px, 9.5vw, 160px);
   --s-heading: clamp(30px, 4.4vw, 64px);
+  --s-title: clamp(20px, 1.8vw, 28px);
   --s-lead: clamp(18px, 1.5vw, 22px);
   --s-body: clamp(16px, 15px + 0.25vw, 18px);
   --s-small: 14px;
@@ -203,7 +204,7 @@ figcaption { color: var(--soft); font-size: var(--s-small); margin-top: 10px; }
 .cap { background: var(--ground); padding: 24px; border-radius: 4px; }
 .cap p { margin: 0; }
 .cap .name { font-weight: 800; font-size: var(--s-lead); }
-.cap .level { color: var(--ok); font-size: clamp(28px, 2.6vw, 40px); font-weight: 800; letter-spacing: -0.02em; margin: 6px 0 0; }
+.cap .level { color: var(--ok); font-size: var(--s-title); font-weight: 800; letter-spacing: -0.02em; margin: 6px 0 0; }
 .cap .meter { height: 10px; background: var(--tile-2); margin: 18px 0 12px; border-radius: 2px; overflow: hidden; }
 .cap .meter span { display: block; height: 100%; background: var(--ok); transition: width .4s ease; }
 .cap.demoted .level { color: var(--seal-text); }
@@ -282,7 +283,7 @@ figcaption { color: var(--soft); font-size: var(--s-small); margin-top: 10px; }
 .fit-head h2 { margin: 0; }
 .fit-head p { margin: 0; max-width: 40ch; }
 .fit-head a { color: inherit; }
-.fit-tile { overflow-wrap: break-word; hyphens: auto; margin: 0; background: var(--tile); border-radius: 4px; padding: 22px; min-height: 140px; font-weight: 800; font-size: clamp(20px, 1.8vw, 28px); letter-spacing: -0.01em; line-height: 1.15; display: flex; flex-direction: column; justify-content: space-between; gap: 16px; }
+.fit-tile { overflow-wrap: break-word; hyphens: auto; margin: 0; background: var(--tile); border-radius: 4px; padding: 22px; min-height: 140px; font-weight: 800; font-size: var(--s-title); letter-spacing: -0.01em; line-height: 1.15; display: flex; flex-direction: column; justify-content: space-between; gap: 16px; }
 .fit-state { font-size: var(--s-small); font-weight: 500; letter-spacing: 0; color: var(--soft); }
 .fit-tile.ships { background: var(--ink); color: var(--ground); }
 .fit-tile.ships .fit-state { color: var(--ground); }
