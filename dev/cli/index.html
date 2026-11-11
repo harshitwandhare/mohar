@@ -1688,6 +1688,22 @@ prompt decides.</p>
 <span class="w">  </span><span class="nt">"delegations"</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="nt">"agent"</span><span class="p">:</span><span class="w"> </span><span class="s2">"agent:claude-code/*"</span><span class="p">,</span><span class="w"> </span><span class="nt">"from"</span><span class="p">:</span><span class="w"> </span><span class="s2">"user:dev-1"</span><span class="p">}]</span>
 <span class="p">}</span>
 </code></pre></div>
+<p>The reporting lines can come from the identity provider instead of being typed out. <code>people.directory</code>
+names a SCIM 2.0 user export (a ListResponse, as <code>GET /Users</code> returns it from Okta, Entra ID or any other
+SCIM server), relative to the project root. Members are matched by <code>userName</code>. Each one reports to the
+nearest person up their chain of enterprise <code>manager</code> links who is also listed under <code>members</code>; people in
+between who aren't listed are passed over. A member the export doesn't contain keeps the <code>reports_to</code>
+written in the policy. Attribute names are matched without case, as SCIM does.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">"people"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"owners"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"user:owner-1"</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">"directory"</span><span class="p">:</span><span class="w"> </span><span class="s2">".mohar/users.json"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"members"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"user:dev-1"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"holds"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"fs.edit.docs"</span><span class="p">]},</span><span class="w"> </span><span class="nt">"user:lead-1"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"holds"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"fs.edit.*"</span><span class="p">]}}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>The daemon reads the export once, when it starts; restart it after exporting again. Loading fails if the
+file can't be read, if a manager id isn't in it, if two users share an id or a <code>userName</code>, if a manager
+chain loops, if a listed member is inactive (<code>"active": false</code>), or if a member's <code>reports_to</code> in the
+policy names someone other than the export does.</p>
 <h4 id="predicted-answers">Predicted answers<a class="headerlink" href="#predicted-answers" title="Permanent link">&para;</a></h4>
 <p>A member can let the daemon answer some escalations for them, from their own past answers. <code>predict</code>
 names the capabilities, each with the paths the target must match and how many answers a day may be
