@@ -225,7 +225,7 @@ figcaption { color: var(--soft); font-size: var(--s-small); margin-top: 10px; }
 /* How it works: the four steps as one bar, widths following how long each really takes. */
 .stages { display: flex; gap: 6px; height: clamp(120px, 20vh, 200px); margin-top: 48px; }
 .stage { flex-basis: 0; min-width: 14%; border-radius: 4px; padding: clamp(12px, 1.5vw, 20px); overflow-wrap: break-word; }
-.stage .dur { margin: 0; font-weight: 800; font-size: clamp(15px, 1.7vw, 28px); letter-spacing: -0.01em; line-height: 1.1; }
+.stage .dur { margin: 0; font-weight: 800; font-size: var(--s-title); letter-spacing: -0.01em; line-height: 1.1; }
 /* Widths follow how long each step really takes. */
 .g1 { flex-grow: 1; } .g5 { flex-grow: 5; } .g2 { flex-grow: 2.2; }
 .s-record { background: var(--tile-2); }

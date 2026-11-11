@@ -440,3 +440,12 @@ test('a capability level in the simulator sits on the same title step as an inte
   ]);
   expect(sizes[0]).toBe(sizes[1]);
 });
+
+test('a stage duration in the loop diagram sits on the title step', async ({ page }) => {
+  await page.goto('/');
+  const sizes = await page.evaluate(() => [
+    getComputedStyle(document.querySelector('.stage .dur')).fontSize,
+    getComputedStyle(document.querySelector('.cap .level')).fontSize,
+  ]);
+  expect(sizes[0]).toBe(sizes[1]);
+});
