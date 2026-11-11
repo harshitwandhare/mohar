@@ -105,6 +105,10 @@ struct People {
     /// How long each level has to answer before the question moves up. Absent means it never moves.
     #[serde(default)]
     escalation_timeout_secs: Option<u64>,
+    /// A SCIM 2.0 user export from the identity provider, relative to the project root. Members'
+    /// reporting lines are read from its enterprise `manager` links.
+    #[serde(default)]
+    directory: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -319,6 +323,15 @@ pub enum PolicyError {
         /// Why it can't be predicted.
         why: &'static str,
     },
+    /// The identity provider export named by `people.directory` can't be read or doesn't settle who
+    /// reports to whom.
+    #[error("people.directory {file}: {why}")]
+    Directory {
+        /// The export file.
+        file: String,
+        /// What is wrong with it.
+        why: String,
+    },
     /// Following `reports_to` from this person comes back to them.
     #[error("people.members: the reporting line from {0:?} goes round in a circle")]
     ReportingCycle(String),
@@ -327,7 +340,7 @@ pub enum PolicyError {
 impl Policy {
     /// Parse and validate a policy file. `base` is the directory relative roots resolve against.
     pub fn from_json(text: &str, base: &Path) -> Result<Self, PolicyError> {
-        let file: File =
+        let mut file: File =
             serde_json::from_str(text).map_err(|e| PolicyError::Parse(e.to_string()))?;
         if file.version != 1 {
             return Err(PolicyError::Version(file.version));
@@ -389,6 +402,19 @@ impl Policy {
                     name: name.clone(),
                 });
             }
+        }
+        if let Some(p) = &mut file.people
+            && let Some(dir) = p.directory.clone()
+        {
+            let path = if dir.is_absolute() {
+                dir
+            } else {
+                base.join(dir)
+            };
+            apply_directory(p, &path).map_err(|why| PolicyError::Directory {
+                file: path.display().to_string(),
+                why,
+            })?;
         }
         if let Some(p) = &file.people {
             check_people(p)?;
@@ -923,6 +949,136 @@ fn host_allowed(host: &str, allowed: &[String]) -> bool {
             None => host == a,
         }
     })
+}
+
+/// The one field of `obj` named `name` without regard to case, as SCIM matches attribute names. Two
+/// spellings of one name can't be told apart, so they are refused.
+fn scim_field<'a>(
+    obj: &'a serde_json::Map<String, serde_json::Value>,
+    name: &str,
+) -> Result<Option<&'a serde_json::Value>, String> {
+    let mut found = obj.iter().filter(|(k, _)| k.eq_ignore_ascii_case(name));
+    let first = found.next().map(|(_, v)| v);
+    if found.next().is_some() {
+        return Err(format!("{name:?} appears twice with different case"));
+    }
+    Ok(first)
+}
+
+/// A string field that is absent, null, or a non-empty string; anything else is refused.
+fn scim_text(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    name: &str,
+) -> Result<Option<String>, String> {
+    match scim_field(obj, name)? {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(serde_json::Value::String(s)) if !s.is_empty() => Ok(Some(s.clone())),
+        Some(_) => Err(format!("{name} is not a non-empty string")),
+    }
+}
+
+/// One user from the export: their userName, whether they are active, and their manager's SCIM id.
+struct ScimUser {
+    name: String,
+    active: bool,
+    manager: Option<String>,
+}
+
+/// One entry of the export's Resources list.
+fn scim_user(u: &serde_json::Value) -> Result<(String, ScimUser), String> {
+    use serde_json::Value;
+    let u = u.as_object().ok_or("not an object")?;
+    let id = scim_text(u, "id")?.ok_or("no id")?;
+    let name = scim_text(u, "userName")?.ok_or("no userName")?;
+    let active = match scim_field(u, "active")? {
+        // RFC 7643 leaves a missing `active` to the provider; exports that omit it list live users.
+        None => true,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return Err("active is not true or false".into()),
+    };
+    let ext = "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User";
+    let manager = match scim_field(u, ext)? {
+        None | Some(Value::Null) => None,
+        Some(Value::Object(e)) => match scim_field(e, "manager")? {
+            None | Some(Value::Null) => None,
+            Some(Value::Object(m)) => scim_text(m, "value")?,
+            Some(_) => return Err("manager is not an object".into()),
+        },
+        Some(_) => return Err("the enterprise extension is not an object".into()),
+    };
+    Ok((
+        id,
+        ScimUser {
+            name,
+            active,
+            manager,
+        },
+    ))
+}
+
+/// Reads a SCIM 2.0 ListResponse of users and gives each listed member the nearest listed, active
+/// person up their manager chain as `reports_to`. Unlisted managers are passed over, inactive or not. A
+/// member the export doesn't name keeps the policy's line. Anything the export leaves open is an error:
+/// a manager it doesn't contain, a repeated id or userName, a loop, an inactive member, or a line in
+/// the policy that disagrees with it.
+fn apply_directory(p: &mut People, path: &Path) -> Result<(), String> {
+    let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let doc: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    let obj = doc.as_object().ok_or("not a JSON object")?;
+    let list = scim_field(obj, "Resources")?
+        .and_then(serde_json::Value::as_array)
+        .ok_or("no Resources list")?;
+    let mut by_id: BTreeMap<String, ScimUser> = BTreeMap::new();
+    let mut names = std::collections::BTreeSet::new();
+    for (i, u) in list.iter().enumerate() {
+        let (id, user) = scim_user(u).map_err(|e| format!("Resources[{i}]: {e}"))?;
+        if !names.insert(user.name.clone()) {
+            return Err(format!("two users have userName {:?}", user.name));
+        }
+        if by_id.insert(id.clone(), user).is_some() {
+            return Err(format!("two users have id {id:?}"));
+        }
+    }
+    let by_name: BTreeMap<&str, &ScimUser> = by_id.values().map(|u| (u.name.as_str(), u)).collect();
+    let listed: std::collections::BTreeSet<String> = p.members.keys().cloned().collect();
+    for (member, entry) in p.members.iter_mut() {
+        let Some(u) = by_name.get(member.as_str()) else {
+            continue;
+        };
+        if !u.active {
+            return Err(format!("{member:?} is inactive in the directory"));
+        }
+        let mut next = u.manager.as_deref();
+        let mut found = None;
+        // A chain longer than the export has visited someone twice.
+        for _ in 0..=by_id.len() {
+            let Some(id) = next else { break };
+            let m = by_id
+                .get(id)
+                .ok_or_else(|| format!("{member:?} has manager id {id:?}, who is not in it"))?;
+            // No activity check: a listed person who is inactive already stops the policy loading.
+            if listed.contains(&m.name) {
+                found = Some(m.name.clone());
+                break;
+            }
+            next = m.manager.as_deref();
+        }
+        if found.is_none() && next.is_some() {
+            return Err(format!(
+                "the manager chain from {member:?} goes round in a circle"
+            ));
+        }
+        match (&entry.reports_to, found) {
+            (Some(a), Some(b)) if *a != b => {
+                return Err(format!(
+                    "the policy says {member:?} reports to {a:?}, the directory says {b:?}"
+                ));
+            }
+            (None, Some(b)) => entry.reports_to = Some(b),
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 /// Every person named exists, nobody's id is empty or a pseudonym, and no reporting line loops.
