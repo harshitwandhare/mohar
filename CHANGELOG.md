@@ -9,6 +9,10 @@ receipt format; each such change is called out.
 
 ### Added
 
+- Reporting lines from the identity provider (#89). `people.directory` names a SCIM 2.0 user export;
+  each listed member reports to the nearest listed person up their manager chain in it. The policy
+  refuses to load on a missing manager, a repeated id or userName, a loop, an inactive member, or a
+  `reports_to` that disagrees with the export.
 - Batch answers (#214). `POST /v1/batch` lists a person's open escalations that can be answered together:
   one agent, one capability that is low risk, reversible and needs one approver. `/v1/approve` and
   `/v1/refuse` accept a `batch` of 2 to 50 of them; every entry is checked like a single answer, and if

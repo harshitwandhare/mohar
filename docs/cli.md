@@ -359,6 +359,26 @@ prompt decides.
 }
 ```
 
+The reporting lines can come from the identity provider instead of being typed out. `people.directory`
+names a SCIM 2.0 user export (a ListResponse, as `GET /Users` returns it from Okta, Entra ID or any other
+SCIM server), relative to the project root. Members are matched by `userName`. Each one reports to the
+nearest person up their chain of enterprise `manager` links who is also listed under `members`; people in
+between who aren't listed are passed over. A member the export doesn't contain keeps the `reports_to`
+written in the policy. Attribute names are matched without case, as SCIM does.
+
+```json
+"people": {
+  "owners": ["user:owner-1"],
+  "directory": ".mohar/users.json",
+  "members": {"user:dev-1": {"holds": ["fs.edit.docs"]}, "user:lead-1": {"holds": ["fs.edit.*"]}}
+}
+```
+
+The daemon reads the export once, when it starts; restart it after exporting again. Loading fails if the
+file can't be read, if a manager id isn't in it, if two users share an id or a `userName`, if a manager
+chain loops, if a listed member is inactive (`"active": false`), or if a member's `reports_to` in the
+policy names someone other than the export does.
+
 #### Predicted answers
 
 A member can let the daemon answer some escalations for them, from their own past answers. `predict`

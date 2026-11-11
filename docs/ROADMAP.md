@@ -28,7 +28,7 @@ to the [engineering bar](engineering-bar.md). Each phase ships as small pull req
   failure could have cost, with remediation plans and lessons the agent is given next time.
 - Promotion only from verified outcomes, over a minimum window.
 
-## Phase 4: escalation (Mar to May 2027)
+## Phase 4: escalation (Mar to May 2027), done
 
 - Route out-of-bounds actions to the right person.
 - A small per-person model of past yes/no decisions, allowed only to skip prompts on low-risk, reversible
@@ -36,8 +36,8 @@ to the [engineering bar](engineering-bar.md). Each phase ships as small pull req
   checks (#52).
 - An hourly budget per approver, with requests past it held and reported (#205); a flagged reviewer
   gets half of it and floods are named (#208). Questions nobody answers walk up the chain and end in a
-  signed deny (#211). Related low-risk questions can be answered as one batch (#214). Left: the
-  escalation chain from an identity provider's groups (#89).
+  signed deny (#211). Related low-risk questions can be answered as one batch (#214). The chain can come from the
+  identity provider's SCIM user export (#89).
 - Sampled re-checks of each reviewer's accepts by a second person, recorded as receipts, so a
   rubber-stamping flag can clear (#188).
 
