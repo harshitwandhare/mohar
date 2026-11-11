@@ -219,8 +219,9 @@ hour. Past that they aren't asked. If nobody else who could answer has room, the
 deny that names who was full and says when to ask again, and that counts against nobody's record. So one
 busy agent can use up a person's attention for an hour but can't push them past the limit they chose.
 A reviewer flagged for rubber-stamping gets half their budget until a re-check clears them, and the
-load report names any agent asking a person three times as often as it usually does. Batching related
-requests is still to come.
+load report names any agent asking a person three times as often as it usually does. A person can also
+answer one agent's open low-risk, reversible questions on one capability as a batch; each action still
+gets its own signed answer, bound to its own hash, and riskier questions are always asked one at a time.
 
 ### Timeouts
 
