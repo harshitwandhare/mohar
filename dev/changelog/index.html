@@ -1388,6 +1388,12 @@ receipt format; each such change is called out.</p>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
 <li>
+<p>Batch answers (#214). <code>POST /v1/batch</code> lists a person's open escalations that can be answered together:
+  one agent, one capability that is low risk, reversible and needs one approver. <code>/v1/approve</code> and
+  <code>/v1/refuse</code> accept a <code>batch</code> of 2 to 50 of them; every entry is checked like a single answer, and if
+  one fails nothing is written. Each action still gets its own receipt, so the receipt spec is unchanged.</p>
+</li>
+<li>
 <p><code>people.escalation_timeout_secs</code> (#211). When an agent asks again after that long with no answer, the
   question moves to the next person up the reporting tree who holds the capability, then the owners. Past
   the last level it is a signed <code>deny</code> by <code>timeout</code>, and late answers are refused. <code>/v1/decide</code> returns
