@@ -449,3 +449,12 @@ test('a stage duration in the loop diagram sits on the title step', async ({ pag
   ]);
   expect(sizes[0]).toBe(sizes[1]);
 });
+
+test('the closing wordmark letters sit on the display step', async ({ page }) => {
+  await page.goto('/');
+  const sizes = await page.evaluate(() => [
+    getComputedStyle(document.querySelector('.close .blocks span')).fontSize,
+    getComputedStyle(document.querySelector('h1')).fontSize,
+  ]);
+  expect(sizes[0]).toBe(sizes[1]);
+});
