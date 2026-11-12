@@ -1,0 +1,16 @@
+[package]
+name = "mohar-bench"
+version = "0.3.0"
+description = "Benchmark harness for Mohar's trust rules: simulated agents over simulated weeks."
+publish = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mohar-core = { path = "../mohar-core" }
+serde_json = "1.0"

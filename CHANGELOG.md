@@ -9,6 +9,10 @@ receipt format; each such change is called out.
 
 ### Added
 
+- Benchmark harness for the trust rules (#221), in `crates/mohar-bench`. Simulated agents of known
+  quality run for nine simulated weeks through Mohar and three baselines (always ask, a static allowlist,
+  one aggregate score); `results.json` reports prompts, incidents, false promotions and time to demotion,
+  and a test fails when it goes stale.
 - Reporting lines from the identity provider (#89). `people.directory` names a SCIM 2.0 user export;
   each listed member reports to the nearest listed person up their manager chain in it. The policy
   refuses to load on a missing manager, a repeated id or userName, a loop, an inactive member, or a
