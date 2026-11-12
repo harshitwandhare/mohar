@@ -312,7 +312,7 @@ figcaption { color: var(--soft); font-size: var(--s-small); margin-top: 10px; }
 
 /* Footer: the name built from blocks of different heights, then plain link columns. */
 .close .blocks { display: flex; gap: 4px; align-items: flex-end; height: clamp(140px, 30svh, 300px); margin: 0 0 56px; }
-.close .blocks span { flex: 1; display: grid; place-items: center; font-weight: 800; font-size: clamp(56px, 11vw, 200px); line-height: 1; color: #0c0a08; border-radius: 4px; }
+.close .blocks span { flex: 1; display: grid; place-items: center; font-weight: 800; font-size: var(--s-display); line-height: 1; color: #0c0a08; border-radius: 4px; }
 .close .blocks span:nth-child(1) { height: 100%; background: var(--seal); }
 .close .blocks span:nth-child(2) { height: 72%; background: var(--brass); }
 .close .blocks span:nth-child(3) { height: 88%; background: var(--ink); }
