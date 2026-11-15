@@ -568,10 +568,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mohar-approve-seq-by-id-yes-daemon-url-and-mohar-refuse" class="md-nav__link">
+  <a href="#mohar-approve-seq-by-id-yes-daemon-url-and-mohar-refuse-wrong" class="md-nav__link">
     <span class="md-ellipsis">
       
-        mohar approve &lt;seq&gt; --by &lt;id&gt; [--yes] [--daemon &lt;url&gt;] and mohar refuse ...
+        mohar approve &lt;seq&gt; --by &lt;id&gt; [--yes] [--daemon &lt;url&gt;] and mohar refuse ... [--wrong]
       
     </span>
   </a>
@@ -1309,10 +1309,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mohar-approve-seq-by-id-yes-daemon-url-and-mohar-refuse" class="md-nav__link">
+  <a href="#mohar-approve-seq-by-id-yes-daemon-url-and-mohar-refuse-wrong" class="md-nav__link">
     <span class="md-ellipsis">
       
-        mohar approve &lt;seq&gt; --by &lt;id&gt; [--yes] [--daemon &lt;url&gt;] and mohar refuse ...
+        mohar approve &lt;seq&gt; --by &lt;id&gt; [--yes] [--daemon &lt;url&gt;] and mohar refuse ... [--wrong]
       
     </span>
   </a>
@@ -1497,7 +1497,7 @@ POST /v1/verify   {agent, task}  -&gt;  {verified, result}
 POST /v1/person   {by, act, agent, capability?, lesson?, until?}  -&gt;  {receipt_seq}
 POST /v1/approve  {receipt_seq, by, action_sha256}  -&gt;  {receipt_seq, until}
 POST /v1/approve  {by, batch: [{receipt_seq, action_sha256}]}  -&gt;  {receipt_seqs, until}
-POST /v1/refuse   {receipt_seq, by, action_sha256}  -&gt;  {receipt_seq}
+POST /v1/refuse   {receipt_seq, by, action_sha256, wrong?}  -&gt;  {receipt_seq}
 POST /v1/escalation  {receipt_seq}  -&gt;  {agent, action, action_sha256, to, level, passes, failures, suspended}
 POST /v1/batch  {by}  -&gt;  {by, batches: [{agent, capability, items: [{receipt_seq, action_sha256, action}]}]}
 POST /v1/predictions  {}  -&gt;  {people: {&lt;id&gt;: {predicted_today, checks, agreed}}}
@@ -1512,7 +1512,11 @@ both cases nothing is written. An approval is a signed receipt (receipt spec sec
 agent run that exact action once within the hour: the next <code>/v1/decide</code> for it is <code>allow</code>, decided by
 <code>human</code>, and a different target, different arguments or a different agent still escalate. Gates and
 suspensions are checked first and an approval never overrides them. <code>/v1/refuse</code> takes the same body
-and records a no, which closes the escalation without letting anything run. The escalate receipt names
+and records a no, which closes the escalation without letting anything run. With <code>"wrong": true</code> the
+person says the action itself was a mistake: the refusal receipt carries <code>wrong</code> and counts against the
+agent on that capability as a minor failure (design section 4), live and on replay. Without it, a
+refusal (the wrong time, the wrong person) says nothing about the agent. <code>/v1/approve</code> with <code>wrong</code>
+gets a 400. The escalate receipt names
 the people it went to (<code>decision.to</code>), so an answer is checked against the log and still works after a
 restart, as do unused approvals. An escalation that named nobody went to the host's prompt and gets a
 403 here. The Claude Code hook denies a routed
@@ -1520,7 +1524,8 @@ escalation with the approvers' names instead of asking whoever is at the prompt.
 <p>Related low-risk questions can be answered together. <code>/v1/batch</code> lists a person's open escalations that
 qualify, grouped by agent and capability: only capabilities that are low risk, reversible and need one
 approver, one entry per distinct action, groups of two or more, at most 50 entries each. <code>/v1/approve</code>
-and <code>/v1/refuse</code> take a <code>batch</code> of 2 to 50 <code>{receipt_seq, action_sha256}</code> entries instead of one. Each
+and <code>/v1/refuse</code> take a <code>batch</code> of 2 to 50 <code>{receipt_seq, action_sha256}</code> entries instead of one (a
+refused batch may say <code>wrong</code> for all of them). Each
 entry is checked as a single answer would be (403, 404 and 409 as above), the batch must be one agent on
 one such capability (409 otherwise), and no action may appear twice (400). If any entry fails, nothing
 is written. Otherwise every action gets its own approve or refuse receipt, so a batch is recorded and
@@ -1760,13 +1765,15 @@ person over the 23 hours before, so it shows up before the budget runs out. All 
 config edits, read-only shell commands, pushes to a branch and to the default branch.</p>
 <p>After a crash, decisions without an outcome are rebuilt from the log on the next start and can still be
 given one by <code>receipt_seq</code>; <code>call_id</code>s live only for the life of the process.</p>
-<h2 id="mohar-approve-seq-by-id-yes-daemon-url-and-mohar-refuse"><code>mohar approve &lt;seq&gt; --by &lt;id&gt; [--yes] [--daemon &lt;url&gt;]</code> and <code>mohar refuse ...</code><a class="headerlink" href="#mohar-approve-seq-by-id-yes-daemon-url-and-mohar-refuse" title="Permanent link">&para;</a></h2>
+<h2 id="mohar-approve-seq-by-id-yes-daemon-url-and-mohar-refuse-wrong"><code>mohar approve &lt;seq&gt; --by &lt;id&gt; [--yes] [--daemon &lt;url&gt;]</code> and <code>mohar refuse ... [--wrong]</code><a class="headerlink" href="#mohar-approve-seq-by-id-yes-daemon-url-and-mohar-refuse-wrong" title="Permanent link">&para;</a></h2>
 <p>Answer an escalation as one of the people it was routed to. The command reads it from the daemon
 (<code>/v1/escalation</code>, which changes nothing) and prints the agent, the exact action, its SHA-256, who was
 asked and the agent's record on that capability: its level and its verified passes and failures. It then
 asks for confirmation, or answers straight away with <code>--yes</code>, and sends the hash of what it printed, so a
 different action can't be answered by mistake. Exits 0 when the answer is recorded, 1 when the person
-says no or the daemon refuses it (wrong person, already answered), and 2 when the daemon can't be reached.</p>
+says no or the daemon refuses it (wrong person, already answered), and 2 when the daemon can't be reached.
+<code>mohar refuse --wrong</code> says the action itself was a mistake, so the refusal counts against the agent;
+leave it off when the problem is timing or who was asked.</p>
 <div class="highlight"><pre><span></span><code>$ mohar approve 41 --by user:lead-1
 escalation 41
   agent    agent:claude-code/docs-writer

@@ -1717,8 +1717,8 @@ failed is affected; an agent that broke a migration keeps its rights on docs and
 </tr>
 <tr>
 <td>S1, minor</td>
-<td>A low-risk, reversible change a verifier caught before it landed: a failing test run, a diff the reviewer rejected.</td>
-<td>No level change. The failure counts as evidence, so the Wilson bound drops on its own. Three S1s on one capability within 14 days count as an S2.</td>
+<td>A low-risk, reversible change a verifier caught before it landed: a failing test run, a diff the reviewer rejected. On any capability, an escalated action a person refused and said was wrong.</td>
+<td>No level change. The failure counts as evidence, so the Wilson bound drops on its own. Three S1s on one capability within 14 days count as an S2. A refusal also raises sampling as an S0 does.</td>
 </tr>
 <tr>
 <td>S2, meaningful</td>
@@ -1737,6 +1737,11 @@ failed is affected; an agent that broke a migration keeps its rights on docs and
 </tr>
 </tbody>
 </table>
+<p>A refusal only counts when the person says the action was wrong. People refuse for other reasons too
+(the wrong time, not their area), and those say nothing about the agent, so they record nothing. A
+refusal that counts never ran, so it is minor whatever the capability. Without counting it, every failure a
+careful reviewer stopped would vanish from the record, and the benchmark showed poor agents promoted
+more often the better their reviewers were (#222).</p>
 <p>Demotion never waits for the window. Promotion always does. Whatever its level, an action that is
 irreversible and high impact, or that Mohar can't classify, goes to a person.</p>
 <p><strong>Remediation.</strong> A demoted capability runs supervised, and the remediation plan names three things: the
