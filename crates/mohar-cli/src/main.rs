@@ -134,6 +134,10 @@ enum Command {
         /// Answer without asking for confirmation.
         #[arg(long)]
         yes: bool,
+        /// The action itself was a mistake, so the refusal counts against the agent. Leave it off for
+        /// a refusal about timing or routing.
+        #[arg(long)]
+        wrong: bool,
         /// The daemon to answer through.
         #[arg(long, default_value = "http://127.0.0.1:7878")]
         daemon: String,
@@ -249,16 +253,17 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             daemon,
         } => {
             let stdin = std::io::stdin();
-            return answer::run(&daemon, "approve", seq, &by, yes, &mut stdin.lock());
+            return answer::run(&daemon, "approve", seq, &by, yes, false, &mut stdin.lock());
         }
         Command::Refuse {
             seq,
             by,
             yes,
+            wrong,
             daemon,
         } => {
             let stdin = std::io::stdin();
-            return answer::run(&daemon, "refuse", seq, &by, yes, &mut stdin.lock());
+            return answer::run(&daemon, "refuse", seq, &by, yes, wrong, &mut stdin.lock());
         }
         Command::Checkpoint { publish } => {
             let target = publish.as_deref().map(publish::Target::parse).transpose()?;

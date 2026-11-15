@@ -174,6 +174,14 @@ pub struct Person {
         deserialize_with = "present"
     )]
     pub until: Option<u64>,
+    /// For `refuse` only: the person said the action itself was wrong, so the refusal counts against
+    /// the agent on that capability. Left out of the receipt when false (added in spec 1.10.0).
+    #[serde(
+        default,
+        skip_serializing_if = "std::ops::Not::not",
+        deserialize_with = "only_true"
+    )]
+    pub wrong: bool,
 }
 
 // The optional fields are written only when they say something. Reading `"review": false` or
@@ -185,7 +193,9 @@ fn only_true<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
     if bool::deserialize(d)? {
         Ok(true)
     } else {
-        Err(serde::de::Error::custom("review is written only when true"))
+        Err(serde::de::Error::custom(
+            "review and wrong are written only when true",
+        ))
     }
 }
 
@@ -387,7 +397,7 @@ fn fast_canonical(r: &Receipt, with_sig: bool) -> Vec<u8> {
         o.push(b']');
     }
     o.extend_from_slice(b"},");
-    // "person" sorts between "decision" and "prev"; its own keys are act, by, lesson, until.
+    // "person" sorts between "decision" and "prev"; its own keys are act, by, lesson, until, wrong.
     if let Some(p) = &r.person {
         s(&mut o, r#""person":{"act":"#, &p.act);
         s(&mut o, r#","by":"#, &p.by);
@@ -396,6 +406,9 @@ fn fast_canonical(r: &Receipt, with_sig: bool) -> Vec<u8> {
         }
         if let Some(until) = p.until {
             let _ = write!(o, r#","until":{until}"#);
+        }
+        if p.wrong {
+            o.extend_from_slice(br#","wrong":true"#);
         }
         o.extend_from_slice(b"},");
     }
@@ -763,8 +776,8 @@ mod tests {
                 .prop_map(|(evidence_sha256, kind, of, result, review_secs, reviewer)| Verification { evidence_sha256, kind, of, result, review_secs, reviewer })),
             review in any::<bool>(),
             to in proptest::collection::vec(text(), 0..3),
-            person in proptest::option::of((text(), text(), proptest::option::of(text()), proptest::option::of(any::<u64>()))
-                .prop_map(|(act, by, lesson, until)| Person { act, by, lesson, until })),
+            person in proptest::option::of((text(), text(), proptest::option::of(text()), proptest::option::of(any::<u64>()), any::<bool>())
+                .prop_map(|(act, by, lesson, until, wrong)| Person { act, by, lesson, until, wrong })),
         ) {
             let mut r = receipt(s, n, sig, verification);
             r.decision.review = review;

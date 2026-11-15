@@ -328,7 +328,9 @@ fn replay(dir: &Path, policy: &Policy, log: &FileLog) -> Result<Replayed, String
             .as_ref()
             .is_some_and(|p| p.act == "approve" || p.act == "refuse") =>
         {
-            if let Some(closed) = apply_answer(log, policy, &mut approvals, &mut pending, &r) {
+            if let Some(closed) =
+                apply_answer(log, policy, &mut approvals, &mut pending, &mut ledger, &r)
+            {
                 if !closed.is_empty() {
                     walks.close(&load::question(&r.agent.id, &r.action));
                 }
@@ -790,6 +792,7 @@ fn person(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
         by: req.by,
         lesson,
         until,
+        wrong: false,
     };
     let entry = Entry {
         ts: crate::now_rfc3339(),
@@ -874,6 +877,9 @@ struct AnswerRequest {
     receipt_seq: u64,
     by: String,
     action_sha256: String,
+    /// On a refusal: the action itself was wrong, so it counts against the agent.
+    #[serde(default)]
+    wrong: bool,
 }
 
 /// One escalation in a batch answer, named the same way a single answer names it.
@@ -889,6 +895,8 @@ struct BatchEntry {
 struct BatchAnswer {
     by: String,
     batch: Vec<BatchEntry>,
+    #[serde(default)]
+    wrong: bool,
 }
 
 /// An answer to one escalation, or to a batch of related ones.
@@ -907,9 +915,12 @@ enum AnswerBody {
 /// A batch answers several escalations at once, each entry checked as a single answer would be. They
 /// must all be one agent's, on one capability that [`batchable`] allows, with no action named twice. If any entry fails nothing is written; otherwise each action gets its own receipt, so a
 /// batch replays exactly like the single answers it stands for.
+///
+/// A refusal may say `wrong`: the action itself was a mistake, not just badly timed or sent to the
+/// wrong person. Only then does it count against the agent (#222).
 fn answer(state: &State, body: &[u8], act: &str) -> (u16, serde_json::Value) {
-    let (by, entries, many) = match serde_json::from_slice(body) {
-        Ok(AnswerBody::One(r)) => (r.by, vec![(r.receipt_seq, r.action_sha256)], false),
+    let (by, entries, many, wrong) = match serde_json::from_slice(body) {
+        Ok(AnswerBody::One(r)) => (r.by, vec![(r.receipt_seq, r.action_sha256)], false, r.wrong),
         Ok(AnswerBody::Many(b)) => (
             b.by,
             b.batch
@@ -917,6 +928,7 @@ fn answer(state: &State, body: &[u8], act: &str) -> (u16, serde_json::Value) {
                 .map(|e| (e.receipt_seq, e.action_sha256))
                 .collect(),
             true,
+            b.wrong,
         ),
         Err(_) => {
             return bad(
@@ -929,6 +941,9 @@ fn answer(state: &State, body: &[u8], act: &str) -> (u16, serde_json::Value) {
     }
     if entries.iter().any(|(_, h)| !is_sha256_hex(h)) {
         return bad("action_sha256 must be 64 lowercase hex characters");
+    }
+    if wrong && act != "refuse" {
+        return bad("only a refusal can say the action was wrong");
     }
     if many {
         if !(2..=MAX_BATCH).contains(&entries.len()) {
@@ -973,7 +988,7 @@ fn answer(state: &State, body: &[u8], act: &str) -> (u16, serde_json::Value) {
     for (p, action) in checked {
         // Every entry was checked under this lock, so only the log write itself can fail here. The
         // receipts already written stand: each is a whole, signed answer on its own.
-        match write_answer(state, &mut inner, p, action, &by, act) {
+        match write_answer(state, &mut inner, p, action, &by, act, wrong) {
             Ok(r) => {
                 until = r.person.as_ref().and_then(|p| p.until);
                 seqs.push(r.seq);
@@ -1052,6 +1067,7 @@ fn write_answer(
     action: Action,
     by: &str,
     act: &str,
+    wrong: bool,
 ) -> Result<Receipt, (u16, serde_json::Value)> {
     let ts = crate::now_rfc3339();
     let what = Person {
@@ -1059,6 +1075,7 @@ fn write_answer(
         until: (act == "approve").then(|| parse_rfc3339(&ts) + APPROVAL_SECS),
         by: by.into(),
         lesson: None,
+        wrong,
     };
     // The receipt carries the escalated action itself, so what was answered is signed, not a pointer.
     let entry = Entry {
@@ -1084,6 +1101,7 @@ fn write_answer(
         &state.policy,
         &mut inner.approvals,
         &mut inner.pending,
+        &mut inner.ledger,
         &r,
     ) {
         if !closed.is_empty() {
@@ -1162,6 +1180,7 @@ fn batches(state: &State, body: &[u8]) -> (u16, serde_json::Value) {
 
 /// Apply an approve or refuse receipt, from the receipt as written, so live and replay agree. Either
 /// closes every escalation of that same action by that agent; an approval also waits to be used. A
+/// refusal that says `wrong` and closed an escalation counts against the agent on that capability. A
 /// receipt that breaks its act's rules changes nothing and returns `None`; otherwise the receipt numbers
 /// of the escalations it closed.
 fn apply_answer(
@@ -1169,12 +1188,13 @@ fn apply_answer(
     policy: &Policy,
     approvals: &mut Vec<Approval>,
     pending: &mut HashMap<u64, Pending>,
+    ledger: &mut Ledger,
     r: &Receipt,
 ) -> Option<Vec<u64>> {
     let p = r.person.as_ref()?;
-    let until = match (p.act.as_str(), p.until) {
-        ("approve", Some(until)) => Some(until),
-        ("refuse", None) => None,
+    let until = match (p.act.as_str(), p.until, p.wrong) {
+        ("approve", Some(until), false) => Some(until),
+        ("refuse", None, _) => None,
         _ => return None,
     };
     if p.lesson.is_some()
@@ -1215,11 +1235,16 @@ fn apply_answer(
             a.complete()
         }
     };
-    Some(if closes {
+    let closed = if closes {
         close_open(log, pending, r)
     } else {
         Vec::new()
-    })
+    };
+    // Only a refusal of something that was asked: one that closed nothing says nothing about the agent.
+    if p.wrong && !closed.is_empty() {
+        ledger.refused_wrong(&r.agent.id, &r.action.capability, parse_rfc3339(&r.ts));
+    }
+    Some(closed)
 }
 
 /// Close every open escalation of the action in `r` by the agent in `r`, returning their receipt numbers.
@@ -1315,7 +1340,7 @@ fn apply_person(ledger: &mut Ledger, book: &mut Book, r: &Receipt) -> bool {
     let Some(p) = &r.person else {
         return false;
     };
-    if r.verification.is_some() || r.decision.by != "human" || r.action.tool != "mohar" {
+    if r.verification.is_some() || r.decision.by != "human" || r.action.tool != "mohar" || p.wrong {
         return false;
     }
     let (agent, capability) = (&r.agent.id, &r.action.capability);
@@ -2407,6 +2432,7 @@ mod tests {
                 by: "p".into(),
                 lesson: lesson.map(String::from),
                 until,
+                wrong: false,
             }),
         }
     }
