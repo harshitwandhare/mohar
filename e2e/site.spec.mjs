@@ -458,3 +458,14 @@ test('the closing wordmark letters sit on the display step', async ({ page }) =>
   ]);
   expect(sizes[0]).toBe(sizes[1]);
 });
+
+test('inline code in the tiles and the closing section sits on the 16px step at every width', async ({ page }) => {
+  for (const width of [1440, 768, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/');
+    const sizes = await page.evaluate(() =>
+      [...document.querySelectorAll('.field-tile code, .cta-main p code')].map((c) => getComputedStyle(c).fontSize));
+    expect(sizes.length).toBeGreaterThan(0);
+    for (const s of sizes) expect(s, `at ${width}px`).toBe('16px');
+  }
+});
