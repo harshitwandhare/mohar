@@ -111,10 +111,16 @@ Each verified failure is classed by what it could have cost, not by how it felt:
 | Class | Examples | What changes |
 |---|---|---|
 | S0, near miss | A gate or a person stopped the action before it ran, and it would have been a mistake. | No level change. Sampling on that capability rises from its level's rate to 50% for the next 20 actions. |
-| S1, minor | A low-risk, reversible change a verifier caught before it landed: a failing test run, a diff the reviewer rejected. | No level change. The failure counts as evidence, so the Wilson bound drops on its own. Three S1s on one capability within 14 days count as an S2. |
+| S1, minor | A low-risk, reversible change a verifier caught before it landed: a failing test run, a diff the reviewer rejected. On any capability, an escalated action a person refused and said was wrong. | No level change. The failure counts as evidence, so the Wilson bound drops on its own. Three S1s on one capability within 14 days count as an S2. A refusal also raises sampling as an S0 does. |
 | S2, meaningful | A reversible failure that got past the first check, or any failure on a medium-risk capability. | Down one level, and the capability enters remediation. |
 | S3, serious | A gate violation, an irreversible change, or a failure on a high-risk capability, including one that reached a shared branch or a live system. | Down to Ask first on that capability and on capabilities that share its scope (the same paths, hosts or database), and remediation. Only a person other than the agent's sponsor can end it. |
 | S4, integrity | Tampering with a verifier or its own tests, an attempt to reach an unlisted host, an action against a gate that protects secrets, or receipts that don't verify. | The identity is suspended on every capability and its credentials are revoked. A person reviews the receipts; if the agent returns, it returns as a new identity that starts at Ask first, linked to the old record, which stays readable. |
+
+A refusal only counts when the person says the action was wrong. People refuse for other reasons too
+(the wrong time, not their area), and those say nothing about the agent, so they record nothing. A
+refusal that counts never ran, so it is minor whatever the capability. Without counting it, every failure a
+careful reviewer stopped would vanish from the record, and the benchmark showed poor agents promoted
+more often the better their reviewers were (#222).
 
 Demotion never waits for the window. Promotion always does. Whatever its level, an action that is
 irreversible and high impact, or that Mohar can't classify, goes to a person.

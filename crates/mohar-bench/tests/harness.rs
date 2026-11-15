@@ -114,8 +114,29 @@ fn a_drop_before_any_promotion_has_nothing_to_demote() {
 
 #[test]
 fn a_drop_the_run_ends_on_is_never_demoted() {
-    // The drop comes on the last day and every failure is stopped by a person: nothing is recorded,
-    // so nothing demotes before the run ends. Only deploy is still asked about at Supervised.
+    // The drop comes on the last day, with two actions on each capability, and every failure that is
+    // asked about is stopped. Edit runs at Supervised and fails twice; deps and deploy are asked
+    // about and refused as wrong twice. Two minor failures are not yet an S2, so none of the three
+    // demotes before the run ends.
+    let cfg = Config {
+        days: 29,
+        actions_per_day: 2,
+        ..small(
+            vec![Kind {
+                name: "drop",
+                before: 1000,
+                after: 0,
+            }],
+            1000,
+        )
+    };
+    let t = run(&cfg, Policy::Mohar);
+    assert_eq!(t.never_demoted, 3);
+}
+
+#[test]
+fn refusals_as_wrong_demote_a_drop_even_when_every_failure_is_stopped() {
+    // Six actions a day: by the third refusal on a capability that is asked about, it is an S2.
     let cfg = Config {
         days: 29,
         ..small(
@@ -128,17 +149,47 @@ fn a_drop_the_run_ends_on_is_never_demoted() {
         )
     };
     let t = run(&cfg, Policy::Mohar);
-    assert_eq!(t.never_demoted, 1);
+    assert_eq!(t.never_demoted, 0);
+    assert_eq!(t.demotion_delays.len(), 3, "{:?}", t.demotion_delays);
 }
 
 #[test]
-fn stopped_failures_are_not_evidence_so_a_poor_agent_can_be_promoted() {
-    // A 70% agent whose failures are all stopped at Ask first shows only passes, and Mohar promotes it
-    // to Supervised, which stands for 80%. The harness counts that as a false promotion.
+fn stopped_failures_are_refused_as_wrong_so_a_poor_agent_stays_at_ask_first() {
+    // A 70% agent whose failures are all stopped at Ask first would show only passes if a refusal
+    // recorded nothing, and would be promoted to Supervised, which stands for 80% (#222). Refused as
+    // wrong, the failures stay on its record.
     let cfg = small(vec![steady("poor", 700)], 1000);
-    let t = run(&cfg, Policy::Mohar);
-    assert!(t.false_promotions[1] > 0);
-    assert_eq!(t.false_promotions[1], t.promotions[1]);
+    for p in [Policy::Aggregate, Policy::Mohar] {
+        let t = run(&cfg, p);
+        assert_eq!(t.promotions, [0, 0, 0], "{}", p.name());
+    }
+}
+
+/// False promotions as a share of all promotions.
+fn false_rate(cfg: &Config) -> f64 {
+    let t = run(cfg, Policy::Mohar);
+    let all: u64 = t.promotions.iter().sum();
+    t.false_promotions.iter().sum::<u64>() as f64 / all as f64
+}
+
+#[test]
+fn a_careful_reviewer_no_longer_gets_poor_agents_promoted() {
+    // The acceptance line of #222, on the published configuration: stopping half or nine in ten of
+    // the failing actions a person is asked about raises the false promotion rate by at most one point.
+    let at = |catch| {
+        false_rate(&Config {
+            catch_per_mille: catch,
+            ..Config::default()
+        })
+    };
+    let none = at(0);
+    for catch in [500, 900] {
+        let rate = at(catch);
+        assert!(
+            rate <= none + 0.01,
+            "{catch} per 1000 stopped: {rate} against {none}"
+        );
+    }
 }
 
 #[test]

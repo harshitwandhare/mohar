@@ -2415,6 +2415,7 @@ fn one_person_approving_twice_in_the_log_still_counts_once() {
                 by: "user:lead-1".into(),
                 lesson: None,
                 until: Some(now + 3_600),
+                wrong: false,
             }),
         })
         .expect("append");
@@ -3765,4 +3766,191 @@ fn a_refused_batch_closes_each_question_and_a_restart_lists_what_is_left() {
     assert_eq!(ask_page(d.port, 3)["result"], "allow");
     d.stop();
     verify(&dir);
+}
+
+/// Failures on record for the agent behind escalation `a`, as `/v1/escalation` shows a person.
+fn failures_shown(port: u16, a: &Value) -> Value {
+    let body = json!({ "receipt_seq": a["receipt_seq"] }).to_string();
+    let (status, shown) = post(port, "/v1/escalation", &body);
+    assert_eq!(status, 200, "{shown}");
+    shown["failures"].clone()
+}
+
+#[test]
+fn a_refusal_that_says_the_action_was_wrong_counts_against_the_agent() {
+    let dir = routed_project("refuse-wrong");
+    let agent = "agent:claude-code/docs-writer";
+    let d = Daemon::start(&dir, &[]);
+    let refuse = |a: &Value, wrong: Option<bool>| {
+        let mut body = json!({"receipt_seq": a["receipt_seq"], "by": "user:lead-1",
+            "action_sha256": a["approver"]["action_sha256"]});
+        if let Some(w) = wrong {
+            body["wrong"] = json!(w);
+        }
+        post(d.port, "/v1/refuse", &body.to_string())
+    };
+    let first = ask_as(d.port, agent, "Edit", "src/a.rs", SHA);
+    assert_eq!(failures_shown(d.port, &first), 0);
+    let (status, r) = refuse(&first, Some(true));
+    assert_eq!(status, 200, "{r}");
+    let second = ask_as(d.port, agent, "Edit", "src/b.rs", SHA);
+    assert_eq!(failures_shown(d.port, &second), 1, "counted live");
+    // A refusal for any other reason, said or left out, records nothing about the agent.
+    assert_eq!(refuse(&second, Some(false)).0, 200);
+    let third = ask_as(d.port, agent, "Edit", "src/c.rs", SHA);
+    assert_eq!(refuse(&third, None).0, 200);
+    let fourth = ask_as(d.port, agent, "Edit", "src/d.rs", SHA);
+    assert_eq!(failures_shown(d.port, &fourth), 1);
+    d.stop();
+    let log = log_of(&dir);
+    let refusals: Vec<&Value> = log
+        .iter()
+        .filter(|r| r["person"]["act"] == "refuse")
+        .map(|r| &r["person"])
+        .collect();
+    assert_eq!(
+        refusals,
+        vec![
+            &json!({"act": "refuse", "by": "user:lead-1", "wrong": true}),
+            &json!({"act": "refuse", "by": "user:lead-1"}),
+            &json!({"act": "refuse", "by": "user:lead-1"}),
+        ]
+    );
+    // Replay arrives at the same record.
+    let d = Daemon::start(&dir, &[]);
+    assert_eq!(failures_shown(d.port, &fourth), 1, "counted on replay");
+    d.stop();
+    verify(&dir);
+}
+
+#[test]
+fn only_a_refusal_can_say_the_action_was_wrong() {
+    let dir = routed_project("approve-wrong");
+    let agent = "agent:claude-code/docs-writer";
+    let d = Daemon::start(&dir, &[]);
+    let a = ask_as(d.port, agent, "Edit", "src/a.rs", SHA);
+    let before = log_of(&dir).len();
+    let body = json!({"receipt_seq": a["receipt_seq"], "by": "user:lead-1",
+        "action_sha256": a["approver"]["action_sha256"], "wrong": true});
+    let (status, r) = post(d.port, "/v1/approve", &body.to_string());
+    assert_eq!(status, 400, "{r}");
+    assert_eq!(log_of(&dir).len(), before, "nothing written");
+    // The escalation is still open and can be approved plainly.
+    let body = json!({"receipt_seq": a["receipt_seq"], "by": "user:lead-1",
+        "action_sha256": a["approver"]["action_sha256"]});
+    assert_eq!(post(d.port, "/v1/approve", &body.to_string()).0, 200);
+    d.stop();
+}
+
+#[test]
+fn a_batch_refused_as_wrong_counts_each_action_once() {
+    let dir = project_with("batch-wrong", &batch_policy(), false);
+    let d = Daemon::start(&dir, &[]);
+    let pages: Vec<Value> = (0..3).map(|n| ask_page(d.port, n)).collect();
+    let body = json!({ "by": "user:dev-1", "batch": [entry(&pages[0]), entry(&pages[1])],
+        "wrong": true });
+    let (status, ok) = post(d.port, "/v1/refuse", &body.to_string());
+    assert_eq!(status, 200, "{ok}");
+    assert_eq!(failures_shown(d.port, &pages[2]), 2);
+    d.stop();
+    let d = Daemon::start(&dir, &[]);
+    assert_eq!(failures_shown(d.port, &pages[2]), 2, "counted on replay");
+    d.stop();
+    verify(&dir);
+}
+
+#[test]
+fn refuse_wrong_on_the_command_line_counts_against_the_agent() {
+    let dir = routed_project("answer-cli-wrong");
+    let agent = "agent:claude-code/docs-writer";
+    let d = Daemon::start(&dir, &[]);
+    let url = d.url();
+    let first = ask_as(d.port, agent, "Edit", "src/a.rs", SHA);
+    let (code, out, _) = answer_cli(
+        &url,
+        "refuse",
+        &first["receipt_seq"],
+        "user:lead-1",
+        &["--wrong"],
+        "y\n",
+    );
+    assert_eq!(code, 0, "{out}");
+    assert!(
+        out.contains("refuse this exact action as wrong as user:lead-1"),
+        "{out}"
+    );
+    let second = ask_as(d.port, agent, "Edit", "src/b.rs", SHA);
+    let (code, out, _) = answer_cli(
+        &url,
+        "refuse",
+        &second["receipt_seq"],
+        "user:lead-1",
+        &[],
+        "n\n",
+    );
+    assert_eq!(code, 1);
+    assert!(
+        out.contains("record   level 0, 0 verified passes, 1 failure\n"),
+        "{out}"
+    );
+    d.stop();
+}
+
+#[test]
+fn on_replay_a_wrong_refusal_counts_only_if_it_closed_something_and_never_rides_an_approval() {
+    use mohar_core::store::FileLog;
+    use mohar_core::{Action, Decision, Entry, Person};
+
+    let dir = routed_project("wrong-replay");
+    let agent = "agent:claude-code/docs-writer";
+    let d = Daemon::start(&dir, &[]);
+    let a = ask_as(d.port, agent, "Edit", "src/a.rs", SHA);
+    d.stop();
+    // Receipts another writer could leave: a wrong refusal of an action nobody was asked about, and an
+    // approval that says wrong, which only a refusal may.
+    let mut log = FileLog::open(&dir).expect("open");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_secs();
+    for (target, act, until) in [
+        ("src/z.rs", "refuse", None),
+        ("src/a.rs", "approve", Some(now + 3_600)),
+    ] {
+        log.append(Entry {
+            ts: rfc3339(now),
+            agent_id: agent.into(),
+            action: Action {
+                capability: "fs.edit.code".into(),
+                tool: "Edit".into(),
+                target: target.into(),
+                args_sha256: SHA.into(),
+            },
+            decision: Decision {
+                result: "allow".into(),
+                level: 0,
+                by: "human".into(),
+                review: false,
+                to: Vec::new(),
+            },
+            verification: None,
+            person: Some(Person {
+                act: act.into(),
+                by: "user:lead-1".into(),
+                lesson: None,
+                until,
+                wrong: true,
+            }),
+        })
+        .expect("append");
+    }
+    drop(log);
+    let d = Daemon::start(&dir, &[]);
+    // Still open, so the approval changed nothing, and no failure is on record.
+    assert_eq!(failures_shown(d.port, &a), 0);
+    assert_eq!(
+        ask_as(d.port, agent, "Edit", "src/a.rs", SHA)["result"],
+        "escalate"
+    );
+    d.stop();
 }

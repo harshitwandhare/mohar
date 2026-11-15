@@ -7,6 +7,16 @@ receipt format; each such change is called out.
 
 ## [Unreleased]
 
+### Fixed
+
+- A careful reviewer no longer gets poor agents promoted (#222). A refusal recorded nothing, so every
+  failing action a person stopped vanished from the agent's record; in the benchmark, false promotions
+  went from 0.6% to 8.8% to 44.5% as people stopped none, half or nine in ten failures. `/v1/refuse`
+  and `mohar refuse` now take `wrong`: the refusal receipt carries `person.wrong` (receipt spec 1.10.0)
+  and counts as a minor failure on that capability, live and on replay. A refusal without it still
+  records nothing. With the benchmark's reviewer stopping half the failures, Mohar's false promotion
+  rate is now 0.78% (was 8.78%) and prompts per thousand actions 883 (was 857).
+
 ### Added
 
 - Benchmark harness for the trust rules (#221), in `crates/mohar-bench`. Simulated agents of known

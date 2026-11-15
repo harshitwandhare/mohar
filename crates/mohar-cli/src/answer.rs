@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 use crate::hook::post;
 
 /// Fetch escalation `seq`, print it, ask unless `yes`, and post `act` (`approve` or `refuse`) as `by`.
+/// `wrong` (refusals only) says the action itself was a mistake, so it counts against the agent.
 /// Exit 0 when the answer is recorded, 1 when the person says no or the daemon refuses the answer.
 pub fn run(
     daemon: &str,
@@ -16,6 +17,7 @@ pub fn run(
     seq: u64,
     by: &str,
     yes: bool,
+    wrong: bool,
     input: &mut dyn BufRead,
 ) -> Result<ExitCode, String> {
     let shown = match post(daemon, "/v1/escalation", &json!({ "receipt_seq": seq }))? {
@@ -28,7 +30,8 @@ pub fn run(
         .to_string();
     print!("{}", describe(&shown));
     if !yes {
-        println!("{act} this exact action as {by}? [y/N]");
+        let why = if wrong { " as wrong" } else { "" };
+        println!("{act} this exact action{why} as {by}? [y/N]");
         let mut line = String::new();
         input.read_line(&mut line).map_err(|e| e.to_string())?;
         if !matches!(line.trim(), "y" | "Y" | "yes") {
@@ -37,7 +40,10 @@ pub fn run(
         }
     }
     // The hash of what was printed, so a different action can't be answered by mistake.
-    let body = json!({ "receipt_seq": seq, "by": by, "action_sha256": hash });
+    let mut body = json!({ "receipt_seq": seq, "by": by, "action_sha256": hash });
+    if wrong {
+        body["wrong"] = json!(true);
+    }
     match post(daemon, &format!("/v1/{act}"), &body)? {
         (200, r) => {
             let what = if act == "approve" {

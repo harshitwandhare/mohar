@@ -94,6 +94,7 @@ fn person_log(seed: &[u8; 32]) -> (Vec<Receipt>, Vec<Checkpoint>) {
             by: "human:7f3a09c2".into(),
             lesson: None,
             until: Some(1_796_000_000),
+            wrong: false,
         }),
     })
     .expect("append");
@@ -154,6 +155,7 @@ fn routed_log(seed: &[u8; 32]) -> (Vec<Receipt>, Vec<Checkpoint>) {
             by: "human:7f3a09c2".into(),
             lesson: None,
             until: None,
+            wrong: false,
         }),
     })
     .expect("append");
@@ -559,6 +561,7 @@ fn cases() -> Vec<Value> {
     out.extend(held_cases());
     out.extend(timed_out_cases());
     out.extend(rechecked_cases());
+    out.extend(refused_wrong_cases());
     out
 }
 
@@ -713,6 +716,115 @@ fn timed_out_log(seed: &[u8; 32]) -> (Vec<Receipt>, Vec<Checkpoint>) {
     })
     .expect("append");
     (log.receipts().to_vec(), checkpoints)
+}
+
+/// [`timed_out_log`] with an escalation (receipt 12) that the person asked refuses and says was wrong
+/// (receipt 13, spec 1.10.0).
+fn refused_wrong_log(seed: &[u8; 32]) -> (Vec<Receipt>, Vec<Checkpoint>) {
+    let (receipts, checkpoints) = timed_out_log(seed);
+    let mut log = Log::new(SigningKey::from_seed(seed));
+    for r in &receipts {
+        log.append(Entry {
+            ts: r.ts.clone(),
+            agent_id: r.agent.id.clone(),
+            action: r.action.clone(),
+            decision: r.decision.clone(),
+            verification: r.verification.clone(),
+            person: r.person.clone(),
+        })
+        .expect("append");
+    }
+    let action = Action {
+        capability: "db.migrate".into(),
+        tool: "Bash".into(),
+        target: "migrate down --all".into(),
+        args_sha256: "5e2c90d1".into(),
+    };
+    log.append(Entry {
+        ts: "2026-11-14T15:20:03.118Z".into(),
+        agent_id: receipts[0].agent.id.clone(),
+        action: action.clone(),
+        decision: Decision {
+            result: "escalate".into(),
+            level: 0,
+            by: "score".into(),
+            review: false,
+            to: vec!["human:7f3a09c2".into()],
+        },
+        verification: None,
+        person: None,
+    })
+    .expect("append");
+    log.append(Entry {
+        ts: "2026-11-14T15:21:47.640Z".into(),
+        agent_id: receipts[0].agent.id.clone(),
+        action,
+        decision: Decision {
+            result: "allow".into(),
+            level: 0,
+            by: "human".into(),
+            review: false,
+            to: Vec::new(),
+        },
+        verification: None,
+        person: Some(Person {
+            act: "refuse".into(),
+            by: "human:7f3a09c2".into(),
+            lesson: None,
+            until: None,
+            wrong: true,
+        }),
+    })
+    .expect("append");
+    (log.receipts().to_vec(), checkpoints)
+}
+
+/// Spec 1.10.0: a refusal that says the action was wrong, and the ways to alter that.
+fn refused_wrong_cases() -> Vec<Value> {
+    let (good, checkpoints) = refused_wrong_log(&SEED);
+    let changed = |name: &str, about: &str, value: Option<Value>| {
+        let mut c = case(name, about, 0, &SEED, Some(&SEED), &good, &checkpoints);
+        let person = c["receipts"][13]["person"].as_object_mut().expect("person");
+        match value {
+            Some(v) => person.insert("wrong".into(), v),
+            None => person.remove("wrong"),
+        };
+        c
+    };
+    // Receipt 6 of the routed log is a refusal signed without "wrong", so only the parser can catch this.
+    let (routed, routed_checkpoints) = routed_log(&SEED);
+    let mut plain = case(
+        "wrong-false-added",
+        "Receipt 6 is a refusal signed without \"wrong\"; \"wrong\": false is added after. wrong is written only when true, so this is a second spelling a parser that reads it as absent would let through unsigned.",
+        0,
+        &SEED,
+        Some(&SEED),
+        &routed,
+        &routed_checkpoints,
+    );
+    plain["receipts"][6]["person"]["wrong"] = json!(false);
+    vec![
+        case(
+            "refusal-says-wrong",
+            "Receipt 12 is an escalation; receipt 13 is the person asked refusing it and saying the action itself was wrong.",
+            2,
+            &SEED,
+            Some(&SEED),
+            &good,
+            &checkpoints,
+        ),
+        changed(
+            "wrong-removed",
+            "Receipt 13's \"wrong\" is removed after it was signed, so the refusal would no longer count against the agent.",
+            None,
+        ),
+        changed(
+            "wrong-not-true",
+            "Receipt 13's \"wrong\" is a string after it was signed.",
+            Some(json!("yes")),
+        ),
+        plain,
+    ]
 }
 
 /// Spec 1.9.0: a question nobody answered in time, and the ways to alter that.
@@ -1102,7 +1214,7 @@ fn level_on_disk(case: &Value) -> u8 {
 fn build() -> Value {
     json!({
         "format": "mohar receipts v1 conformance",
-        "spec": "spec/receipts-v1.md, spec version 1.9.0",
+        "spec": "spec/receipts-v1.md, spec version 1.10.0",
         "notes": "Seeds are bytes 0x00..0x1f (the log's key) and 0x20..0x3f (another key), for testing only. Each case is a log: log_key is public.key in the log directory, pinned_key is the key the verifier was given some other way (null if none), published_checkpoints were kept outside the machine. A rotated log also has segments (file name under segments/ and its receipts, oldest first) and local_checkpoints (checkpoints.jsonl in the log directory); receipts is then receipts.jsonl. A verifier must report expect_level. Level 3 has no cases yet.",
         "cases": cases(),
     })

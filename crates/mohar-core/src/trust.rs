@@ -142,6 +142,8 @@ struct Record {
     remediation: Option<Plan>,
     /// Allowed actions still to be sampled at the raised rate after a near miss.
     raised: u32,
+    /// The verifier of the latest verified outcome, which a plan opened by refusals asks passes from.
+    verifier: Option<String>,
 }
 
 /// One reviewer's recent decisions, for the rubber-stamping rule (docs/design.md section 4).
@@ -261,6 +263,7 @@ impl Ledger {
             .entry(Self::key(agent, capability))
             .or_default();
         r.outcomes.push((o.at, o.passed));
+        r.verifier = Some(o.verifier.clone());
         if o.passed {
             if let Some(plan) = &mut r.remediation
                 && plan.verifier == o.verifier
@@ -374,6 +377,36 @@ impl Ledger {
             .entry(Self::key(agent, capability))
             .or_default()
             .raised = NEAR_MISS_ACTIONS;
+    }
+
+    /// A person refused an action on `capability` and said the action itself was wrong. Otherwise
+    /// every failure a careful reviewer stops would vanish from the record and leave only passes.
+    ///
+    /// It never ran, so it is an S1 on any capability, like a diff a reviewer rejected: it counts as a
+    /// failure toward promotion, and three S1s within 14 days are an S2, which demotes. A plan opened
+    /// that way asks for passes from the verifier of the capability's latest outcome, since a refusal
+    /// is not a verifier the agent's later work goes through (`human` when there was none). Like any
+    /// near miss it also raises review sampling on that capability. A refusal for any other reason
+    /// (wrong time, not this person's area) says nothing about the agent and must not come here.
+    pub fn refused_wrong(&mut self, agent: &str, capability: &str, at: u64) {
+        let verifier = self
+            .records
+            .get(&Self::key(agent, capability))
+            .and_then(|r| r.verifier.clone())
+            .unwrap_or_else(|| "human".into());
+        self.record(
+            agent,
+            capability,
+            &Outcome {
+                at,
+                passed: false,
+                severity: Severity::S1,
+                exercises_failure: false,
+                related: Vec::new(),
+                verifier,
+            },
+        );
+        self.near_miss(agent, capability);
     }
 
     /// How many in a thousand allowed actions by `agent` on `capability` at `level` go to a person.

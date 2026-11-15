@@ -21,7 +21,7 @@ FIELDS = {
     "action": {"capability", "tool", "target", "args_sha256"},
     "decision": {"result", "level", "by", "review", "to"},
     "verification": {"evidence_sha256", "kind", "of", "result", "review_secs", "reviewer"},
-    "person": {"act", "by", "lesson", "until"},
+    "person": {"act", "by", "lesson", "until", "wrong"},
 }
 CHECKPOINT_FIELDS = {"v", "count", "head", "ts", "sig"}
 
@@ -48,9 +48,11 @@ def signed(pub, obj):
 
 def known_fields(r):
     """Every key is one the format defines, and the optional ones appear only when they say something
-    (review only as true, verification and person only as objects, lesson and until never null).
-    Anything else has a second spelling."""
+    (review and wrong only as true, verification and person only as objects, lesson and until never
+    null). Anything else has a second spelling."""
     if set(r) - FIELDS[None] or r.get("decision", {}).get("review", True) is not True:
+        return False
+    if isinstance(r.get("person"), dict) and r["person"].get("wrong", True) is not True:
         return False
     for part in ("verification", "person"):
         if part in r and not isinstance(r[part], dict):

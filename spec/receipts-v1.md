@@ -1,6 +1,6 @@
 # Mohar receipts, format version 1
 
-Spec version 1.9.0
+Spec version 1.10.0
 
 This document describes the receipts and checkpoints Mohar writes, apart from the Rust code, so a
 verifier can be written in any language. It covers receipt format `v: 1`. The reference implementation is
@@ -61,7 +61,8 @@ Rules for every receipt:
   `true`; `false` MUST fail. `decision.to`, when present, MUST be a non-empty array of strings; `[]` MUST fail. `verification.reviewer` and
   `verification.review_secs` MUST be absent or set; `null` MUST fail. A `human` outcome without both
   still verifies, but the reference daemon doesn't let it change trust. `verification` and `person` MUST each be absent or an object; `null` MUST
-  fail. Inside `person`, `lesson` and `until` MUST be absent or set; `null` MUST fail.
+  fail. Inside `person`, `lesson` and `until` MUST be absent or set; `null` MUST fail. `person.wrong` MUST
+  be absent or `true`; `false` MUST fail.
 - A key MUST NOT appear twice in one object. A verifier MUST fail a line that repeats one.
 - `seq`, `decision.level`, `verification.of` and `person.until` are non-negative integers. Writers MUST keep them below
   2^53, so every RFC 8785 implementation writes them as plain digits.
@@ -114,7 +115,7 @@ never counts it toward the agent's trust. A passed re-check clears that reviewer
 
 ### 5.1 Person acts
 
-Added in spec 1.2.0; `approve` added in 1.3.0 and `refuse` in 1.4.0. A person can change the trust state in
+Added in spec 1.2.0; `approve` added in 1.3.0, `refuse` in 1.4.0 and `wrong` in 1.10.0. A person can change the trust state in
 five ways, and each one is a receipt of its own that carries `person`:
 
 | Key | Type | Meaning |
@@ -123,6 +124,7 @@ five ways, and each one is a receipt of its own that carries `person`:
 | `by` | string | Stable identifier of the person. In strict privacy mode, a pseudonym like `agent.id`. |
 | `lesson` | hash | For `promote` only: the hash of the failed outcome receipt the lesson was learned from. |
 | `until` | integer | For `extend`: the new deadline. For `approve`: when the approval lapses unused. Seconds since the Unix epoch. |
+| `wrong` | `true` | For `refuse` only: the person said the action itself was a mistake. Absent otherwise. |
 
 The rest of the receipt says what the act applies to. `agent.id` is the agent concerned. `action.capability`
 is the capability (empty for `release`, which covers all of the agent's lessons), `action.tool` is
@@ -138,8 +140,10 @@ that breaks them change nothing.
 `approve` and `refuse` receipts are different in one way: `agent` and `action` are the escalated action itself,
 copied exactly, so what was answered is signed rather than pointed to. `action.tool` is the host's tool,
 never `mohar`, `action.capability` is not empty and `lesson` is absent; `until` is present on `approve` and
-absent on `refuse`. `by` SHOULD be one of the escalation's `decision.to`. Either answer closes every
-escalated decision of that action by that agent. The approval is
+absent on `refuse`, and `wrong` is absent on every act but `refuse`. `by` SHOULD be one of the escalation's
+`decision.to`. Either answer closes every escalated decision of that action by that agent. A `refuse` with
+`wrong` that closed an escalation is evidence against the agent: the reference daemon counts it as a
+minor failure on `action.capability`. A `refuse` without it says only that the action didn't run. The approval is
 bound to the SHA-256 of the action's canonical form (RFC 8785, the four `action` keys only), which is what
 the person was shown. An approval lets the next
 decision for exactly that action, before `until`, be `{"result": "allow", "by": "human"}`. That decision
@@ -276,7 +280,9 @@ Every version is listed in [the changelog](../CHANGELOG.md) under the crate rele
   also has rotated logs (section 7.1): across segments, with every segment archived, and ones that must
   fail (no checkpoint closing a segment or at the archive point, a missing segment, a segment named at
   the wrong start, conflicting checkpoints, a misnamed file). Since 1.2.0 it has a log with a person
-  receipt (section 5.1) and three that add a null or unknown key to one after it was signed.
+  receipt (section 5.1) and three that add a null or unknown key to one after it was signed. Since 1.10.0
+  it has a refusal that says `wrong`, and refusals with `wrong` changed, removed or added as `false`
+  after signing.
 
 The Rust tests regenerate both files from fixed seeds and check every case with the Rust verifier;
 `check.py` checks the same files in CI and must agree.

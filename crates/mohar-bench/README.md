@@ -12,8 +12,9 @@ a known pass rate: good (98%), middling (87%), poor (75%), and drifting (98% for
 
 Each action's outcome is decided by hashing the seed, the agent, the capability and the action number, so
 every policy sees exactly the same tasks. When a policy asks a person, the person stops half of the
-failing actions before they run. A stopped action has no outcome, as with a refusal in the daemon.
-Everything that runs is verified, and a failure that ran is an incident.
+failing actions before they run and refuses them as wrong, which counts against the agent as a minor
+failure, as `mohar refuse --wrong` does in the daemon. Everything that runs is verified, and a failure
+that ran is an incident.
 
 The same tasks go through four policies:
 

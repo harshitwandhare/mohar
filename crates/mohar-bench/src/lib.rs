@@ -49,7 +49,7 @@ pub struct Config {
     /// The day quality changes for kinds whose `after` differs from `before`.
     pub drift_day: u64,
     /// Failing actions per thousand that a person who is asked stops before they run. A stopped action
-    /// has no outcome, the same as a refusal in the daemon.
+    /// has no outcome; the person refuses it as wrong, which the daemon counts against the agent.
     pub catch_per_mille: u64,
 }
 
@@ -284,7 +284,11 @@ pub fn run(cfg: &Config, policy: Policy) -> Tally {
                             t.actions += 1;
                             t.prompts += u64::from(ask);
                             // A person who is asked stops a failing action they catch; it never runs.
+                            // They refuse it as wrong, so it is still evidence against the agent.
                             if ask && !passed && caught {
+                                if level.is_some() {
+                                    ledger.refused_wrong(&agent, key, now);
+                                }
                                 continue;
                             }
                             if !passed {
