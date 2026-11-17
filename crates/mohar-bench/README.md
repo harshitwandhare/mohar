@@ -31,6 +31,24 @@ the two policies with levels it also has promotions, false promotions (to a leve
 rate doesn't meet: 80% for Supervised, 95% for Trusted), and the number of actions a drifting agent ran
 at its old level after its quality dropped, before the demotion showed.
 
+## Prediction agreement
+
+A separate part of the run checks the per-person answer model (`mohar_core::predict`). One simulated
+person is asked about 400 `edit` escalations per seed. Their real answer depends on the target: always
+yes to `docs/guide.md`, 99% to `tests/run.rs`, 97% to `src/lib.rs`, 95% to `src/cli.rs` and 20% to the CI
+workflow. Prediction is switched on for every path with no daily cap, and the model is retrained every 25
+answers. As in the daemon, it learns only from answers the person actually gave: escalations it wasn't
+sure about, and the one prediction in twenty that still goes to the person as a check.
+
+Because the simulation knows what the person would have said, agreement is measured on every predicted
+yes, not only on the checks a daemon can see. `results.json` reports both, the share of escalations the
+model answered, and how many predicted yes answers per thousand the person would have refused.
+
+In the committed results the model answered about 20% of escalations; every check agreed, but over all
+predictions agreement was 97.5% (26 wrong yes answers per thousand). So the checks alone overstate
+agreement at this sample size, and the 0.98 threshold let through somewhat more than 2% wrong answers on
+a person whose yes rate on one path sits right at the edge.
+
 ## Regenerating
 
 ```
@@ -44,5 +62,6 @@ trust rules that moves a number has to commit the new numbers with it.
 
 The agents are simulated, with fixed pass rates and independent outcomes; real agents have streaks, and
 their failures cluster on certain tasks. The person's catch rate is one number for every action.
-Results are totals over eight seeds, without confidence intervals; the write-up (#54) adds those, and
-prediction agreement is still to come (#53).
+The simulated person's answers are independent draws with fixed rates per target; real people change their
+minds and answer differently when tired. Results are totals over eight seeds, without confidence intervals;
+the write-up (#54) adds those.

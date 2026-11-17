@@ -5,7 +5,8 @@
 //! through three baselines: always ask, a static allowlist, and one aggregate score per agent. The run
 //! reports how often each policy asks a person, how many failures ran without a person stopping them,
 //! how often an agent was promoted to a level its real pass rate doesn't meet, and how many actions a
-//! real drop in quality went on for before the agent was demoted.
+//! real drop in quality went on for before the agent was demoted. A second part, [`agreement`], runs the
+//! per-person answer model against a simulated person and reports how often its answers match theirs.
 //!
 //! A run is a pure function of its [`Config`]. Each task's outcome comes from hashing (seed, agent,
 //! capability, action), so every policy sees the same tasks and anyone can regenerate the results:
@@ -14,6 +15,7 @@
 use std::collections::BTreeMap;
 
 use mohar_core::policy::{Capability, Risk};
+use mohar_core::predict::{self, Limits, Model, Past, Prediction, Request};
 use mohar_core::trust::{Ledger, Outcome, Severity};
 use serde_json::{Value, json};
 
@@ -51,6 +53,11 @@ pub struct Config {
     /// Failing actions per thousand that a person who is asked stops before they run. A stopped action
     /// has no outcome; the person refuses it as wrong, which the daemon counts against the agent.
     pub catch_per_mille: u64,
+    /// Escalations per seed on `edit` that one simulated person answers, for the prediction agreement
+    /// part of the run. Zero skips it.
+    pub escalations: u64,
+    /// That person's habits: a target and how many times per thousand they say yes to an edit of it.
+    pub habits: Vec<(&'static str, u64)>,
 }
 
 impl Default for Config {
@@ -84,6 +91,14 @@ impl Default for Config {
             agents_per_kind: 5,
             drift_day: 28,
             catch_per_mille: 500,
+            escalations: 400,
+            habits: vec![
+                ("docs/guide.md", 1000),
+                ("tests/run.rs", 990),
+                ("src/lib.rs", 970),
+                ("src/cli.rs", 950),
+                (".github/workflows/ci.yml", 200),
+            ],
         }
     }
 }
@@ -366,6 +381,89 @@ fn quantile(xs: &[u64], q: f64) -> u64 {
     }
 }
 
+/// Answers between retraining the person's model, as a daemon would retrain in batches.
+pub const RETRAIN_EVERY: usize = 25;
+
+/// What the answer model did for the simulated person over every seed.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Agreement {
+    /// Escalations the person could have been asked.
+    pub escalations: u64,
+    /// Answered yes by the model; the person never saw them.
+    pub predicted: u64,
+    /// Of those, ones the person would have refused.
+    pub predicted_wrong: u64,
+    /// Predictions drawn as checks, so the person answered anyway.
+    pub checks: u64,
+    /// Checks where the person said yes, as predicted.
+    pub checks_agreed: u64,
+    /// Escalations the person answered because the model wasn't allowed or wasn't sure.
+    pub asked: u64,
+    /// Answers the model learned from, summed over seeds.
+    pub trained_on: u64,
+}
+
+/// Run the answer model (`mohar_core::predict`) against one simulated person whose real answers are
+/// known, so agreement is measured on every prediction, not only on the checks a daemon can see. As in
+/// the daemon, the model trains only on answers the person gave (asked and checks).
+pub fn agreement(cfg: &Config) -> Agreement {
+    let [(_, edit), ..] = capabilities();
+    let limits = BTreeMap::from([(
+        "edit".to_string(),
+        Limits {
+            paths: vec!["**".to_string()],
+            per_day: u32::MAX,
+        },
+    )]);
+    let mut a = Agreement::default();
+    if cfg.habits.is_empty() {
+        return a;
+    }
+    for &seed in &cfg.seeds {
+        let mut check_seed = [0u8; 32];
+        check_seed[..8].copy_from_slice(&seed.to_le_bytes());
+        let mut past: Vec<Past> = Vec::new();
+        let mut model: Option<Model> = None;
+        for n in 0..cfg.escalations {
+            let (target, yes_rate) = cfg.habits[(draw(&[seed, n, 2]) as usize) % cfg.habits.len()];
+            let yes = draw(&[seed, n, 3]) < yes_rate;
+            let req = Request {
+                capability: "edit",
+                spec: &edit,
+                target,
+                used_today: 0,
+                p_yes: model
+                    .as_ref()
+                    .map(|m| m.p_yes(&past, "edit", Risk::Low, target)),
+            };
+            a.escalations += 1;
+            match predict::decide(&req, &limits, &check_seed, n) {
+                Prediction::Yes { .. } => {
+                    a.predicted += 1;
+                    a.predicted_wrong += u64::from(!yes);
+                    continue;
+                }
+                Prediction::Check { .. } => {
+                    a.checks += 1;
+                    a.checks_agreed += u64::from(yes);
+                }
+                Prediction::Ask(_) => a.asked += 1,
+            }
+            past.push(Past {
+                capability: "edit".to_string(),
+                risk: Risk::Low,
+                target: target.to_string(),
+                yes,
+            });
+            if past.len().is_multiple_of(RETRAIN_EVERY) {
+                model = Model::train(&past);
+            }
+        }
+        a.trained_on += past.len() as u64;
+    }
+    a
+}
+
 /// Run every policy and report, as the JSON written to `results.json`.
 pub fn report(cfg: &Config) -> Value {
     let tallies: Vec<(Policy, Tally)> = Policy::ALL.iter().map(|&p| (p, run(cfg, p))).collect();
@@ -435,5 +533,34 @@ pub fn report(cfg: &Config) -> Value {
             "capabilities": caps,
         },
         "policies": policies,
+        "prediction": prediction(cfg),
+    })
+}
+
+/// The prediction agreement part of the report.
+fn prediction(cfg: &Config) -> Value {
+    let a = agreement(cfg);
+    let habits: Vec<Value> = cfg
+        .habits
+        .iter()
+        .map(|(t, y)| json!({"target": t, "yes_per_1000": y}))
+        .collect();
+    json!({
+        "escalations_per_seed": cfg.escalations,
+        "retrain_every": RETRAIN_EVERY,
+        "threshold": predict::THRESHOLD,
+        "habits": habits,
+        "escalations": a.escalations,
+        "answered_by_model": a.predicted,
+        "answered_by_model_share": share(a.predicted, a.escalations),
+        "checks": a.checks,
+        "agreement_on_checks": share(a.checks_agreed, a.checks),
+        "agreement_on_all_predictions": share(
+            a.predicted - a.predicted_wrong + a.checks_agreed,
+            a.predicted + a.checks
+        ),
+        "wrong_yes_per_1000_predicted": per_thousand(a.predicted_wrong, a.predicted),
+        "asked": a.asked,
+        "answers_given": a.trained_on,
     })
 }
