@@ -1,7 +1,9 @@
 //! Checks on the benchmark harness: that it is repeatable, that every policy sees the same tasks, and
 //! that each metric counts what it says on agents whose behaviour is known exactly.
 
-use mohar_bench::{Config, Kind, Policy, false_promotion, level_bound, report, run};
+use mohar_bench::{
+    Agreement, Config, Kind, Policy, agreement, false_promotion, level_bound, report, run,
+};
 
 fn small(kinds: Vec<Kind>, catch: u64) -> Config {
     Config {
@@ -12,6 +14,8 @@ fn small(kinds: Vec<Kind>, catch: u64) -> Config {
         agents_per_kind: 1,
         drift_day: 28,
         catch_per_mille: catch,
+        escalations: 0,
+        habits: Vec::new(),
     }
 }
 
@@ -257,4 +261,85 @@ fn results_file_matches_the_harness() {
         committed == now,
         "results.json is out of date; run MOHAR_WRITE_BENCH=1 cargo test --release -p mohar-bench"
     );
+}
+
+fn person(habits: Vec<(&'static str, u64)>, escalations: u64) -> Config {
+    Config {
+        seeds: vec![3, 4],
+        escalations,
+        habits,
+        ..small(Vec::new(), 500)
+    }
+}
+
+#[test]
+fn a_person_who_always_says_yes_is_mostly_answered_for_and_never_wrongly() {
+    let a = agreement(&person(
+        vec![("src/lib.rs", 1000), ("docs/a.md", 1000)],
+        300,
+    ));
+    assert_eq!(a.escalations, 600);
+    assert!(a.predicted > 300, "{a:?}");
+    assert_eq!(a.predicted_wrong, 0);
+    assert_eq!(a.checks, a.checks_agreed);
+    assert_eq!(a.predicted + a.checks + a.asked, a.escalations);
+    assert_eq!(a.trained_on, a.asked + a.checks);
+}
+
+#[test]
+fn a_target_the_person_refuses_is_never_answered_yes() {
+    let a = agreement(&person(vec![("docs/a.md", 1000), ("ci.yml", 0)], 300));
+    assert!(a.predicted > 0, "{a:?}");
+    assert_eq!(a.predicted_wrong, 0);
+}
+
+#[test]
+fn a_person_who_says_yes_half_the_time_is_always_asked() {
+    let a = agreement(&person(vec![("src/lib.rs", 500)], 300));
+    assert_eq!(a.predicted + a.checks, 0, "{a:?}");
+    assert_eq!(a.asked, 600);
+}
+
+#[test]
+fn nothing_is_predicted_before_the_person_has_enough_answers() {
+    let a = agreement(&person(vec![("src/lib.rs", 1000)], 29));
+    assert_eq!(a.asked, 58);
+    assert_eq!(a.predicted + a.checks, 0);
+}
+
+#[test]
+fn some_predictions_still_go_to_the_person_and_train_the_model() {
+    let a = agreement(&person(vec![("src/lib.rs", 1000)], 1000));
+    assert!(a.checks > 0, "{a:?}");
+    assert!(a.checks * 10 < a.predicted, "{a:?}");
+}
+
+#[test]
+fn a_mostly_yes_person_is_sometimes_answered_wrongly_and_the_report_says_so() {
+    let cfg = person(vec![("src/lib.rs", 990)], 1000);
+    let a = agreement(&cfg);
+    assert!(a.predicted_wrong > 0, "{a:?}");
+    let r = report(&cfg);
+    let p = &r["prediction"];
+    assert_eq!(p["answered_by_model"], a.predicted);
+    assert_eq!(p["checks"], a.checks);
+    let all = p["agreement_on_all_predictions"].as_f64().unwrap_or(1.0);
+    assert!(all < 1.0 && all > 0.9, "{p}");
+}
+
+#[test]
+fn no_person_no_predictions() {
+    assert_eq!(agreement(&person(Vec::new(), 300)), Agreement::default());
+    let r = report(&person(vec![("a", 1000)], 0));
+    assert_eq!(r["prediction"]["agreement_on_checks"], 0.0);
+    assert_eq!(r["prediction"]["wrong_yes_per_1000_predicted"], 0.0);
+}
+
+#[test]
+fn a_check_can_disagree_with_the_prediction() {
+    let a = agreement(&Config {
+        seeds: (1..=6).collect(),
+        ..person(vec![("src/lib.rs", 990)], 1500)
+    });
+    assert!(a.checks_agreed < a.checks, "{a:?}");
 }

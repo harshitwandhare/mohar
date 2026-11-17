@@ -126,5 +126,41 @@
         "p90_actions": 14
       }
     }
-  ]
+  ],
+  "prediction": {
+    "agreement_on_all_predictions": 0.9746,
+    "agreement_on_checks": 1.0,
+    "answered_by_model": 647,
+    "answered_by_model_share": 0.2022,
+    "answers_given": 2553,
+    "asked": 2530,
+    "checks": 23,
+    "escalations": 3200,
+    "escalations_per_seed": 400,
+    "habits": [
+      {
+        "target": "docs/guide.md",
+        "yes_per_1000": 1000
+      },
+      {
+        "target": "tests/run.rs",
+        "yes_per_1000": 990
+      },
+      {
+        "target": "src/lib.rs",
+        "yes_per_1000": 970
+      },
+      {
+        "target": "src/cli.rs",
+        "yes_per_1000": 950
+      },
+      {
+        "target": ".github/workflows/ci.yml",
+        "yes_per_1000": 200
+      }
+    ],
+    "retrain_every": 25,
+    "threshold": 0.98,
+    "wrong_yes_per_1000_predicted": 26.2751
+  }
 }
