@@ -368,6 +368,20 @@ test('the home page names the newest release', () => {
   expect(named).toEqual(named.map(() => newest));
 });
 
+// The trust ladder note quotes the benchmark. Its numbers must be the ones in the committed results, so a
+// change to the trust rules that moves them also has to change the page.
+test('the trust ladder note quotes the committed benchmark results', async ({ page }) => {
+  const r = JSON.parse(readFileSync('crates/mohar-bench/results.json', 'utf8'));
+  const p = Object.fromEntries(r.policies.map(x => [x.policy, x]));
+  const n = x => Math.round(x).toLocaleString('en-US');
+  await page.goto('/');
+  const note = (await page.locator('.note', { hasText: 'simulated benchmark' }).first().innerText()).replace(/\s+/g, ' ');
+  expect(note).toContain(`about ${n(p.mohar.prompts_per_1000)} times per 1,000 actions`);
+  expect(note).toContain(`let ${n(p.mohar.incidents_per_1000)} failures per 1,000 run`);
+  expect(note).toContain(`(${n(p.always_ask.incidents_per_1000)} when every action is asked, ${n(p.static_allowlist.incidents_per_1000)} under a static allowlist)`);
+  expect(note).toContain(`in ${(p.mohar.promotions.false_promotion_rate * 100).toFixed(1)}% of promotions`);
+});
+
 // Checklist item 16. The rendered text of every page, docs included, so copy pulled in from docs/*.md
 // or written by a script is checked too.
 const STOCK = ['seamless', 'supercharge', 'delve', 'leverage', 'robust', 'game-changer', 'game changer', 'cutting-edge', 'unlock', 'revolutioni', 'effortless'];
