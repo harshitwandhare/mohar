@@ -380,6 +380,10 @@ test('the trust ladder note quotes the committed benchmark results', async ({ pa
   expect(note).toContain(`let ${n(p.mohar.incidents_per_1000)} failures per 1,000 run`);
   expect(note).toContain(`(${n(p.always_ask.incidents_per_1000)} when every action is asked, ${n(p.static_allowlist.incidents_per_1000)} under a static allowlist)`);
   expect(note).toContain(`in ${(p.mohar.promotions.false_promotion_rate * 100).toFixed(1)}% of promotions`);
+  // The link goes to the write-up, which explains the method and the limits, not to the harness's folder.
+  const href = await page.locator('.note a', { hasText: 'simulated benchmark' }).getAttribute('href');
+  expect(href).toBe('https://github.com/harshitwandhare/mohar/blob/main/docs/benchmark.md');
+  expect(readFileSync('docs/benchmark.md', 'utf8')).toContain('<!-- results:start -->');
 });
 
 // Checklist item 16. The rendered text of every page, docs included, so copy pulled in from docs/*.md
