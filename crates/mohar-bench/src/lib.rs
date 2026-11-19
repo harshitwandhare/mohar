@@ -466,12 +466,26 @@ pub fn agreement(cfg: &Config) -> Agreement {
 
 /// Run every policy and report, as the JSON written to `results.json`.
 pub fn report(cfg: &Config) -> Value {
-    let tallies: Vec<(Policy, Tally)> = Policy::ALL.iter().map(|&p| (p, run(cfg, p))).collect();
+    // Each seed is run on its own, so the spread across seeds can be reported. The totals are their
+    // sums, the same as one run over every seed, since every seed starts from an empty ledger.
+    let runs: Vec<(Policy, Vec<Tally>)> = Policy::ALL
+        .iter()
+        .map(|&p| (p, each_seed(cfg).map(|c| run(&c, p)).collect()))
+        .collect();
+    let tallies: Vec<(Policy, Tally)> = runs
+        .iter()
+        .map(|(p, seeds)| {
+            let mut t = Tally::default();
+            seeds.iter().for_each(|s| t.add(s));
+            (*p, t)
+        })
+        .collect();
     let ask_all = tallies[0].1.prompts;
     let allowlist_incidents = per_thousand(tallies[1].1.incidents, tallies[1].1.actions);
     let policies: Vec<Value> = tallies
         .iter()
-        .map(|(p, t)| {
+        .zip(&runs)
+        .map(|((p, t), (_, seeds))| {
             let incidents = per_thousand(t.incidents, t.actions);
             let mut v = json!({
                 "policy": p.name(),
@@ -501,6 +515,7 @@ pub fn report(cfg: &Config) -> Value {
                     "never_demoted": t.never_demoted,
                 });
             }
+            v["per_seed_95"] = per_seed(*p, seeds, &runs[0].1);
             v
         })
         .collect();
@@ -539,7 +554,13 @@ pub fn report(cfg: &Config) -> Value {
 
 /// The prediction agreement part of the report.
 fn prediction(cfg: &Config) -> Value {
-    let a = agreement(cfg);
+    let seeds: Vec<Agreement> = each_seed(cfg).map(|c| agreement(&c)).collect();
+    let mut a = Agreement::default();
+    seeds.iter().for_each(|s| a.add(s));
+    let wrong: Vec<f64> = seeds
+        .iter()
+        .map(|s| per_thousand(s.predicted_wrong, s.predicted))
+        .collect();
     let habits: Vec<Value> = cfg
         .habits
         .iter()
@@ -560,7 +581,216 @@ fn prediction(cfg: &Config) -> Value {
             a.predicted + a.checks
         ),
         "wrong_yes_per_1000_predicted": per_thousand(a.predicted_wrong, a.predicted),
+        "wrong_yes_per_1000_per_seed_95": spread(&wrong),
         "asked": a.asked,
         "answers_given": a.trained_on,
     })
+}
+
+/// `cfg` once for each of its seeds, with that seed alone.
+fn each_seed(cfg: &Config) -> impl Iterator<Item = Config> + '_ {
+    cfg.seeds.iter().map(|&s| Config {
+        seeds: vec![s],
+        ..cfg.clone()
+    })
+}
+
+impl Tally {
+    /// Add another run's counts to these.
+    fn add(&mut self, o: &Tally) {
+        self.actions += o.actions;
+        self.prompts += o.prompts;
+        self.incidents += o.incidents;
+        self.serious_incidents += o.serious_incidents;
+        for l in 0..3 {
+            self.promotions[l] += o.promotions[l];
+            self.false_promotions[l] += o.false_promotions[l];
+        }
+        self.demotion_delays.extend_from_slice(&o.demotion_delays);
+        self.drops_at_ask_first += o.drops_at_ask_first;
+        self.never_demoted += o.never_demoted;
+    }
+}
+
+impl Agreement {
+    /// Add another run's counts to these.
+    fn add(&mut self, o: &Agreement) {
+        self.escalations += o.escalations;
+        self.predicted += o.predicted;
+        self.predicted_wrong += o.predicted_wrong;
+        self.checks += o.checks;
+        self.checks_agreed += o.checks_agreed;
+        self.asked += o.asked;
+        self.trained_on += o.trained_on;
+    }
+}
+
+/// Student's t at 97.5% for 1 to 30 degrees of freedom.
+const T_975: [f64; 30] = [
+    12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228, 2.201, 2.179, 2.160,
+    2.145, 2.131, 2.120, 2.110, 2.101, 2.093, 2.086, 2.080, 2.074, 2.069, 2.064, 2.060, 2.056,
+    2.052, 2.048, 2.045, 2.042,
+];
+
+/// The mean of `xs` and its two-sided 95% Student t interval, as (mean, low, high), or `None` for
+/// fewer than two values. Past 31 values the normal bound 1.96 stands in for t. Everything the report
+/// puts an interval on is a rate, so the low end is never below zero.
+pub fn interval(xs: &[f64]) -> Option<(f64, f64, f64)> {
+    let n = xs.len();
+    if n < 2 {
+        return None;
+    }
+    let nf = n as f64;
+    let mean = xs.iter().sum::<f64>() / nf;
+    let var = xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (nf - 1.0);
+    let t = T_975.get(n - 2).copied().unwrap_or(1.96);
+    let half = t * var.sqrt() / nf.sqrt();
+    Some((mean, (mean - half).max(0.0), mean + half))
+}
+
+/// A rate's mean over seeds and its 95% interval, or null for fewer than two seeds.
+fn spread(xs: &[f64]) -> Value {
+    match interval(xs) {
+        Some((mean, low, high)) => {
+            json!({"mean": round(mean), "low": round(low), "high": round(high)})
+        }
+        None => Value::Null,
+    }
+}
+
+/// The per-seed intervals of one policy's rates; `ask` is the always-ask run of the same seeds.
+fn per_seed(policy: Policy, seeds: &[Tally], ask: &[Tally]) -> Value {
+    if seeds.len() < 2 {
+        return Value::Null;
+    }
+    let of = |f: &dyn Fn(&Tally, &Tally) -> f64| -> Value {
+        spread(
+            &seeds
+                .iter()
+                .zip(ask)
+                .map(|(t, a)| f(t, a))
+                .collect::<Vec<_>>(),
+        )
+    };
+    let mut v = json!({
+        "prompts_per_1000": of(&|t, _| per_thousand(t.prompts, t.actions)),
+        "prompts_avoided_vs_always_ask": of(&|t, a| share(a.prompts - t.prompts, a.prompts)),
+        "incidents_per_1000": of(&|t, _| per_thousand(t.incidents, t.actions)),
+    });
+    if matches!(policy, Policy::Aggregate | Policy::Mohar) {
+        v["false_promotion_rate"] =
+            of(&|t, _| share(t.false_promotions.iter().sum(), t.promotions.iter().sum()));
+    }
+    v
+}
+
+/// A number with one decimal place.
+fn one(v: &Value) -> String {
+    format!("{:.1}", v.as_f64().unwrap_or_default())
+}
+
+/// A share as a percentage with one decimal place.
+fn pct(v: &Value) -> String {
+    format!("{:.1}%", v.as_f64().unwrap_or_default() * 100.0)
+}
+
+/// A table cell: the per-seed mean and its interval when there is one, else the total.
+fn cell(total: &Value, spread: &Value, f: fn(&Value) -> String) -> String {
+    if spread.is_object() {
+        format!(
+            "{} ({} to {})",
+            f(&spread["mean"]),
+            f(&spread["low"]),
+            f(&spread["high"])
+        )
+    } else {
+        f(total)
+    }
+}
+
+/// A count from the report, or zero.
+fn count(v: &Value) -> u64 {
+    v.as_u64().unwrap_or_default()
+}
+
+/// The results tables for docs/benchmark.md, rendered from a [`report`].
+pub fn markdown(r: &Value) -> String {
+    let mut s = String::from(
+        "| Policy | Prompts per 1,000 actions | Prompts avoided | Failures that ran per 1,000 | \
+         Irreversible failures per 1,000 | False promotions |\n\
+         | --- | --- | --- | --- | --- | --- |\n",
+    );
+    let policies = r["policies"].as_array().cloned().unwrap_or_default();
+    for p in &policies {
+        let ps = &p["per_seed_95"];
+        let false_promotions = match p.get("promotions") {
+            Some(pr) => format!(
+                "{} of {}, {}",
+                count(&pr["false_to_supervised"]) + count(&pr["false_to_trusted"]),
+                count(&pr["to_supervised"]) + count(&pr["to_trusted"]),
+                cell(
+                    &pr["false_promotion_rate"],
+                    &ps["false_promotion_rate"],
+                    pct
+                )
+            ),
+            None => "no levels".to_string(),
+        };
+        s.push_str(&format!(
+            "| `{}` | {} | {} | {} | {} | {} |\n",
+            p["policy"].as_str().unwrap_or_default(),
+            cell(&p["prompts_per_1000"], &ps["prompts_per_1000"], one),
+            cell(
+                &p["prompts_avoided_vs_always_ask"],
+                &ps["prompts_avoided_vs_always_ask"],
+                pct
+            ),
+            cell(&p["incidents_per_1000"], &ps["incidents_per_1000"], one),
+            one(&p["serious_incidents_per_1000"]),
+            false_promotions,
+        ));
+    }
+    s.push_str(
+        "\n| Policy | Drops measured | Median actions to demotion | 90th percentile | Longest | \
+         Drop came at Ask first | Never demoted |\n\
+         | --- | --- | --- | --- | --- | --- | --- |\n",
+    );
+    for p in policies
+        .iter()
+        .filter(|p| p.get("time_to_demotion").is_some())
+    {
+        let d = &p["time_to_demotion"];
+        s.push_str(&format!(
+            "| `{}` | {} | {} | {} | {} | {} | {} |\n",
+            p["policy"].as_str().unwrap_or_default(),
+            d["drops_measured"],
+            d["median_actions"],
+            d["p90_actions"],
+            d["max_actions"],
+            d["drops_at_ask_first"],
+            d["never_demoted"],
+        ));
+    }
+    let q = &r["prediction"];
+    s.push_str(&format!(
+        "\nPrediction agreement: the answer model answered {} of {} escalations ({}). {} of its \
+         predictions still went to the person as checks, and {} of the checks agreed. Over every \
+         prediction there were {} wrong yes answers per 1,000.{}\n",
+        q["answered_by_model"],
+        q["escalations"],
+        pct(&q["answered_by_model_share"]),
+        q["checks"],
+        pct(&q["agreement_on_checks"]),
+        one(&q["wrong_yes_per_1000_predicted"]),
+        match &q["wrong_yes_per_1000_per_seed_95"] {
+            w if w.is_object() => format!(
+                " Taken seed by seed, the mean was {}, with a 95% interval of {} to {}.",
+                one(&w["mean"]),
+                one(&w["low"]),
+                one(&w["high"])
+            ),
+            _ => String::new(),
+        },
+    ));
+    s
 }

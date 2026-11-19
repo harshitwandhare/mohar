@@ -63,5 +63,5 @@ trust rules that moves a number has to commit the new numbers with it.
 The agents are simulated, with fixed pass rates and independent outcomes; real agents have streaks, and
 their failures cluster on certain tasks. The person's catch rate is one number for every action.
 The simulated person's answers are independent draws with fixed rates per target; real people change their
-minds and answer differently when tired. Results are totals over eight seeds, without confidence intervals;
-the write-up (#54) adds those.
+minds and answer differently when tired. Totals are summed over eight seeds, and each rate also has its mean over seeds
+with a 95% Student t interval (`per_seed_95`). The write-up is docs/benchmark.md.

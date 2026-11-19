@@ -19,6 +19,9 @@ receipt format; each such change is called out.
 
 ### Added
 
+- Benchmark write-up (#54), in docs/benchmark.md: method, baselines, results and limits. The harness now
+  runs each seed on its own and reports each rate's mean over seeds with a 95% interval; the results
+  tables in the write-up are rendered by the harness, and a test fails when they go stale.
 - Benchmark harness for the trust rules (#221), in `crates/mohar-bench`. Simulated agents of known
   quality run for nine simulated weeks through Mohar and three baselines (always ask, a static allowlist,
   one aggregate score); `results.json` reports prompts, incidents, false promotions and time to demotion,

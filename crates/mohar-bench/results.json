@@ -64,6 +64,23 @@
       "actions": 181440,
       "incidents_at_or_below_allowlist": true,
       "incidents_per_1000": 71.3735,
+      "per_seed_95": {
+        "incidents_per_1000": {
+          "high": 72.8346,
+          "low": 69.9123,
+          "mean": 71.3735
+        },
+        "prompts_avoided_vs_always_ask": {
+          "high": 0.0,
+          "low": 0.0,
+          "mean": 0.0
+        },
+        "prompts_per_1000": {
+          "high": 1000.0,
+          "low": 1000.0,
+          "mean": 1000.0
+        }
+      },
       "policy": "always_ask",
       "prompts_avoided_vs_always_ask": 0.0,
       "prompts_per_1000": 1000.0,
@@ -73,6 +90,23 @@
       "actions": 181440,
       "incidents_at_or_below_allowlist": true,
       "incidents_per_1000": 94.7806,
+      "per_seed_95": {
+        "incidents_per_1000": {
+          "high": 96.7184,
+          "low": 92.8429,
+          "mean": 94.7806
+        },
+        "prompts_avoided_vs_always_ask": {
+          "high": 0.3333,
+          "low": 0.3333,
+          "mean": 0.3333
+        },
+        "prompts_per_1000": {
+          "high": 666.6667,
+          "low": 666.6667,
+          "mean": 666.6667
+        }
+      },
       "policy": "static_allowlist",
       "prompts_avoided_vs_always_ask": 0.3333,
       "prompts_per_1000": 666.6667,
@@ -82,6 +116,28 @@
       "actions": 181440,
       "incidents_at_or_below_allowlist": true,
       "incidents_per_1000": 71.7758,
+      "per_seed_95": {
+        "false_promotion_rate": {
+          "high": 0.0175,
+          "low": 0.0,
+          "mean": 0.0052
+        },
+        "incidents_per_1000": {
+          "high": 73.1979,
+          "low": 70.3537,
+          "mean": 71.7758
+        },
+        "prompts_avoided_vs_always_ask": {
+          "high": 0.0547,
+          "low": 0.0273,
+          "mean": 0.041
+        },
+        "prompts_per_1000": {
+          "high": 972.6973,
+          "low": 945.2701,
+          "mean": 958.9837
+        }
+      },
       "policy": "aggregate_score",
       "promotions": {
         "false_promotion_rate": 0.0051,
@@ -106,6 +162,28 @@
       "actions": 181440,
       "incidents_at_or_below_allowlist": true,
       "incidents_per_1000": 73.06,
+      "per_seed_95": {
+        "false_promotion_rate": {
+          "high": 0.0154,
+          "low": 0.0001,
+          "mean": 0.0078
+        },
+        "incidents_per_1000": {
+          "high": 74.5509,
+          "low": 71.569,
+          "mean": 73.06
+        },
+        "prompts_avoided_vs_always_ask": {
+          "high": 0.1255,
+          "low": 0.1094,
+          "mean": 0.1174
+        },
+        "prompts_per_1000": {
+          "high": 890.6108,
+          "low": 874.5016,
+          "mean": 882.5562
+        }
+      },
       "policy": "mohar",
       "promotions": {
         "false_promotion_rate": 0.0078,
@@ -161,6 +239,11 @@
     ],
     "retrain_every": 25,
     "threshold": 0.98,
+    "wrong_yes_per_1000_per_seed_95": {
+      "high": 27.6467,
+      "low": 0.0,
+      "mean": 12.7998
+    },
     "wrong_yes_per_1000_predicted": 26.2751
   }
 }
