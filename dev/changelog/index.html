@@ -516,6 +516,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../benchmark/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmark
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../integrations/" class="md-nav__link">
         
   
@@ -1419,6 +1447,9 @@ receipt format; each such change is called out.</p>
 </ul>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
+<li>Benchmark write-up (#54), in docs/benchmark.md: method, baselines, results and limits. The harness now
+  runs each seed on its own and reports each rate's mean over seeds with a 95% interval; the results
+  tables in the write-up are rendered by the harness, and a test fails when they go stale.</li>
 <li>Benchmark harness for the trust rules (#221), in <code>crates/mohar-bench</code>. Simulated agents of known
   quality run for nine simulated weeks through Mohar and three baselines (always ask, a static allowlist,
   one aggregate score); <code>results.json</code> reports prompts, incidents, false promotions and time to demotion,
