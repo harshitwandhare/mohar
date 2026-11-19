@@ -2,7 +2,8 @@
 //! that each metric counts what it says on agents whose behaviour is known exactly.
 
 use mohar_bench::{
-    Agreement, Config, Kind, Policy, agreement, false_promotion, level_bound, report, run,
+    Agreement, Config, Kind, Policy, agreement, false_promotion, interval, level_bound, markdown,
+    report, run,
 };
 
 fn small(kinds: Vec<Kind>, catch: u64) -> Config {
@@ -261,6 +262,174 @@ fn results_file_matches_the_harness() {
         committed == now,
         "results.json is out of date; run MOHAR_WRITE_BENCH=1 cargo test --release -p mohar-bench"
     );
+}
+
+#[test]
+fn the_write_up_quotes_the_harness() {
+    // docs/benchmark.md carries the results tables between two markers; the prose around them is
+    // written by hand. The tables must be what the harness produces now.
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/benchmark.md");
+    let doc = std::fs::read_to_string(&path).unwrap_or_default();
+    let (start, end) = ("<!-- results:start -->\n", "<!-- results:end -->");
+    let (Some(a), Some(b)) = (doc.find(start), doc.find(end)) else {
+        panic!("{} has no results markers", path.display());
+    };
+    let now = format!(
+        "{}{start}{}{}",
+        &doc[..a],
+        markdown(&report(&Config::default())),
+        &doc[b..]
+    );
+    if std::env::var_os("MOHAR_WRITE_BENCH").is_some() {
+        std::fs::write(&path, &now).unwrap_or_else(|e| panic!("writing {}: {e}", path.display()));
+    }
+    assert!(
+        doc == now,
+        "docs/benchmark.md is out of date; run MOHAR_WRITE_BENCH=1 cargo test --release -p mohar-bench"
+    );
+}
+
+#[test]
+fn an_interval_needs_two_values() {
+    assert_eq!(interval(&[]), None);
+    assert_eq!(interval(&[3.0]), None);
+}
+
+#[test]
+fn an_interval_is_the_student_t_interval_of_the_mean() {
+    // Mean 12, sample standard deviation 2, n = 3: t(2) = 4.303, half width 4.303 * 2 / sqrt(3).
+    let (mean, low, high) = interval(&[10.0, 12.0, 14.0]).unwrap_or_default();
+    assert_eq!(mean, 12.0);
+    assert!((low - 7.0313).abs() < 1e-3, "{low}");
+    assert!((high - 16.9687).abs() < 1e-3, "{high}");
+    // Eight seeds, as the published run: t(7) = 2.365.
+    let xs = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+    let (mean, low, high) = interval(&xs).unwrap_or_default();
+    let sd = (42.0f64 / 7.0).sqrt();
+    assert_eq!(mean, 4.5);
+    assert!(
+        (high - mean - 2.365 * sd / 8f64.sqrt()).abs() < 1e-3,
+        "{high}"
+    );
+    assert!((mean - low - (high - mean)).abs() < 1e-9);
+}
+
+#[test]
+fn an_interval_over_many_values_uses_the_normal_bound() {
+    let xs: Vec<f64> = (0..100).map(|i| f64::from(i % 2)).collect();
+    let (mean, low, high) = interval(&xs).unwrap_or_default();
+    let sd = (25.0f64 / 99.0).sqrt();
+    assert!((high - mean - 1.96 * sd / 10.0).abs() < 1e-9, "{high}");
+    assert!(low > 0.0);
+}
+
+#[test]
+fn identical_values_have_no_spread_and_a_rate_never_goes_below_zero() {
+    assert_eq!(interval(&[5.0, 5.0, 5.0]), Some((5.0, 5.0, 5.0)));
+    let (_, low, _) = interval(&[0.0, 0.0, 0.0, 9.0]).unwrap_or_default();
+    assert_eq!(low, 0.0);
+}
+
+#[test]
+fn the_report_gives_a_per_seed_interval_for_each_rate() {
+    let cfg = Config {
+        seeds: vec![1, 2, 3],
+        ..small(vec![steady("a", 900), steady("b", 700)], 500)
+    };
+    let r = report(&cfg);
+    for p in r["policies"].as_array().into_iter().flatten() {
+        let s = &p["per_seed_95"];
+        for key in [
+            "prompts_per_1000",
+            "incidents_per_1000",
+            "prompts_avoided_vs_always_ask",
+        ] {
+            let (m, lo, hi) = (
+                s[key]["mean"].as_f64(),
+                s[key]["low"].as_f64(),
+                s[key]["high"].as_f64(),
+            );
+            let (Some(m), Some(lo), Some(hi)) = (m, lo, hi) else {
+                panic!("{} has no interval for {key}: {s}", p["policy"]);
+            };
+            assert!(lo <= m && m <= hi, "{key} {s}");
+        }
+        assert_eq!(
+            s.get("false_promotion_rate").is_some(),
+            p.get("promotions").is_some()
+        );
+    }
+    // Always asking prompts on every action in every seed, so there is no spread.
+    let ask = &r["policies"][0]["per_seed_95"]["prompts_per_1000"];
+    assert_eq!(
+        (ask["low"].as_f64(), ask["high"].as_f64()),
+        (Some(1000.0), Some(1000.0))
+    );
+    // The per-seed mean of incidents differs from seed to seed, so the interval has width.
+    let inc = &r["policies"][1]["per_seed_95"]["incidents_per_1000"];
+    assert!(inc["low"].as_f64() < inc["high"].as_f64(), "{inc}");
+}
+
+#[test]
+fn the_report_totals_match_a_run_over_every_seed() {
+    let cfg = Config {
+        seeds: vec![1, 2, 3],
+        ..small(
+            vec![
+                steady("a", 900),
+                Kind {
+                    name: "d",
+                    before: 990,
+                    after: 600,
+                },
+            ],
+            500,
+        )
+    };
+    let r = report(&cfg);
+    let t = run(&cfg, Policy::Mohar);
+    let m = &r["policies"][3];
+    assert_eq!(m["actions"], t.actions);
+    assert_eq!(m["promotions"]["to_supervised"], t.promotions[1]);
+    assert_eq!(
+        m["time_to_demotion"]["drops_measured"],
+        t.demotion_delays.len()
+    );
+}
+
+#[test]
+fn a_single_seed_has_no_interval() {
+    let r = report(&small(vec![steady("a", 900)], 500));
+    assert!(r["policies"][3]["per_seed_95"].is_null());
+    assert!(r["prediction"]["wrong_yes_per_1000_per_seed_95"].is_null());
+    // The tables then show the totals alone.
+    let md = markdown(&r);
+    assert!(md.contains("| `always_ask` | 1000.0 | 0.0% |"), "{md}");
+    assert!(!md.contains("seed by seed"), "{md}");
+}
+
+#[test]
+fn the_tables_name_every_policy_with_its_interval() {
+    let cfg = Config {
+        seeds: vec![1, 2],
+        ..person(vec![("src/lib.rs", 990)], 400)
+    };
+    let cfg = Config {
+        kinds: vec![steady("a", 900)],
+        agents_per_kind: 2,
+        ..cfg
+    };
+    let md = markdown(&report(&cfg));
+    for name in ["always_ask", "static_allowlist", "aggregate_score", "mohar"] {
+        assert!(md.contains(&format!("| `{name}` |")), "{md}");
+    }
+    assert!(
+        md.contains("| `always_ask` | 1000.0 (1000.0 to 1000.0) | 0.0% (0.0% to 0.0%) |"),
+        "{md}"
+    );
+    assert!(md.contains("wrong yes answers per 1,000."), "{md}");
+    assert!(md.contains("Taken seed by seed, the mean was"), "{md}");
+    assert!(md.ends_with('\n'));
 }
 
 fn person(habits: Vec<(&'static str, u64)>, escalations: u64) -> Config {

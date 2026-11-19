@@ -55,6 +55,7 @@ nav:
   - Concepts:
       - Design: design.md
       - Engineering bar: engineering-bar.md
+      - Benchmark: benchmark.md
       - Integrations: integrations.md
   - Formats:
       - Receipts and checkpoints: formats.md

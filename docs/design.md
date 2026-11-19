@@ -340,6 +340,9 @@ The benchmark (Phase 5) runs agents on recurring, verifiable tasks over simulate
   stay at or below a baseline;
 - **prediction agreement**: how often the per-person model's answer matches the person's sampled answer.
 
+The method, baselines and current results are in the
+[benchmark write-up](https://github.com/harshitwandhare/mohar/blob/main/docs/benchmark.md).
+
 ## 11. Related work
 
 Mohar sits beside these and doesn't replace them. A check on 22 October 2026 found that several pieces
