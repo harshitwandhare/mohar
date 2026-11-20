@@ -55,7 +55,7 @@ of freedom, low end clipped at zero). The false promotion count is the total ove
 | `aggregate_score` | 18 | 2 | 4 | 4 | 102 | 0 |
 | `mohar` | 78 | 5 | 14 | 25 | 42 | 0 |
 
-Prediction agreement: the answer model answered 647 of 3200 escalations (20.2%). 23 of its predictions still went to the person as checks, and 100.0% of the checks agreed. Over every prediction there were 26.3 wrong yes answers per 1,000. Taken seed by seed, the mean was 12.8, with a 95% interval of 0.0 to 27.6.
+Prediction agreement: the answer model answered 326 of 3200 escalations (10.2%). 7 of its predictions still went to the person as checks, and 100.0% of the checks agreed. Over every prediction there were 18.4 wrong yes answers per 1,000. Taken seed by seed, the mean was 5.9, with a 95% interval of 0.0 to 19.9.
 <!-- results:end -->
 
 ## Reading the numbers
@@ -73,12 +73,16 @@ been promoted, so there was nothing to demote.
 Irreversible failures are the same under every policy. Mohar sends an irreversible high-risk action to
 a person whatever the agent's level, and the three baselines ask about `deploy` every time too.
 
-The answer model gave more wrong yes answers (26 per 1,000 predictions over all seeds) than its 0.98
-threshold suggests, while every check agreed, so the checks a daemon can see would not have shown it.
-The seed-by-seed mean is lower, so the seeds where the model answered more often were also the ones
-where it was wrong more often. Issue #228 tracks
-finding the cause; until then, prediction should stay off for anyone whose yes rate on a path is close to
-the threshold.
+Before #228 the answer model gave 26 wrong yes answers per 1,000 predictions, more than its 0.98
+threshold suggests, and every check agreed. The cause was the calibration. Platt scaling is monotone in
+the model's score, and this person's answers fall into two groups: CI at 20% yes, everything else between
+95% and 100%. The fit placed the line between the groups well but could not tell the paths inside the
+mostly-yes group apart, so `src/cli.rs` (95%) was scored like `docs/` (100%). The model's probability is
+now capped at the person's own smoothed yes rate on the capability in the target's top directory,
+(yes + 1) / (answers + 2). Wrong yes answers fell to the figure above, and the model answers about half as
+many escalations as before. The remaining wrong answers are on `src/cli.rs`, which shares `src/` with a
+97% path, so the cap sees one directory at about 96%. Checks still can't show this: with one prediction in
+twenty checked, a few hundred predictions give a handful of checks.
 
 ## Limits
 
