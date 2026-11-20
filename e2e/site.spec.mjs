@@ -487,3 +487,19 @@ test('inline code in the tiles and the closing section sits on the 16px step at 
     for (const s of sizes) expect(s, `at ${width}px`).toBe('16px');
   }
 });
+
+test('each page shares its own title and description', async ({ request }) => {
+  // A link preview should describe the page it links to; a copied head once gave the 404 page the
+  // description of the page about the name.
+  const seen = new Map();
+  for (const path of pages) {
+    const html = await (await request.get(path)).text();
+    const meta = (attr, key) => html.match(new RegExp(`<meta ${attr}="${key}" content="([^"]*)"`))?.[1];
+    const title = html.match(/<title>([^<]*)<\/title>/)?.[1];
+    expect(meta('property', 'og:title'), `${path} og:title`).toBe(title);
+    const description = meta('property', 'og:description');
+    expect(description, `${path} og:description`).toBeTruthy();
+    expect(seen.get(description), `${path} shares its og:description with`).toBeUndefined();
+    seen.set(description, path);
+  }
+});
