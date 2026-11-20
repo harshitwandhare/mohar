@@ -102,8 +102,17 @@ impl Model {
 
     /// The calibrated probability that the person says yes to an action on `capability` at `target`,
     /// given their answers so far (`past`, oldest first).
+    ///
+    /// The answer is never above the person's own smoothed yes rate on this capability in the
+    /// target's top directory, (yes + 1) / (answers + 2). Platt scaling is monotone in the score, so
+    /// when a person's answers fall into a mostly-yes group and a mostly-no group it calibrates the line
+    /// between the groups and not the paths inside one: a directory the person says yes to 95% of the
+    /// time, scored next to one they always allow, inherits its confidence. The cap keeps a directory
+    /// with the odd refusal below [`THRESHOLD`] until the person has said yes there often enough.
     pub fn p_yes(&self, past: &[Past], capability: &str, risk: Risk, target: &str) -> f64 {
-        sigmoid(self.a * score(&self.w, &features(past, capability, risk, target)) + self.b)
+        let calibrated =
+            sigmoid(self.a * score(&self.w, &features(past, capability, risk, target)) + self.b);
+        calibrated.min(own_rate(past, capability, target))
     }
 }
 
@@ -221,13 +230,27 @@ pub fn drawn_for_check(seed: &[u8; 32], seq: u64) -> bool {
     u64::from_be_bytes(first) % 1000 < CHECK_PER_MILLE
 }
 
+/// The person's smoothed yes rate on this capability in the target's top directory:
+/// (yes + 1) / (answers + 2).
+fn own_rate(past: &[Past], capability: &str, target: &str) -> f64 {
+    let dir = top_dir(target);
+    let (yes, all) = past
+        .iter()
+        .filter(|p| p.capability == capability && top_dir(&p.target) == dir)
+        .fold((0u64, 0u64), |(y, n), p| (y + u64::from(p.yes), n + 1));
+    (yes as f64 + 1.0) / (all as f64 + 2.0)
+}
+
+/// The first path segment of a target with a directory, empty for a file at the root.
+fn top_dir(target: &str) -> &str {
+    target.split_once('/').map_or("", |(d, _)| d)
+}
+
 /// Capability, risk, the target's top directory and extension, and the share of yes among the
 /// person's last [`RECENT`] answers on the same capability (scaled to -1..1, 0 with none).
 fn features(past: &[Past], capability: &str, risk: Risk, target: &str) -> Features {
-    let (dir, file) = match target.split_once('/') {
-        Some((d, _)) => (d, target.rsplit('/').next().unwrap_or_default()),
-        None => ("", target),
-    };
+    let dir = top_dir(target);
+    let file = target.rsplit('/').next().unwrap_or_default();
     let ext = file.rsplit_once('.').map_or("", |(_, e)| e);
     let recent: Vec<bool> = past
         .iter()

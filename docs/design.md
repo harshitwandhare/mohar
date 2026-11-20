@@ -212,11 +212,16 @@ when all of these hold:
 
 - the capability is low risk and reversible;
 - the person has switched prediction on for it;
-- the model's calibrated probability of "yes" is at least 0.98;
+- the model's calibrated probability of "yes" is at least 0.98, where that probability is never above
+  the person's own smoothed yes rate on the capability in the target's top directory,
+  (yes + 1) / (answers + 2);
 - the action is inside limits the person set.
 
 Every predicted answer is marked as predicted in the receipt, and 5% of them are sent to the person
-anyway as a check. The model never relaxes a gate and never answers for high-risk capabilities.
+anyway as a check. The cap is there because calibration alone was not enough: in the
+[benchmark](https://github.com/harshitwandhare/mohar/blob/main/docs/benchmark.md) the model gave 26 wrong
+yes answers per 1,000 predictions without it and 18 with it, against a person who says yes 95% of the time
+on one path. The model never relaxes a gate and never answers for high-risk capabilities.
 
 ### Budgets
 

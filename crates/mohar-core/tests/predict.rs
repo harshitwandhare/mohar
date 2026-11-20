@@ -390,6 +390,46 @@ fn a_recent_run_of_noes_pulls_the_probability_down() {
 }
 
 #[test]
+fn a_directory_with_the_odd_refusal_does_not_borrow_confidence_from_its_neighbours() {
+    // Two groups: config is mostly no, docs and src mostly yes. Platt scaling calibrates the line
+    // between the groups, so on its own it put src (one no in twenty) above the threshold next to docs.
+    // The cap at the person's own smoothed rate in src keeps it under.
+    let mut answers = Vec::new();
+    for i in 0..200 {
+        answers.push(past(DOCS, Risk::Low, &format!("docs/{i}.md"), true));
+        answers.push(past(DOCS, Risk::Low, &format!("src/{i}.rs"), i % 20 != 7));
+        answers.push(past(
+            DOCS,
+            Risk::Low,
+            &format!("config/{i}.toml"),
+            i % 5 == 0,
+        ));
+    }
+    let m = Model::train(&answers).expect("enough answers");
+    let docs = m.p_yes(&answers, DOCS, Risk::Low, "docs/next.md");
+    let src = m.p_yes(&answers, DOCS, Risk::Low, "src/next.rs");
+    assert!(docs >= THRESHOLD, "{docs}");
+    assert!(src < THRESHOLD, "{src}");
+    assert!(src > 0.9, "{src}");
+}
+
+#[test]
+fn a_directory_the_person_was_never_asked_about_is_capped_at_a_coin_flip() {
+    let answers: Vec<Past> = (0..200)
+        .map(|i| past(DOCS, Risk::Low, &format!("docs/{i}.md"), true))
+        .collect();
+    let m = Model::train(&answers).expect("enough answers");
+    let p = m.p_yes(&answers, DOCS, Risk::Low, "notes/next.md");
+    assert!(p <= 0.5, "{p}");
+    // The directory is counted per capability: yeses on docs under another capability don't count.
+    let other = m.p_yes(&answers, CONFIG, Risk::Low, "docs/next.md");
+    assert!(other <= 0.5, "{other}");
+    // A file at the project root is its own group, apart from every directory.
+    let root = m.p_yes(&answers, DOCS, Risk::Low, "README.md");
+    assert!(root <= 0.5, "{root}");
+}
+
+#[test]
 fn training_is_deterministic() {
     let answers: Vec<Past> = (0..120)
         .map(|i| past(DOCS, Risk::Low, &format!("docs/{i}.md"), i % 7 != 0))

@@ -206,13 +206,13 @@
     }
   ],
   "prediction": {
-    "agreement_on_all_predictions": 0.9746,
+    "agreement_on_all_predictions": 0.982,
     "agreement_on_checks": 1.0,
-    "answered_by_model": 647,
-    "answered_by_model_share": 0.2022,
-    "answers_given": 2553,
-    "asked": 2530,
-    "checks": 23,
+    "answered_by_model": 326,
+    "answered_by_model_share": 0.1019,
+    "answers_given": 2874,
+    "asked": 2867,
+    "checks": 7,
     "escalations": 3200,
     "escalations_per_seed": 400,
     "habits": [
@@ -240,10 +240,10 @@
     "retrain_every": 25,
     "threshold": 0.98,
     "wrong_yes_per_1000_per_seed_95": {
-      "high": 27.6467,
+      "high": 19.872,
       "low": 0.0,
-      "mean": 12.7998
+      "mean": 5.9055
     },
-    "wrong_yes_per_1000_predicted": 26.2751
+    "wrong_yes_per_1000_predicted": 18.4049
   }
 }
