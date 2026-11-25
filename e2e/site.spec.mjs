@@ -281,6 +281,46 @@ test('every page uses the gold seal for its icons and header mark, and each one 
   }
 });
 
+test('the app icon has a maskable version whose mark stays inside the safe circle', async ({ page, request }) => {
+  // Android crops a maskable icon to its own shape and keeps only the centre circle of 80% of the
+  // width, so the icon must be opaque and everything outside that circle plain ground.
+  const manifest = await (await request.get('/site.webmanifest')).json();
+  const maskable = manifest.icons.filter(i => (i.purpose || '').split(' ').includes('maskable'));
+  expect(maskable).toHaveLength(1);
+  expect(maskable[0].sizes).toBe('512x512');
+  await page.goto('/');
+  const found = await page.evaluate(async src => {
+    const img = new Image();
+    img.src = src;
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    const { data } = ctx.getImageData(0, 0, c.width, c.height);
+    const ground = [data[0], data[1], data[2]];
+    const r = c.width * 0.4;
+    let transparent = 0, inked = 0, outside = 0;
+    for (let y = 0; y < c.height; y++) {
+      for (let x = 0; x < c.width; x++) {
+        const i = (y * c.width + x) * 4;
+        if (data[i + 3] < 255) transparent++;
+        const off = Math.abs(data[i] - ground[0]) + Math.abs(data[i + 1] - ground[1]) + Math.abs(data[i + 2] - ground[2]);
+        if (off <= 6) continue;
+        inked++;
+        if (Math.hypot(x + 0.5 - c.width / 2, y + 0.5 - c.height / 2) > r) outside++;
+      }
+    }
+    return { size: `${c.width}x${c.height}`, ground, transparent, inked, outside };
+  }, maskable[0].src);
+  expect(found.size).toBe('512x512');
+  expect(found.ground).toEqual([22, 19, 15]);
+  expect(found.transparent).toBe(0);
+  expect(found.inked).toBeGreaterThan(512 * 512 / 4);
+  expect(found.outside).toBe(0);
+});
+
 test('every control on each page shows a focus ring at 3:1 or more against what is behind it', async ({ page, browserName }, info) => {
   // WebKit only tabs to links with a system setting turned on, and phones have no Tab key.
   test.skip(browserName === 'webkit' || info.project.name === 'mobile', 'no keyboard tab order to walk');
