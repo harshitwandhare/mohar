@@ -2,8 +2,8 @@
 //! that each metric counts what it says on agents whose behaviour is known exactly.
 
 use mohar_bench::{
-    Agreement, Config, Kind, Policy, agreement, false_promotion, interval, level_bound, markdown,
-    report, run,
+    Agreement, Config, Kind, Poisoning, Policy, agreement, false_promotion, interval, lessons,
+    level_bound, markdown, report, run,
 };
 
 fn small(kinds: Vec<Kind>, catch: u64) -> Config {
@@ -17,6 +17,10 @@ fn small(kinds: Vec<Kind>, catch: u64) -> Config {
         catch_per_mille: catch,
         escalations: 0,
         habits: Vec::new(),
+        misleading: 0,
+        plant_per_mille: 0,
+        promote_per_mille: 0,
+        spot_per_mille: 0,
     }
 }
 
@@ -511,4 +515,161 @@ fn a_check_can_disagree_with_the_prediction() {
         ..person(vec![("src/lib.rs", 990)], 1500)
     });
     assert!(a.checks_agreed < a.checks, "{a:?}");
+}
+
+/// Lesson runs: `misleading` agents that plant failures at `plant` per thousand next to `kinds`, and a
+/// person who promotes `promote` per thousand fixed lessons and spots `spot` per thousand planted ones.
+fn book(kinds: Vec<Kind>, misleading: u64, plant: u64, promote: u64, spot: u64) -> Config {
+    Config {
+        misleading,
+        plant_per_mille: plant,
+        promote_per_mille: promote,
+        spot_per_mille: spot,
+        ..small(kinds, 0)
+    }
+}
+
+/// Fails everything until the drift day, then passes everything.
+fn turnaround() -> Kind {
+    Kind {
+        name: "turnaround",
+        before: 0,
+        after: 1000,
+    }
+}
+
+#[test]
+fn honest_agents_write_no_poisoned_lessons() {
+    let p = lessons(&book(
+        vec![steady("a", 700), steady("b", 900)],
+        0,
+        0,
+        1000,
+        0,
+    ));
+    assert!(p.written > 0 && p.kept > 0 && p.shared > 0, "{p:?}");
+    assert_eq!(p.poisoned, 0);
+    assert_eq!(p.poisoned_kept, 0);
+    assert_eq!(p.poisoned_shared, 0);
+}
+
+#[test]
+fn every_verified_failure_writes_one_lesson() {
+    // One agent that fails everything: 35 days, 6 actions, 3 capabilities.
+    let p = lessons(&book(vec![steady("a", 0)], 0, 0, 0, 0));
+    assert_eq!(p.written, 35 * 6 * 3);
+    // A misleading agent's failures are all planted, so all its lessons are poisoned.
+    let p = lessons(&book(Vec::new(), 1, 1000, 0, 0));
+    assert_eq!(p.written, 35 * 6 * 3);
+    assert_eq!(p.poisoned, p.written);
+}
+
+#[test]
+fn a_serious_failure_withholds_the_earlier_lessons_and_keeps_its_own() {
+    // It fails deploy on every slot, so a quarantine is always open and never reviewed: only the
+    // lesson from the last deploy failure is still seen.
+    let p = lessons(&book(vec![steady("a", 0)], 0, 0, 0, 0));
+    assert_eq!(p.kept, 1, "{p:?}");
+    assert_eq!(p.withheld, p.written - 1);
+    assert_eq!(p.honest_withheld, p.withheld);
+}
+
+#[test]
+fn a_quarantine_is_released_a_day_after_the_last_serious_failure() {
+    // Its last failure is on day 27 and it passes from day 28 on, so by day 35 the person has reviewed
+    // the quarantine and every lesson is back.
+    let p = lessons(&book(vec![turnaround()], 0, 0, 0, 0));
+    assert_eq!(p.written, 28 * 6 * 3);
+    assert_eq!(p.kept, p.written, "{p:?}");
+    assert_eq!(p.withheld, 0);
+}
+
+#[test]
+fn only_promoted_lessons_reach_another_agent() {
+    let kinds = vec![turnaround(), steady("b", 900)];
+    let none = lessons(&book(kinds.clone(), 2, 300, 0, 0));
+    assert_eq!(none.promoted, 0);
+    assert_eq!(none.shared, 0);
+    assert_eq!(none.poisoned_shared, 0);
+    assert!(none.poisoned_kept > 0, "{none:?}");
+    let all = lessons(&book(kinds, 2, 300, 1000, 0));
+    assert!(all.promoted > 0);
+    assert!(all.shared > 0 && all.shared <= all.promoted, "{all:?}");
+}
+
+#[test]
+fn a_person_who_spots_every_planted_lesson_shares_none() {
+    let kinds = vec![steady("a", 800)];
+    let blind = lessons(&book(kinds.clone(), 2, 300, 1000, 0));
+    assert_eq!(blind.spotted, 0);
+    assert!(blind.poisoned_shared > 0, "{blind:?}");
+    let sharp = lessons(&book(kinds, 2, 300, 1000, 1000));
+    assert!(sharp.spotted > 0, "{sharp:?}");
+    assert_eq!(sharp.poisoned_shared, 0);
+    // Spotting drops only planted lessons: the honest ones are promoted as before.
+    assert_eq!(
+        sharp.shared,
+        blind.shared - blind.poisoned_shared,
+        "{sharp:?} {blind:?}"
+    );
+}
+
+#[test]
+fn the_report_compares_the_book_with_shared_notes() {
+    let cfg = Config {
+        seeds: vec![1, 2],
+        ..book(vec![steady("a", 800)], 1, 200, 500, 500)
+    };
+    let r = report(&cfg);
+    let l = &r["lessons"];
+    let mut sum = Poisoning::default();
+    for s in [1, 2] {
+        let p = lessons(&Config {
+            seeds: vec![s],
+            ..cfg.clone()
+        });
+        sum.written += p.written;
+        sum.poisoned += p.poisoned;
+    }
+    assert_eq!(l["written"], sum.written);
+    assert_eq!(l["poisoned_written"], sum.poisoned);
+    assert_eq!(l["misleading_agents"], 1);
+    let notes = &l["shared_notes"];
+    assert!(
+        notes["poisoned_per_1000_kept"].as_f64().unwrap_or_default() > 0.0,
+        "{l}"
+    );
+    assert_eq!(
+        notes["poisoned_per_1000_kept"],
+        notes["poisoned_per_1000_shared"]
+    );
+    let m = &l["mohar"];
+    for k in [
+        "kept",
+        "poisoned_kept",
+        "poisoned_per_1000_kept",
+        "shared",
+        "poisoned_shared",
+        "poisoned_per_1000_shared",
+        "promoted",
+        "spotted",
+        "withheld",
+    ] {
+        assert!(m.get(k).is_some(), "{k} missing from {m}");
+    }
+    for k in ["poisoned_per_1000_kept", "poisoned_per_1000_shared"] {
+        assert!(m["per_seed_95"][k].is_object(), "{k}: {m}");
+        assert!(notes["per_seed_95"][k].is_object(), "{k}: {notes}");
+    }
+    let md = markdown(&r);
+    assert!(md.contains("| Memory | Lessons kept |"), "{md}");
+    assert!(md.contains("| shared notes |"), "{md}");
+    assert!(md.contains("| `mohar` lesson book |"), "{md}");
+}
+
+#[test]
+fn no_lessons_reports_zeros() {
+    let r = report(&book(Vec::new(), 0, 0, 0, 0));
+    assert_eq!(r["lessons"]["written"], 0);
+    assert_eq!(r["lessons"]["mohar"]["poisoned_per_1000_kept"], 0.0);
 }

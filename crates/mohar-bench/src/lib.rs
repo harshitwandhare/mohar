@@ -7,13 +7,17 @@
 //! how often an agent was promoted to a level its real pass rate doesn't meet, and how many actions a
 //! real drop in quality went on for before the agent was demoted. A second part, [`agreement`], runs the
 //! per-person answer model against a simulated person and reports how often its answers match theirs.
+//! A third, [`lessons`], adds agents that fail on purpose and reports how many of the lessons they plant
+//! the lesson book still hands to agents when the run ends.
 //!
 //! A run is a pure function of its [`Config`]. Each task's outcome comes from hashing (seed, agent,
 //! capability, action), so every policy sees the same tasks and anyone can regenerate the results:
 //! `MOHAR_WRITE_BENCH=1 cargo test --release -p mohar-bench` rewrites `results.json`.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
+use mohar_core::SigningKey;
+use mohar_core::lessons::{self, Book, Lesson};
 use mohar_core::policy::{Capability, Risk};
 use mohar_core::predict::{self, Limits, Model, Past, Prediction, Request};
 use mohar_core::trust::{Ledger, Outcome, Severity};
@@ -58,6 +62,15 @@ pub struct Config {
     pub escalations: u64,
     /// That person's habits: a target and how many times per thousand they say yes to an edit of it.
     pub habits: Vec<(&'static str, u64)>,
+    /// Agents that fail on purpose to plant lessons, for the lesson part of the run ([`lessons`]). Their
+    /// real work always passes, so every lesson they write is a planted one.
+    pub misleading: u64,
+    /// Actions per thousand a misleading agent fails on purpose.
+    pub plant_per_mille: u64,
+    /// Fixed lessons per thousand a person promotes to the team.
+    pub promote_per_mille: u64,
+    /// Planted lessons per thousand a person spots, and so doesn't promote, when deciding a promotion.
+    pub spot_per_mille: u64,
 }
 
 impl Default for Config {
@@ -99,6 +112,10 @@ impl Default for Config {
                 ("src/cli.rs", 950),
                 (".github/workflows/ci.yml", 200),
             ],
+            misleading: 5,
+            plant_per_mille: 100,
+            promote_per_mille: 100,
+            spot_per_mille: 500,
         }
     }
 }
@@ -464,6 +481,242 @@ pub fn agreement(cfg: &Config) -> Agreement {
     a
 }
 
+/// Name prefix of the agents that plant failures in the lesson part of the run.
+const MISLEADING: &str = "misleading-";
+
+/// What the lesson book (`mohar_core::lessons::Book`) held at the end of the lesson part of the run,
+/// summed over every seed. A lesson is poisoned when it comes from a failure a misleading agent planted.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Poisoning {
+    /// Lessons written, one for each verified failure.
+    pub written: u64,
+    /// Of those, poisoned ones.
+    pub poisoned: u64,
+    /// Lessons some agent is given at the end of the run.
+    pub kept: u64,
+    /// Of those, poisoned ones.
+    pub poisoned_kept: u64,
+    /// Lessons an agent other than the one that failed is given: lessons promoted to the team.
+    pub shared: u64,
+    /// Of those, poisoned ones.
+    pub poisoned_shared: u64,
+    /// Lessons a person promoted.
+    pub promoted: u64,
+    /// Poisoned lessons a person spotted and so didn't promote.
+    pub spotted: u64,
+    /// Lessons withheld by an open quarantine at the end of the run.
+    pub withheld: u64,
+    /// Of those, honest ones.
+    pub honest_withheld: u64,
+}
+
+/// A person reviews an agent's quarantine this long after it opens, and releases it.
+const QUARANTINE_REVIEW: u64 = DAY;
+
+/// Run the lesson book over every seed in `cfg`, as the daemon's `learn` fills it: each verified
+/// failure writes a signed lesson, a serious one quarantines the agent's earlier lessons, and a pass
+/// fixes the agent's open lessons on that capability. A person promotes a share of the fixed lessons
+/// to the team, spotting a share of the planted ones first, and releases each quarantine after
+/// reviewing it. The honest agents are `cfg.kinds`; `cfg.misleading` more agents fail on purpose.
+/// Every action's outcome is verified here, with no person stopping failures before they run, so
+/// this writes as many lessons as the agents' failures can give.
+pub fn lessons(cfg: &Config) -> Poisoning {
+    let caps = capabilities();
+    let honest = cfg.kinds.len() as u64 * cfg.agents_per_kind;
+    let mut p = Poisoning::default();
+    for &seed in &cfg.seeds {
+        let mut key_seed = [7u8; 32];
+        key_seed[..8].copy_from_slice(&seed.to_le_bytes());
+        let key = SigningKey::from_seed(&key_seed);
+        let mut book = Book::new(key.verifying_key());
+        // Open lessons per agent and capability, oldest first, as `Book::unfixed` lists them.
+        let mut open: BTreeMap<(u64, usize), Vec<usize>> = BTreeMap::new();
+        // When each quarantined agent's review is due.
+        let mut review: BTreeMap<String, u64> = BTreeMap::new();
+        let mut agents = Vec::new();
+        for day in 0..cfg.days {
+            for slot in 0..cfg.actions_per_day {
+                let now = START + day * DAY + slot * (DAY / cfg.actions_per_day);
+                let n = day * cfg.actions_per_day + slot;
+                review.retain(|agent, due| {
+                    let keep = *due > now;
+                    if !keep {
+                        book.release(agent);
+                    }
+                    keep
+                });
+                agents.clear();
+                for (k, kind) in cfg.kinds.iter().enumerate() {
+                    let rate = if day < cfg.drift_day {
+                        kind.before
+                    } else {
+                        kind.after
+                    };
+                    for i in 0..cfg.agents_per_kind {
+                        agents.push((
+                            k as u64 * cfg.agents_per_kind + i,
+                            format!("{}-{i}", kind.name),
+                            rate,
+                        ));
+                    }
+                }
+                for i in 0..cfg.misleading {
+                    agents.push((
+                        honest + i,
+                        format!("{MISLEADING}{i}"),
+                        1000 - cfg.plant_per_mille,
+                    ));
+                }
+                for (agent_no, agent, rate) in &agents {
+                    for (c, (cap, spec)) in caps.iter().enumerate() {
+                        let passed = draw(&[seed, *agent_no, c as u64, n, 0]) < *rate;
+                        let receipt = format!("sha256:{seed}-{agent_no}-{c}-{n}");
+                        let ids = open.entry((*agent_no, c)).or_default();
+                        if passed {
+                            for id in ids.drain(..) {
+                                // `open` names only lessons in the book.
+                                let Some(mut l) = book.get(id).cloned() else {
+                                    continue;
+                                };
+                                l.fix.clone_from(&receipt);
+                                l.receipts.push(receipt.clone());
+                                // Signing a lesson has no failing input, and the book takes what
+                                // the same key signed.
+                                let Ok(l) = lessons::sign(&key, l) else {
+                                    continue;
+                                };
+                                if book.record_fix(id, l).is_err() {
+                                    continue;
+                                }
+                                let id_no = id as u64;
+                                if draw(&[seed, id_no, 4]) >= cfg.promote_per_mille {
+                                    continue;
+                                }
+                                if agent.starts_with(MISLEADING)
+                                    && draw(&[seed, id_no, 5]) < cfg.spot_per_mille
+                                {
+                                    p.spotted += 1;
+                                    continue;
+                                }
+                                p.promoted += u64::from(book.promote(id));
+                            }
+                            continue;
+                        }
+                        if Severity::for_capability(spec) >= Severity::S3 {
+                            book.quarantine(agent, now, &receipt);
+                            review
+                                .entry(agent.clone())
+                                .or_insert(now + QUARANTINE_REVIEW);
+                        }
+                        let lesson = Lesson {
+                            v: mohar_core::VERSION,
+                            agent: agent.clone(),
+                            capability: (*cap).to_string(),
+                            at: now,
+                            failure: receipt.clone(),
+                            finding: format!("the tests verifier failed {cap} on task {n}"),
+                            fix: String::new(),
+                            receipts: vec![receipt],
+                            sig: String::new(),
+                        };
+                        // As above, signing can't fail and the book takes the key's own lessons.
+                        let Ok(lesson) = lessons::sign(&key, lesson) else {
+                            continue;
+                        };
+                        if let Ok(id) = book.add(lesson) {
+                            ids.push(id);
+                            p.written += 1;
+                            p.poisoned += u64::from(agent.starts_with(MISLEADING));
+                        }
+                    }
+                }
+            }
+        }
+        let mut kept = BTreeSet::new();
+        let mut shared = BTreeSet::new();
+        for (_, agent, _) in &agents {
+            for (cap, _) in &caps {
+                for l in book.for_context(agent, cap) {
+                    let poisoned = l.agent.starts_with(MISLEADING);
+                    if kept.insert(l.failure.clone()) {
+                        p.kept += 1;
+                        p.poisoned_kept += u64::from(poisoned);
+                    }
+                    if l.agent != *agent && shared.insert(l.failure.clone()) {
+                        p.shared += 1;
+                        p.poisoned_shared += u64::from(poisoned);
+                    }
+                }
+            }
+        }
+        // A quarantine withholds a lesson from every agent, its author included, and an agent is always
+        // given its own lessons otherwise, so the lessons not kept are the withheld ones.
+        p.withheld = p.written - p.kept;
+        p.honest_withheld = (p.written - p.poisoned) - (p.kept - p.poisoned_kept);
+    }
+    p
+}
+
+impl Poisoning {
+    /// Add another run's counts to these.
+    fn add(&mut self, o: &Poisoning) {
+        self.written += o.written;
+        self.poisoned += o.poisoned;
+        self.kept += o.kept;
+        self.poisoned_kept += o.poisoned_kept;
+        self.shared += o.shared;
+        self.poisoned_shared += o.poisoned_shared;
+        self.promoted += o.promoted;
+        self.spotted += o.spotted;
+        self.withheld += o.withheld;
+        self.honest_withheld += o.honest_withheld;
+    }
+}
+
+/// The lesson part of the report: the book next to shared notes, where every failure's note is kept
+/// and given to every agent.
+fn poisoning(cfg: &Config) -> Value {
+    let seeds: Vec<Poisoning> = each_seed(cfg).map(|c| lessons(&c)).collect();
+    let mut p = Poisoning::default();
+    seeds.iter().for_each(|s| p.add(s));
+    let of = |f: fn(&Poisoning) -> f64| spread(&seeds.iter().map(f).collect::<Vec<_>>());
+    let notes = of(|s| per_thousand(s.poisoned, s.written));
+    json!({
+        "misleading_agents": cfg.misleading,
+        "plant_per_1000": cfg.plant_per_mille,
+        "promote_per_1000": cfg.promote_per_mille,
+        "spot_per_1000": cfg.spot_per_mille,
+        "quarantine_review_days": QUARANTINE_REVIEW / DAY,
+        "written": p.written,
+        "poisoned_written": p.poisoned,
+        "shared_notes": {
+            "kept": p.written,
+            "poisoned_per_1000_kept": per_thousand(p.poisoned, p.written),
+            "poisoned_per_1000_shared": per_thousand(p.poisoned, p.written),
+            "per_seed_95": {
+                "poisoned_per_1000_kept": notes,
+                "poisoned_per_1000_shared": notes,
+            },
+        },
+        "mohar": {
+            "kept": p.kept,
+            "poisoned_kept": p.poisoned_kept,
+            "poisoned_per_1000_kept": per_thousand(p.poisoned_kept, p.kept),
+            "shared": p.shared,
+            "poisoned_shared": p.poisoned_shared,
+            "poisoned_per_1000_shared": per_thousand(p.poisoned_shared, p.shared),
+            "promoted": p.promoted,
+            "spotted": p.spotted,
+            "withheld": p.withheld,
+            "honest_withheld": p.honest_withheld,
+            "per_seed_95": {
+                "poisoned_per_1000_kept": of(|s| per_thousand(s.poisoned_kept, s.kept)),
+                "poisoned_per_1000_shared": of(|s| per_thousand(s.poisoned_shared, s.shared)),
+            },
+        },
+    })
+}
+
 /// Run every policy and report, as the JSON written to `results.json`.
 pub fn report(cfg: &Config) -> Value {
     // Each seed is run on its own, so the spread across seeds can be reported. The totals are their
@@ -549,6 +802,7 @@ pub fn report(cfg: &Config) -> Value {
         },
         "policies": policies,
         "prediction": prediction(cfg),
+        "lessons": poisoning(cfg),
     })
 }
 
@@ -791,6 +1045,53 @@ pub fn markdown(r: &Value) -> String {
             ),
             _ => String::new(),
         },
+    ));
+    let l = &r["lessons"];
+    s.push_str(
+        "\n| Memory | Lessons kept | Poisoned per 1,000 kept | Seen by another agent | \
+         Poisoned per 1,000 of those |\n\
+         | --- | --- | --- | --- | --- |\n",
+    );
+    for (name, m, kept, shared) in [
+        (
+            "shared notes",
+            &l["shared_notes"],
+            &l["written"],
+            &l["written"],
+        ),
+        (
+            "`mohar` lesson book",
+            &l["mohar"],
+            &l["mohar"]["kept"],
+            &l["mohar"]["shared"],
+        ),
+    ] {
+        let ps = &m["per_seed_95"];
+        s.push_str(&format!(
+            "| {name} | {kept} | {} | {shared} | {} |\n",
+            cell(
+                &m["poisoned_per_1000_kept"],
+                &ps["poisoned_per_1000_kept"],
+                one
+            ),
+            cell(
+                &m["poisoned_per_1000_shared"],
+                &ps["poisoned_per_1000_shared"],
+                one
+            ),
+        ));
+    }
+    let m = &l["mohar"];
+    s.push_str(&format!(
+        "\nThe agents wrote {} lessons, {} of them from planted failures. A person promoted {} fixed \
+         lessons to the team and spotted {} planted ones before promoting them. When the run ended, \
+         {} lessons were withheld by an open quarantine, {} of them honest.\n",
+        l["written"],
+        l["poisoned_written"],
+        m["promoted"],
+        m["spotted"],
+        m["withheld"],
+        m["honest_withheld"],
     ));
     s
 }
