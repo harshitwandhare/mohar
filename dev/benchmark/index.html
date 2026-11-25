@@ -1228,6 +1228,15 @@ old level after its quality dropped, until it was demoted.</p>
 with a fixed yes rate per file (100%, 99%, 97%, 95% and 20%). The answer model learns only from answers
 the person gave, and one prediction in twenty still goes to the person as a check. The simulation knows
 what the person would have said, so agreement is measured on every prediction, not only on the checks.</p>
+<p>The lesson part is separate too. The same twenty agents work as above, and five more misleading agents
+join them. A misleading agent's real work always passes, but it fails 10% of its actions on purpose, so
+every lesson it gets written is a planted one; the others are honest. Every outcome is verified here,
+with no person stopping a failure first, and the lessons go into the real lesson book
+(<code>mohar_core::lessons::Book</code>) the way the daemon fills it: each failure writes a signed lesson, a
+failure on <code>deploy</code> (S3) quarantines the agent's earlier lessons, and a pass fixes the agent's open
+lessons on that capability. A person promotes one fixed lesson in ten to the team, spots half of the
+planted ones among them and leaves those out, and releases each quarantine a day after it opens. The
+counts are taken when the run ends: a lesson is kept when some agent is still given it.</p>
 <h2 id="baselines">Baselines<a class="headerlink" href="#baselines" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>always_ask</code>: every action goes to a person.</li>
@@ -1236,6 +1245,8 @@ what the person would have said, so agreement is measured on every prediction, n
   capabilities, the way a single trust score works.</li>
 <li><code>mohar</code>: the same rules with one score per agent per capability (<code>mohar_core::trust::Ledger</code>).</li>
 </ul>
+<p>For lessons there is one baseline, shared notes: every failure's note is kept and given to every agent,
+as an agent memory file that each failure appends to would be.</p>
 <h2 id="results">Results<a class="headerlink" href="#results" title="Permanent link">&para;</a></h2>
 <p>Each rate is the mean over the eight seeds, with its 95% Student t interval in parentheses (seven degrees
 of freedom, low end clipped at zero). The false promotion count is the total over all seeds.</p>
@@ -1320,6 +1331,34 @@ of freedom, low end clipped at zero). The false promotion count is the total ove
 </tbody>
 </table>
 <p>Prediction agreement: the answer model answered 326 of 3200 escalations (10.2%). 7 of its predictions still went to the person as checks, and 100.0% of the checks agreed. Over every prediction there were 18.4 wrong yes answers per 1,000. Taken seed by seed, the mean was 5.9, with a 95% interval of 0.0 to 19.9.</p>
+<table>
+<thead>
+<tr>
+<th>Memory</th>
+<th>Lessons kept</th>
+<th>Poisoned per 1,000 kept</th>
+<th>Seen by another agent</th>
+<th>Poisoned per 1,000 of those</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>shared notes</td>
+<td>30528</td>
+<td>148.6 (143.8 to 153.5)</td>
+<td>30528</td>
+<td>148.6 (143.8 to 153.5)</td>
+</tr>
+<tr>
+<td><code>mohar</code> lesson book</td>
+<td>12252</td>
+<td>266.1 (186.2 to 345.9)</td>
+<td>1060</td>
+<td>153.2 (63.2 to 243.2)</td>
+</tr>
+</tbody>
+</table>
+<p>The agents wrote 30528 lessons, 4538 of them from planted failures. A person promoted 2783 fixed lessons to the team and spotted 226 planted ones before promoting them. When the run ended, 18276 lessons were withheld by an open quarantine, 16788 of them honest.</p>
 <!-- results:end -->
 
 <h2 id="reading-the-numbers">Reading the numbers<a class="headerlink" href="#reading-the-numbers" title="Permanent link">&para;</a></h2>
@@ -1343,6 +1382,16 @@ now capped at the person's own smoothed yes rate on the capability in the target
 many escalations as before. The remaining wrong answers are on <code>src/cli.rs</code>, which shares <code>src/</code> with a
 97% path, so the cap sees one directory at about 96%. Checks still can't show this: with one prediction in
 twenty checked, a few hundred predictions give a handful of checks.</p>
+<p>The lesson book did not keep planted lessons out better than shared notes. Of the lessons some agent was
+still given at the end, 266 per 1,000 were planted, against 149 for shared notes, and of the lessons
+another agent was given, 153 per 1,000, about the same. The person left out half of the planted lessons
+that came up for promotion, as set, and quarantine undid the gain. A serious failure withholds every
+lesson the agent wrote before it, including lessons a person released earlier, so an honest agent that
+fails <code>deploy</code> often has its history withheld most of the time: 16,788 of 25,990 honest lessons were
+withheld when the run ended, against 1,488 of 4,538 planted ones. A misleading agent that fails on
+purpose one time in ten fails <code>deploy</code> less often than the poor and drifting agents, so more of its
+lessons stay. A person who spots a planted lesson also has no way to withdraw it; they can only leave it
+out of the team. #236 tracks both.</p>
 <h2 id="limits">Limits<a class="headerlink" href="#limits" title="Permanent link">&para;</a></h2>
 <ul>
 <li>The agents are simulated. Their pass rates are fixed and their outcomes independent; real agents have
@@ -1353,7 +1402,10 @@ twenty checked, a few hundred predictions give a handful of checks.</p>
 <li>Eight seeds give wide intervals on the rare events, false promotions above all. The intervals are over
   per-seed means; they don't pair policies on the same tasks, so the differences between policies are
   better estimated than the overlapping intervals suggest.</li>
-<li>Poisoning that reaches durable memory, listed in the roadmap for this phase, isn't measured yet.</li>
+<li>In the lesson part every failure is verified and none is stopped first, so it writes more lessons than
+  the trust part would. The counts are taken once, when the run ends, not over every lesson an agent was
+  given along the way. A planted lesson reads the same as an honest one, so the person spots it at a
+  fixed rate, not from what it says.</li>
 <li>There are no results from real agents or real reviewers yet.</li>
 </ul>
 <h2 id="regenerating">Regenerating<a class="headerlink" href="#regenerating" title="Permanent link">&para;</a></h2>
