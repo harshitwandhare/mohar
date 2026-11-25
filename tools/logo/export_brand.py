@@ -53,6 +53,12 @@ touch = Image.new("RGBA", (180, 180), (22, 19, 15, 255))
 small = mark.resize((150, 150), Image.LANCZOS)
 touch.paste(small, (15, 15), small)
 touch.convert("RGB").save(OUT / "apple-touch-icon.png", optimize=True)
+# Maskable app icon: Android crops it to its own shape, keeping only the centre circle of 80% of the
+# width. Opaque, on the same ground, with the mark at 70% so its rim stays clear of the crop.
+mask = Image.new("RGBA", (512, 512), (22, 19, 15, 255))
+inner = mark.resize((358, 358), Image.LANCZOS)
+mask.paste(inner, (77, 77), inner)
+mask.convert("RGB").save(OUT / "icon-maskable-512.png", optimize=True)
 # favicon.ico at the site root, for browsers and tools that only ask for that.
 mark.save(ROOT / "site" / "favicon.ico", sizes=[(16, 16), (32, 32), (48, 48)])
 print("wrote", sorted(p.name for p in OUT.iterdir()))
