@@ -59,6 +59,56 @@
     ]
   },
   "harness": "mohar-bench",
+  "lessons": {
+    "misleading_agents": 5,
+    "mohar": {
+      "honest_withheld": 16788,
+      "kept": 12252,
+      "per_seed_95": {
+        "poisoned_per_1000_kept": {
+          "high": 345.9435,
+          "low": 186.1578,
+          "mean": 266.0507
+        },
+        "poisoned_per_1000_shared": {
+          "high": 243.1751,
+          "low": 63.2197,
+          "mean": 153.1974
+        }
+      },
+      "poisoned_kept": 3050,
+      "poisoned_per_1000_kept": 248.9389,
+      "poisoned_per_1000_shared": 134.9057,
+      "poisoned_shared": 143,
+      "promoted": 2783,
+      "shared": 1060,
+      "spotted": 226,
+      "withheld": 18276
+    },
+    "plant_per_1000": 100,
+    "poisoned_written": 4538,
+    "promote_per_1000": 100,
+    "quarantine_review_days": 1,
+    "shared_notes": {
+      "kept": 30528,
+      "per_seed_95": {
+        "poisoned_per_1000_kept": {
+          "high": 153.5168,
+          "low": 143.7616,
+          "mean": 148.6392
+        },
+        "poisoned_per_1000_shared": {
+          "high": 153.5168,
+          "low": 143.7616,
+          "mean": 148.6392
+        }
+      },
+      "poisoned_per_1000_kept": 148.6504,
+      "poisoned_per_1000_shared": 148.6504
+    },
+    "spot_per_1000": 500,
+    "written": 30528
+  },
   "policies": [
     {
       "actions": 181440,
