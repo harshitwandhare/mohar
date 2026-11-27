@@ -543,3 +543,30 @@ test('each page shares its own title and description', async ({ request }) => {
     seen.set(description, path);
   }
 });
+
+// Checklist item 11: the 3D seal draws nothing while it is scrolled out of view, and draws again when
+// it comes back. Counted at the WebGL calls, so a loop that keeps rendering off screen fails.
+test('the 3D seal stops drawing while scrolled away and starts again when it is back', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__draws = 0;
+    const proto = window.WebGL2RenderingContext && WebGL2RenderingContext.prototype;
+    if (!proto) return;
+    for (const name of ['drawElements', 'drawArrays', 'drawElementsInstanced', 'drawArraysInstanced']) {
+      const original = proto[name];
+      proto[name] = function (...args) { window.__draws++; return original.apply(this, args); };
+    }
+  });
+  await page.goto('/');
+  const webgl = await page.evaluate(() => !!document.createElement('canvas').getContext('webgl2'));
+  test.skip(!webgl, 'no WebGL 2 in this browser');
+  await expect(page.locator('#seal3d')).toHaveClass(/(^| )shown( |$)/, { timeout: 20000 });
+  await expect.poll(() => page.evaluate(() => window.__draws)).toBeGreaterThan(0);
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await expect(page.locator('#seal3d')).not.toBeInViewport();
+  await page.waitForTimeout(300);
+  const away = await page.evaluate(() => window.__draws);
+  await page.waitForTimeout(1000);
+  expect(await page.evaluate(() => window.__draws)).toBe(away);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect.poll(() => page.evaluate(() => window.__draws), { timeout: 5000 }).toBeGreaterThan(away);
+});
