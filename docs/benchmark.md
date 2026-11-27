@@ -73,9 +73,9 @@ Prediction agreement: the answer model answered 326 of 3200 escalations (10.2%).
 | Memory | Lessons kept | Poisoned per 1,000 kept | Seen by another agent | Poisoned per 1,000 of those |
 | --- | --- | --- | --- | --- |
 | shared notes | 30528 | 148.6 (143.8 to 153.5) | 30528 | 148.6 (143.8 to 153.5) |
-| `mohar` lesson book | 12252 | 266.1 (186.2 to 345.9) | 1060 | 153.2 (63.2 to 243.2) |
+| `mohar` lesson book | 30141 | 149.3 (144.0 to 154.6) | 2743 | 80.8 (63.3 to 98.4) |
 
-The agents wrote 30528 lessons, 4538 of them from planted failures. A person promoted 2783 fixed lessons to the team and spotted 226 planted ones before promoting them. When the run ended, 18276 lessons were withheld by an open quarantine, 16788 of them honest.
+The agents wrote 30528 lessons, 4538 of them from planted failures. A person promoted 2783 fixed lessons to the team and spotted 226 planted ones before promoting them. When the run ended, 387 lessons were withheld by an open quarantine, 350 of them honest.
 <!-- results:end -->
 
 ## Reading the numbers
@@ -104,16 +104,18 @@ many escalations as before. The remaining wrong answers are on `src/cli.rs`, whi
 97% path, so the cap sees one directory at about 96%. Checks still can't show this: with one prediction in
 twenty checked, a few hundred predictions give a handful of checks.
 
-The lesson book did not keep planted lessons out better than shared notes. Of the lessons some agent was
-still given at the end, 266 per 1,000 were planted, against 149 for shared notes, and of the lessons
-another agent was given, 153 per 1,000, about the same. The person left out half of the planted lessons
-that came up for promotion, as set, and quarantine undid the gain. A serious failure withholds every
-lesson the agent wrote before it, including lessons a person released earlier, so an honest agent that
-fails `deploy` often has its history withheld most of the time: 16,788 of 25,990 honest lessons were
-withheld when the run ended, against 1,488 of 4,538 planted ones. A misleading agent that fails on
-purpose one time in ten fails `deploy` less often than the poor and drifting agents, so more of its
-lessons stay. A person who spots a planted lesson also has no way to withdraw it; they can only leave it
-out of the team. #236 tracks both.
+The lesson book keeps planted lessons at about the rate shared notes do and passes fewer of them to
+other agents. Of the lessons some agent was still given at the end, 149 per 1,000 were planted, the same
+as shared notes within the intervals. Of the lessons another agent was given, 81 per 1,000 were planted,
+about half the shared-notes rate, because the person left out half of the planted lessons that came up
+for promotion. An earlier version of the book did worse than shared notes on the first measure, 266 per
+1,000. A serious failure withheld every lesson the agent had written, the ones a person had already
+released included, so honest agents that fail `deploy` often lost most of their history while a
+misleading agent that fails on purpose one time in ten kept its own. A release now covers what the
+person reviewed (#241), and 387 lessons were withheld when the run ended, 350 of them honest. The book
+still keeps a slightly larger planted share than shared notes because a planted lesson stays in its own
+agent's context: a person who spots one can leave it out of the team but can't withdraw it. #236 tracks
+that.
 
 ## Limits
 

@@ -62,28 +62,28 @@
   "lessons": {
     "misleading_agents": 5,
     "mohar": {
-      "honest_withheld": 16788,
-      "kept": 12252,
+      "honest_withheld": 350,
+      "kept": 30141,
       "per_seed_95": {
         "poisoned_per_1000_kept": {
-          "high": 345.9435,
-          "low": 186.1578,
-          "mean": 266.0507
+          "high": 154.6296,
+          "low": 144.0372,
+          "mean": 149.3334
         },
         "poisoned_per_1000_shared": {
-          "high": 243.1751,
-          "low": 63.2197,
-          "mean": 153.1974
+          "high": 98.4407,
+          "low": 63.2594,
+          "mean": 80.85
         }
       },
-      "poisoned_kept": 3050,
-      "poisoned_per_1000_kept": 248.9389,
-      "poisoned_per_1000_shared": 134.9057,
-      "poisoned_shared": 143,
+      "poisoned_kept": 4501,
+      "poisoned_per_1000_kept": 149.3315,
+      "poisoned_per_1000_shared": 80.9333,
+      "poisoned_shared": 222,
       "promoted": 2783,
-      "shared": 1060,
+      "shared": 2743,
       "spotted": 226,
-      "withheld": 18276
+      "withheld": 387
     },
     "plant_per_1000": 100,
     "poisoned_written": 4538,

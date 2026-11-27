@@ -9,6 +9,11 @@ receipt format; each such change is called out.
 
 ### Fixed
 
+- Releasing a quarantine now covers the lessons the person reviewed (#241). A later serious failure
+  used to withhold every lesson the agent had ever written again, so honest agents that fail often lost
+  their history while a careful poisoner kept its own. It now withholds only lessons written after what
+  the last release covered. In the benchmark the lesson book's planted share of kept lessons fell from
+  266 to 149 per 1,000 (shared notes: 149), and of lessons passed to other agents from 153 to 81.
 - A careful reviewer no longer gets poor agents promoted (#222). A refusal recorded nothing, so every
   failing action a person stopped vanished from the agent's record; in the benchmark, false promotions
   went from 0.6% to 8.8% to 44.5% as people stopped none, half or nine in ten failures. `/v1/refuse`
