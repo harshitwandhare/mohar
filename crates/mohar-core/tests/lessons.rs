@@ -302,3 +302,94 @@ fn the_serious_failure_s_own_lesson_stays_visible_and_only_the_latest_one() {
     book.quarantine(A, 3 * DAY, &failure(DAY));
     assert_eq!(findings(&book, A, "db.migrate"), ["second serious"]);
 }
+
+#[test]
+fn a_release_covers_what_the_person_reviewed() {
+    let mut book = Book::new(key().verifying_key());
+    book.add(signed(A, "db.migrate", DAY, "reviewed"))
+        .expect("adds");
+    let team = book
+        .add(signed(A, "fs.edit.docs", DAY, "reviewed team lesson"))
+        .expect("adds");
+    assert!(book.promote(team));
+    book.add(signed(A, "db.migrate", 2 * DAY, "first serious"))
+        .expect("adds");
+    book.quarantine(A, 2 * DAY, &failure(2 * DAY));
+    book.release(A);
+    book.add(signed(A, "db.migrate", 4 * DAY, "after the release"))
+        .expect("adds");
+    book.add(signed(A, "db.migrate", 5 * DAY, "second serious"))
+        .expect("adds");
+    book.quarantine(A, 5 * DAY, &failure(5 * DAY));
+    assert!(book.is_quarantined(A));
+    assert_eq!(
+        findings(&book, A, "db.migrate"),
+        ["reviewed", "first serious", "second serious"],
+        "only lessons written after the release are under review again"
+    );
+    assert_eq!(
+        findings(&book, B, "fs.edit.docs"),
+        ["reviewed team lesson"],
+        "a released team lesson stays with the team"
+    );
+}
+
+#[test]
+fn a_lesson_written_after_the_window_but_before_the_release_was_not_reviewed() {
+    let mut book = Book::new(key().verifying_key());
+    book.add(signed(A, "db.migrate", DAY, "reviewed"))
+        .expect("adds");
+    book.quarantine(A, 2 * DAY, &failure(2 * DAY));
+    // Visible while the quarantine was open, so nobody reviewed it.
+    book.add(signed(A, "db.migrate", 3 * DAY, "never withheld"))
+        .expect("adds");
+    book.release(A);
+    book.quarantine(A, 5 * DAY, &failure(5 * DAY));
+    assert_eq!(findings(&book, A, "db.migrate"), ["reviewed"]);
+}
+
+#[test]
+fn releasing_an_agent_with_nothing_quarantined_covers_nothing_new() {
+    let mut book = Book::new(key().verifying_key());
+    book.add(signed(A, "db.migrate", DAY, "reviewed"))
+        .expect("adds");
+    book.quarantine(A, 2 * DAY, &failure(2 * DAY));
+    book.release(A);
+    book.add(signed(A, "db.migrate", 3 * DAY, "not reviewed"))
+        .expect("adds");
+    // A second release with no quarantine open must not stretch the first one over day 3.
+    book.release(A);
+    book.release(B);
+    book.quarantine(A, 4 * DAY, &failure(4 * DAY));
+    assert_eq!(findings(&book, A, "db.migrate"), ["reviewed"]);
+    // And B, never quarantined, loses nothing either.
+    book.add(signed(B, "db.migrate", 3 * DAY, "b lesson"))
+        .expect("adds");
+    book.quarantine(B, 4 * DAY, &failure(4 * DAY));
+    assert!(findings(&book, B, "db.migrate").is_empty());
+}
+
+#[test]
+fn a_serious_failure_older_than_the_release_withholds_nothing_reviewed() {
+    let mut book = Book::new(key().verifying_key());
+    book.add(signed(A, "db.migrate", DAY, "reviewed"))
+        .expect("adds");
+    book.add(signed(A, "db.migrate", 2 * DAY + DAY / 2, "also reviewed"))
+        .expect("adds");
+    book.quarantine(A, 3 * DAY, &failure(3 * DAY));
+    book.release(A);
+    // A failure stamped inside the released window, arriving late.
+    book.quarantine(A, 2 * DAY, &failure(2 * DAY));
+    assert!(book.is_quarantined(A));
+    assert_eq!(
+        findings(&book, A, "db.migrate"),
+        ["reviewed", "also reviewed"]
+    );
+    // Releasing that one must not pull the reviewed mark back to day 2.
+    book.release(A);
+    book.quarantine(A, 5 * DAY, &failure(5 * DAY));
+    assert_eq!(
+        findings(&book, A, "db.migrate"),
+        ["reviewed", "also reviewed"]
+    );
+}

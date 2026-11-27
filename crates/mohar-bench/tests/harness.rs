@@ -565,12 +565,14 @@ fn every_verified_failure_writes_one_lesson() {
 }
 
 #[test]
-fn a_serious_failure_withholds_the_earlier_lessons_and_keeps_its_own() {
-    // It fails deploy on every slot, so a quarantine is always open and never reviewed: only the
-    // lesson from the last deploy failure is still seen.
+fn a_serious_failure_withholds_only_what_the_last_release_did_not_cover() {
+    // It fails deploy on every slot, so a quarantine is always open. The person releases it a day
+    // after it opens, which covers every lesson up to the previous slot, and the next deploy failure
+    // opens a new one. At the end only the last day's lessons are withheld, all 6 slots on 3
+    // capabilities, less the last deploy failure's own lesson.
     let p = lessons(&book(vec![steady("a", 0)], 0, 0, 0, 0));
-    assert_eq!(p.kept, 1, "{p:?}");
-    assert_eq!(p.withheld, p.written - 1);
+    assert_eq!(p.withheld, 6 * 3 - 1, "{p:?}");
+    assert_eq!(p.kept, p.written - p.withheld);
     assert_eq!(p.honest_withheld, p.withheld);
 }
 

@@ -5,6 +5,7 @@
 //! A lesson is data the agent reads. Nothing here touches the trust ledger, so no lesson can move a
 //! gate or a level. After a serious (S3 or S4) failure the agent's earlier lessons are quarantined
 //! until a person releases them, since a mistake can come from bad memory as easily as from a bad step.
+//! A release covers what the person reviewed: a later serious failure withholds only what came after.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -93,6 +94,8 @@ pub struct Book {
     /// Per agent, the time up to which its lessons are withheld, and the failure that set it: that
     /// failure's own lesson stays visible.
     quarantine: BTreeMap<String, (u64, String)>,
+    /// Per agent, the time up to which a person has reviewed and released its lessons (#241).
+    released: BTreeMap<String, u64>,
 }
 
 impl Book {
@@ -103,6 +106,7 @@ impl Book {
             lessons: Vec::new(),
             team: BTreeSet::new(),
             quarantine: BTreeMap::new(),
+            released: BTreeMap::new(),
         }
     }
 
@@ -165,8 +169,8 @@ impl Book {
         true
     }
 
-    /// After a serious failure at `at`, withhold every lesson `agent` built up until then, its team
-    /// lessons included, until [`Book::release`]. The lesson from that failure itself (the one whose
+    /// After a serious failure at `at`, withhold every lesson `agent` built up until then that no
+    /// earlier [`Book::release`] covered, its team lessons included, until a person releases them. The lesson from that failure itself (the one whose
     /// `failure` is `own`) stays visible: Mohar wrote it from the verified failure, not the agent, and it
     /// is the one most likely to stop a repeat (#175). A later failure widens the window and takes over
     /// as the visible one; an earlier one never narrows it.
@@ -181,9 +185,17 @@ impl Book {
         }
     }
 
-    /// A person has looked at the quarantined lessons and lets them through again.
+    /// A person has looked at the quarantined lessons and lets them through again. The release covers
+    /// the lessons that were withheld, the ones up to the end of the window: a later serious failure
+    /// withholds only lessons written after that. A lesson written after the window and before the
+    /// release was never withheld, so nobody reviewed it, and it stays open to the next quarantine.
+    /// With no quarantine open this does nothing.
     pub fn release(&mut self, agent: &str) {
-        self.quarantine.remove(agent);
+        let Some((until, _)) = self.quarantine.remove(agent) else {
+            return;
+        };
+        let covered = self.released.entry(agent.to_string()).or_insert(until);
+        *covered = (*covered).max(until);
     }
 
     /// Whether `agent`'s earlier lessons are withheld.
@@ -192,9 +204,11 @@ impl Book {
     }
 
     fn withheld(&self, l: &Lesson) -> bool {
-        self.quarantine
-            .get(&l.agent)
-            .is_some_and(|(until, own)| l.at <= *until && l.failure != *own)
+        self.quarantine.get(&l.agent).is_some_and(|(until, own)| {
+            l.at <= *until
+                && l.failure != *own
+                && self.released.get(&l.agent).is_none_or(|r| l.at > *r)
+        })
     }
 
     /// The lessons to hand `agent` as context on `capability`, oldest first: its own and the team's,
