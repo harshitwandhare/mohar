@@ -1351,14 +1351,14 @@ of freedom, low end clipped at zero). The false promotion count is the total ove
 </tr>
 <tr>
 <td><code>mohar</code> lesson book</td>
-<td>12252</td>
-<td>266.1 (186.2 to 345.9)</td>
-<td>1060</td>
-<td>153.2 (63.2 to 243.2)</td>
+<td>30141</td>
+<td>149.3 (144.0 to 154.6)</td>
+<td>2743</td>
+<td>80.8 (63.3 to 98.4)</td>
 </tr>
 </tbody>
 </table>
-<p>The agents wrote 30528 lessons, 4538 of them from planted failures. A person promoted 2783 fixed lessons to the team and spotted 226 planted ones before promoting them. When the run ended, 18276 lessons were withheld by an open quarantine, 16788 of them honest.</p>
+<p>The agents wrote 30528 lessons, 4538 of them from planted failures. A person promoted 2783 fixed lessons to the team and spotted 226 planted ones before promoting them. When the run ended, 387 lessons were withheld by an open quarantine, 350 of them honest.</p>
 <!-- results:end -->
 
 <h2 id="reading-the-numbers">Reading the numbers<a class="headerlink" href="#reading-the-numbers" title="Permanent link">&para;</a></h2>
@@ -1382,16 +1382,18 @@ now capped at the person's own smoothed yes rate on the capability in the target
 many escalations as before. The remaining wrong answers are on <code>src/cli.rs</code>, which shares <code>src/</code> with a
 97% path, so the cap sees one directory at about 96%. Checks still can't show this: with one prediction in
 twenty checked, a few hundred predictions give a handful of checks.</p>
-<p>The lesson book did not keep planted lessons out better than shared notes. Of the lessons some agent was
-still given at the end, 266 per 1,000 were planted, against 149 for shared notes, and of the lessons
-another agent was given, 153 per 1,000, about the same. The person left out half of the planted lessons
-that came up for promotion, as set, and quarantine undid the gain. A serious failure withholds every
-lesson the agent wrote before it, including lessons a person released earlier, so an honest agent that
-fails <code>deploy</code> often has its history withheld most of the time: 16,788 of 25,990 honest lessons were
-withheld when the run ended, against 1,488 of 4,538 planted ones. A misleading agent that fails on
-purpose one time in ten fails <code>deploy</code> less often than the poor and drifting agents, so more of its
-lessons stay. A person who spots a planted lesson also has no way to withdraw it; they can only leave it
-out of the team. #236 tracks both.</p>
+<p>The lesson book keeps planted lessons at about the rate shared notes do and passes fewer of them to
+other agents. Of the lessons some agent was still given at the end, 149 per 1,000 were planted, the same
+as shared notes within the intervals. Of the lessons another agent was given, 81 per 1,000 were planted,
+about half the shared-notes rate, because the person left out half of the planted lessons that came up
+for promotion. An earlier version of the book did worse than shared notes on the first measure, 266 per
+1,000. A serious failure withheld every lesson the agent had written, the ones a person had already
+released included, so honest agents that fail <code>deploy</code> often lost most of their history while a
+misleading agent that fails on purpose one time in ten kept its own. A release now covers what the
+person reviewed (#241), and 387 lessons were withheld when the run ended, 350 of them honest. The book
+still keeps a slightly larger planted share than shared notes because a planted lesson stays in its own
+agent's context: a person who spots one can leave it out of the team but can't withdraw it. #236 tracks
+that.</p>
 <h2 id="limits">Limits<a class="headerlink" href="#limits" title="Permanent link">&para;</a></h2>
 <ul>
 <li>The agents are simulated. Their pass rates are fixed and their outcomes independent; real agents have
